@@ -25,6 +25,7 @@ class TikTokRecorder:
         self.duration = config.duration
         self.output = config.output
         self.bitrate = config.bitrate
+        self.ffmpeg_path = config.ffmpeg_path
         self.use_telegram = config.use_telegram
         self._proxy = config.proxy
         self._cookies = config.cookies
@@ -108,7 +109,7 @@ class TikTokRecorder:
                 )
                 time.sleep(self.automatic_interval * TimeOut.ONE_MINUTE)
 
-            except ConnectionError:
+            except (ConnectionError, RequestException, HTTPException):
                 logger.error(Error.CONNECTION_CLOSED_AUTOMATIC)
                 time.sleep(TimeOut.CONNECTION_CLOSED * TimeOut.ONE_MINUTE)
 
@@ -169,7 +170,7 @@ class TikTokRecorder:
                 )
                 time.sleep(self.automatic_interval * TimeOut.ONE_MINUTE)
 
-            except ConnectionError:
+            except (ConnectionError, RequestException, HTTPException):
                 logger.error(Error.CONNECTION_CLOSED_AUTOMATIC)
                 time.sleep(TimeOut.CONNECTION_CLOSED * TimeOut.ONE_MINUTE)
 
@@ -185,7 +186,7 @@ class TikTokRecorder:
         """
         Start recording live
         """
-        live_url = self.tiktok.get_live_url(room_id)
+        live_url = self.tiktok.get_live_url(room_id, user=user)
         if not live_url:
             raise LiveNotFound(TikTokError.RETRIEVE_LIVE_URL)
 
@@ -247,7 +248,7 @@ class TikTokRecorder:
                     out_file.flush()
 
         logger.info(f"Recording finished: {Path(output).resolve()}\n")
-        VideoManagement.convert_flv_to_mp4(output, self.bitrate)
+        VideoManagement.convert_flv_to_mp4(output, self.bitrate, self.ffmpeg_path)
 
     def check_country_blacklisted(self):
         is_blacklisted = self.tiktok.is_country_blacklisted()

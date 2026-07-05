@@ -1,3 +1,4 @@
+import html
 import json
 import re
 
@@ -8,6 +9,7 @@ from utils.custom_exceptions import (
     UserLiveError,
     TikTokRecorderError,
     LiveNotFound,
+    TikRecUnavailableError,
 )
 
 
@@ -133,19 +135,44 @@ class TikTokAPI:
         return room_id
 
     def _tikrec_get_room_id_signed_url(self, user: str) -> str:
-        response = self.http_client.get(
-            f"{self.TIKREC_API}/tiktok/room/api/sign",
-            params={"unique_id": user},
-        )
+        try:
+            response = self.http_client.get(
+                f"{self.TIKREC_API}/tiktok/room/api/sign",
+                params={"unique_id": user},
+            )
+            response.raise_for_status()
+        except Exception as e:
+            raise TikRecUnavailableError(
+                f"tikrec signing service is unreachable: {e}"
+            ) from e
 
-        data = response.json()
+        try:
+            data = response.json()
+        except ValueError as e:
+            raise TikRecUnavailableError(
+                "tikrec signing service returned an invalid response "
+                "(expected JSON, got something else — the service may be down)."
+            ) from e
 
         signed_path = data.get("signed_path")
+        if not signed_path:
+            raise TikRecUnavailableError(
+                "tikrec signing service did not return a signed_path "
+                "(the service may be down or overloaded)."
+            )
+
         return f"{self.BASE_URL}{signed_path}"
 
     def get_room_id_from_user(self, user: str) -> str | None:
         """Given a username, get the room_id."""
-        signed_url = self._tikrec_get_room_id_signed_url(user)
+        try:
+            signed_url = self._tikrec_get_room_id_signed_url(user)
+        except TikRecUnavailableError as e:
+            logger.warning(
+                f"[!] tikrec is unavailable ({e}). "
+                "Falling back to unsigned API — recording continues but may be less reliable."
+            )
+            return self._old_get_room_id_from_user(user)
 
         response = self.http_client.get(signed_url)
         content = response.text
@@ -225,9 +252,40 @@ class TikTokAPI:
 
         return followers
 
-    def get_live_url(self, room_id: str) -> str | None:
+    def _get_stream_url_from_page(self, user: str) -> str | None:
         """
-        Return the cdn (flv or m3u8) of the streaming
+        Fallback: fetch the live page HTML and extract the stream URL directly.
+        Used when the webcast API returns status code 4003110 (WAF/access restriction).
+        """
+        try:
+            live_page_url = f"{self.BASE_URL}/@{user}/live"
+            response = self.http_client.get(live_page_url)
+            content = response.text
+
+            flv_matches = re.findall(r'https?://[^\s"\'<>]+\.flv[^\s"\'<>]*', content)
+            if flv_matches:
+                # Prefer original (_or4) or SD quality
+                for url in flv_matches:
+                    url = html.unescape(url.rstrip("\\"))
+                    if "_or4" in url or "_sd" in url:
+                        logger.info(f"Found stream URL from page: {url[:80]}...")
+                        return url
+                return html.unescape(flv_matches[0].rstrip("\\"))
+
+            hls_matches = re.findall(r'https?://[^\s"\'<>]+\.m3u8[^\s"\'<>]*', content)
+            if hls_matches:
+                return html.unescape(hls_matches[0].rstrip("\\"))
+
+            return None
+        except Exception as e:
+            logger.warning(f"Failed to extract stream URL from page: {e}")
+            return None
+
+    def get_live_url(self, room_id: str, user: str = None) -> str | None:
+        """
+        Return the cdn (flv or m3u8) of the streaming.
+        If the API returns status code 4003110 and a username is provided,
+        falls back to scraping the live page directly.
         """
         data = self.http_client.get(
             f"{self.WEBCAST_URL}/webcast/room/info/?aid=1988&room_id={room_id}"
@@ -235,6 +293,19 @@ class TikTokAPI:
 
         if "This account is private" in data:
             raise UserLiveError(TikTokError.ACCOUNT_PRIVATE)
+
+        status_code = data.get("status_code", 0)
+
+        if status_code == 4003110:
+            if user:
+                logger.info(
+                    "API blocked by WAF (4003110). Trying fallback: extract stream URL from live page..."
+                )
+                fallback_url = self._get_stream_url_from_page(user)
+                if fallback_url:
+                    return fallback_url
+
+            raise UserLiveError(TikTokError.LIVE_RESTRICTION)
 
         stream_url = data.get("data", {}).get("stream_url", {})
 
@@ -276,9 +347,6 @@ class TikTokAPI:
             if level > best_level:
                 best_level = level
                 best_flv = stream_main.get("flv")
-
-        if not best_flv and data.get("status_code") == 4003110:
-            raise UserLiveError(TikTokError.LIVE_RESTRICTION)
 
         return best_flv
 
