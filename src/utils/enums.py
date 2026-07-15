@@ -119,12 +119,14 @@ class Info(Enum):
         return iter(self.value)
 
     NEW_FEATURES = [
-        "Replaced pyrogram to telethon library.",
-        "Fixed termux dependencies error.",
-        "Minor.",
+        "Validated live rooms with stream info to avoid fake recordings.",
+        "Added restricted LIVE fallback for TikTok 4003110 responses.",
+        "Added -ffmpeg-path for custom FFmpeg binaries.",
+        "Preserved existing cookies during recorder updates.",
+        "Added pytest coverage for CLI args and live-room checks.",
     ]
 
-    VERSION = "7.6.0"
+    VERSION = "7.7.0"
     BANNER = rf"""
 
   _____ _ _   _____    _     _    _           ___                   _         
