@@ -71,7 +71,12 @@ class TikTokAPI:
         if status_code != 0:
             return False
 
-        stream_url = (room_info.get("data") or {}).get("stream_url") or {}
+        room_data = room_info.get("data") or {}
+        room_status = room_data.get("status")
+        if room_status is not None and str(room_status) != "2":
+            return False
+
+        stream_url = room_data.get("stream_url") or {}
         sdk_stream_data = (
             (stream_url.get("live_core_sdk_data") or {})
             .get("pull_data", {})
@@ -337,7 +342,12 @@ class TikTokAPI:
 
             raise UserLiveError(TikTokError.LIVE_RESTRICTION)
 
-        stream_url = data.get("data", {}).get("stream_url", {})
+        room_data = data.get("data") or {}
+        room_status = room_data.get("status")
+        if room_status is not None and str(room_status) != "2":
+            raise UserLiveError(TikTokError.USER_NOT_CURRENTLY_LIVE)
+
+        stream_url = room_data.get("stream_url", {})
 
         sdk_data_str = (
             stream_url.get("live_core_sdk_data", {})
