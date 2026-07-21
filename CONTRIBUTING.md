@@ -1,67 +1,46 @@
 <!-- omit in toc -->
 # Contributing to TikTok Live Recorder
 
-First off, thanks for taking the time to contribute! ️
+First off, thanks for taking the time to contribute!
 
-All types of contributions are encouraged and valued. See the [Table of Contents](#table-of-contents) for different ways to help and details about how this project handles them. Please make sure to read the relevant section before making your contribution. It will make it a lot easier for us maintainers and smooth out the experience for all involved. The community looks forward to your contributions. 
+All types of contributions are encouraged and valued. See the [Table of Contents](#table-of-contents) for different ways to help and details about how this project handles them. Please make sure to read the relevant section before making your contribution.
 
-> And if you like the project, but just don't have time to contribute, that's fine. There are other easy ways to support the project and show your appreciation, which we would also be very happy about:
+> And if you like the project, but just don't have time to contribute, that's fine. There are other easy ways to support the project:
 > - Star the project
-> - Tweet about it
-> - Refer this project in your project's readme
-> - Mention the project at local meetups and tell your friends/colleagues
+> - Share it with others who might find it useful
+> - Report bugs or suggest improvements via issues
 
 <!-- omit in toc -->
 ## Table of Contents
 
 - [Code of Conduct](#code-of-conduct)
 - [I Have a Question](#i-have-a-question)
-  - [I Want To Contribute](#i-want-to-contribute)
+- [I Want To Contribute](#i-want-to-contribute)
   - [Reporting Bugs](#reporting-bugs)
   - [Suggesting Enhancements](#suggesting-enhancements)
   - [Your First Code Contribution](#your-first-code-contribution)
+  - [Pull Request Workflow](#pull-request-workflow)
   - [Improving The Documentation](#improving-the-documentation)
 - [Styleguides](#styleguides)
   - [Commit Messages](#commit-messages)
-- [Join The Project Team](#join-the-project-team)
-
 
 ## Code of Conduct
 
 This project and everyone participating in it is governed by the
 [TikTok Live Recorder Code of Conduct](./CODE_OF_CONDUCT.md).
-By participating, you are expected to uphold this code. Please report unacceptable behavior
-by opening an issue on [GitHub](https://github.com/ne0lith/tiktok-live-recorder/issues).
+By participating, you are expected to uphold this code.
 
+Report Code of Conduct violations privately — not in public issues. See [SECURITY.md](./SECURITY.md).
 
 ## I Have a Question
 
 > If you want to ask a question, we assume that you have read the available [Documentation](./README.md).
 
-Before you ask a question, it is best to search for existing [Issues](https://github.com/ne0lith/tiktok-live-recorder/issues) that might help you. In case you have found a suitable issue and still need clarification, you can write your question in this issue. It is also advisable to search the internet for answers first.
+Before you ask a question, search existing [Issues](https://github.com/ne0lith/tiktok-live-recorder/issues) that might help you. If you still need clarification:
 
-If you then still feel the need to ask a question and need clarification, we recommend the following:
-
-- Open an [Issue](https://github.com/ne0lith/tiktok-live-recorder/issues/new).
+- Open an [Issue](https://github.com/ne0lith/tiktok-live-recorder/issues/new/choose) using the appropriate template.
 - Provide as much context as you can about what you're running into.
-- Provide project and platform versions (nodejs, npm, etc), depending on what seems relevant.
-
-We will then take care of the issue as soon as possible.
-
-<!--
-You might want to create a separate issue tag for questions and include it in this description. People should then tag their issues accordingly.
-
-Depending on how large the project is, you may want to outsource the questioning, e.g. to Stack Overflow or Gitter. You may add additional contact and information possibilities:
-- IRC
-- Slack
-- Gitter
-- Stack Overflow tag
-- Blog
-- FAQ
-- Roadmap
-- E-Mail List
-- Forum
--->
+- Include project and platform versions (Python, FFmpeg, OS), depending on what seems relevant.
 
 ## I Want To Contribute
 
@@ -73,65 +52,52 @@ Depending on how large the project is, you may want to outsource the questioning
 <!-- omit in toc -->
 #### Before Submitting a Bug Report
 
-A good bug report shouldn't leave others needing to chase you up for more information. Therefore, we ask you to investigate carefully, collect information and describe the issue in detail in your report. Please complete the following steps in advance to help us fix any potential bug as fast as possible.
+A good bug report shouldn't leave others needing to chase you up for more information. Please:
 
 - Make sure that you are using the latest version.
-- Determine if your bug is really a bug and not an error on your side e.g. using incompatible environment components/versions (Make sure that you have read the [documentation](./README.md). If you are looking for support, you might want to check [this section](#i-have-a-question)).
-- To see if other users have experienced (and potentially already solved) the same issue you are having, check if there is not already a bug report existing for your bug or error in the [bug tracker](https://github.com/ne0lith/tiktok-live-recorder/issues?q=label%3Abug).
-- Also make sure to search the internet (including Stack Overflow) to see if users outside of the GitHub community have discussed the issue.
+- Determine if your bug is really a bug and not an error on your side (e.g. incompatible environment components/versions). Make sure you have read the [documentation](./README.md).
+- Search existing [issues](https://github.com/ne0lith/tiktok-live-recorder/issues?q=label%3Abug) for duplicates.
 - Collect information about the bug:
   - Stack trace (Traceback)
-  - OS, Platform and Version (Windows, Linux, macOS, x86, ARM)
-  - Version of the interpreter, compiler, SDK, runtime environment, package manager, depending on what seems relevant.
-  - Possibly your input and the output
-  - Can you reliably reproduce the issue? And can you also reproduce it with older versions?
+  - OS, platform, and version (Windows, Linux, macOS, x86, ARM)
+  - Python version, FFmpeg version, and package manager (`uv`)
+  - The command you ran and the output you received
+  - Whether you can reliably reproduce the issue
 
 <!-- omit in toc -->
 #### How Do I Submit a Good Bug Report?
 
-> You must never report security related issues, vulnerabilities or bugs including sensitive information to the issue tracker, or elsewhere in public. Instead, use [GitHub Security Advisories](https://github.com/ne0lith/tiktok-live-recorder/security/advisories/new) or open a private security issue.
-<!-- You may add a PGP key to allow the messages to be sent encrypted as well. -->
+> You must never report security related issues, vulnerabilities or bugs including sensitive information to the issue tracker, or elsewhere in public. Instead, see [SECURITY.md](./SECURITY.md).
 
-We use GitHub issues to track bugs and errors. If you run into an issue with the project:
-
-- Open an [Issue](https://github.com/ne0lith/tiktok-live-recorder/issues/new). (Since we can't be sure at this point whether it is a bug or not, we ask you not to talk about a bug yet and not to label the issue.)
-- Explain the behavior you would expect and the actual behavior.
-- Please provide as much context as possible and describe the *reproduction steps* that someone else can follow to recreate the issue on their own. This usually includes your code. For good bug reports you should isolate the problem and create a reduced test case.
-- Provide the information you collected in the previous section.
+Use the [bug report template](https://github.com/ne0lith/tiktok-live-recorder/issues/new?template=bug_report.yml) when filing an issue.
 
 Once it's filed:
 
 - The project team will label the issue accordingly.
-- A team member will try to reproduce the issue with your provided steps. If there are no reproduction steps or no obvious way to reproduce the issue, the team will ask you for those steps and mark the issue as `needs-repro`. Bugs with the `needs-repro` tag will not be addressed until they are reproduced.
-- If the team is able to reproduce the issue, it will be marked `needs-fix`, as well as possibly other tags (such as `critical`), and the issue will be left to be [implemented by someone](#your-first-code-contribution).
-
-<!-- You might want to create an issue template for bugs and errors that can be used as a guide and that defines the structure of the information to be included. If you do so, reference it here in the description. -->
-
+- A maintainer will try to reproduce the issue with your provided steps. If there are no reproduction steps or no obvious way to reproduce the issue, the team will ask you for those steps and mark the issue as `needs-repro`.
+- If the team is able to reproduce the issue, it will be marked `needs-fix` and left for implementation.
 
 ### Suggesting Enhancements
 
-This section guides you through submitting an enhancement suggestion for TikTok Live Recorder, **including completely new features and minor improvements to existing functionality**. Following these guidelines will help maintainers and the community to understand your suggestion and find related suggestions.
+This section guides you through submitting an enhancement suggestion for TikTok Live Recorder, **including completely new features and minor improvements to existing functionality**.
 
 <!-- omit in toc -->
 #### Before Submitting an Enhancement
 
 - Make sure that you are using the latest version.
-- Read the [documentation](./README.md) carefully and find out if the functionality is already covered, maybe by an individual configuration.
-- Perform a [search](https://github.com/ne0lith/tiktok-live-recorder/issues) to see if the enhancement has already been suggested. If it has, add a comment to the existing issue instead of opening a new one.
-- Find out whether your idea fits with the scope and aims of the project. It's up to you to make a strong case to convince the project's developers of the merits of this feature. Keep in mind that we want features that will be useful to the majority of our users and not just a small subset. If you're just targeting a minority of users, consider writing an add-on/plugin library.
+- Read the [documentation](./README.md) carefully and find out if the functionality is already covered.
+- Perform a [search](https://github.com/ne0lith/tiktok-live-recorder/issues) to see if the enhancement has already been suggested.
+- Find out whether your idea fits with the scope and aims of the project.
 
 <!-- omit in toc -->
 #### How Do I Submit a Good Enhancement Suggestion?
 
-Enhancement suggestions are tracked as [GitHub issues](https://github.com/ne0lith/tiktok-live-recorder/issues).
+Use the [feature request template](https://github.com/ne0lith/tiktok-live-recorder/issues/new?template=feature_request.yml).
 
-- Use a **clear and descriptive title** for the issue to identify the suggestion.
-- Provide a **step-by-step description of the suggested enhancement** in as many details as possible.
-- **Describe the current behavior** and **explain which behavior you expected to see instead** and why. At this point you can also tell which alternatives do not work for you.
-- You may want to **include screenshots or screen recordings** which help you demonstrate the steps or point out the part which the suggestion is related to. You can use [LICEcap](https://www.cockos.com/licecap/) to record GIFs on macOS and Windows, and the built-in [screen recorder in GNOME](https://help.gnome.org/users/gnome-help/stable/screen-shot-record.html.en) or [SimpleScreenRecorder](https://github.com/MaartenBaert/ssr) on Linux. <!-- this should only be included if the project has a GUI -->
-- **Explain why this enhancement would be useful** to most TikTok Live Recorder users. You may also want to point out the other projects that solved it better and which could serve as inspiration.
-
-<!-- You might want to create an issue template for enhancement suggestions that can be used as a guide and that defines the structure of the information to be included. If you do so, reference it here in the description. -->
+- Use a **clear and descriptive title** for the issue.
+- Provide a **step-by-step description of the suggested enhancement**.
+- **Describe the current behavior** and **explain which behavior you expected to see instead** and why.
+- **Explain why this enhancement would be useful** to most TikTok Live Recorder users.
 
 ### Your First Code Contribution
 
@@ -145,7 +111,7 @@ Enhancement suggestions are tracked as [GitHub issues](https://github.com/ne0lit
 
 2. Install all dependencies including dev tools:
    ```bash
-   uv sync --dev
+   uv sync --extra dev
    ```
 
 3. Install pre-commit hooks:
@@ -164,20 +130,33 @@ Enhancement suggestions are tracked as [GitHub issues](https://github.com/ne0lit
    uv run pytest
    ```
 
-6. Before submitting, ensure code is formatted:
+6. Before submitting, ensure code is formatted and linted:
    ```bash
    uv run ruff format .
    uv run ruff check .
    ```
 
+### Pull Request Workflow
+
+1. Fork the repository and create a feature branch from `main`.
+2. Make your changes with tests where applicable.
+3. Run the full test suite and linters locally (see above).
+4. Add a `CHANGELOG.md` entry under `[Unreleased]` if the change is user-facing.
+5. Open a pull request against `main` using the PR template.
+6. Ensure CI passes:
+   - **Pytest** — unit tests on Ubuntu
+   - **Ruff** — format and lint checks
+   - **Installation Test** — smoke test on Ubuntu, Windows, and macOS
+
 ### Improving The Documentation
 
 Documentation lives in:
-- `README.md` - installation and usage overview
-- `CHANGELOG.md` - fork release notes (Conventional Commits format)
-- `docs/GUIDE.md` - detailed guides (cookies, watchlist, room_id, Telegram, config)
-- `config/` - user configuration (`cookies.json`, `users.json`, `telegram.json`; see `*.example` templates)
-- `CONTRIBUTING.md` - this file
+- `README.md` — installation and usage overview
+- `CHANGELOG.md` — release notes ([Keep a Changelog](https://keepachangelog.com/) format)
+- `docs/GUIDE.md` — detailed guides (cookies, watchlist, room_id, Telegram, config)
+- `config/` — user configuration (`cookies.json`, `users.json`, `telegram.json`; see `*.example` templates)
+- `SECURITY.md` — security policy and private reporting
+- `CONTRIBUTING.md` — this file
 
 ## Styleguides
 
@@ -189,11 +168,8 @@ Follow the [Conventional Commits](https://www.conventionalcommits.org/) format:
 <type>: <short summary>
 ```
 
-Common types: `feat`, `fix`, `docs`, `refactor`, `chore`.
-
-## Join The Project Team
-<!-- TODO -->
+Common types: `feat`, `fix`, `docs`, `refactor`, `chore`, `test`.
 
 <!-- omit in toc -->
 ## Attribution
-This guide is based on the [contributing.md](https://contributing.md/generator)!
+This guide is based on the [contributing.md](https://contributing.md/generator) template.

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or support
+    url: https://github.com/ne0lith/tiktok-live-recorder/issues/new?template=bug_report.yml
+    about: Search existing issues first, then open a bug report if you need help troubleshooting.
+  - name: Security vulnerability
+    url: https://github.com/ne0lith/tiktok-live-recorder/security/advisories/new
+    about: Report security issues privately. Do not open a public issue.

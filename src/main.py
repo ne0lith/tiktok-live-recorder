@@ -68,7 +68,7 @@ def run_recordings(args, mode, cookies):
         record_user(config)
 
 
-def main():
+def main() -> int:
     from utils.args_handler import validate_and_parse_args
     from utils.utils import (
         read_cookies,
@@ -82,6 +82,7 @@ def main():
     from check_updates import check_updates
 
     instance_lock = None
+    exit_code = 0
     try:
         # validate and parse command line arguments
         args, mode = validate_and_parse_args()
@@ -92,8 +93,7 @@ def main():
         # check for updates
         if args.update_check is True:
             logger.info("Checking for updates...\n")
-            if check_updates():
-                exit()
+            check_updates()
         else:
             logger.info("Skipped update check\n")
 
@@ -109,13 +109,17 @@ def main():
 
     except TikTokRecorderError as ex:
         logger.error(f"Application Error: {ex}")
+        exit_code = 1
 
     except Exception as ex:
         logger.critical(f"Generic Error: {ex}", exc_info=True)
+        exit_code = 1
 
     finally:
         if instance_lock is not None:
             instance_lock.release()
+
+    return exit_code
 
 
 if __name__ == "__main__":
@@ -133,4 +137,4 @@ if __name__ == "__main__":
     multiprocessing.freeze_support()
 
     # run
-    main()
+    sys.exit(main())

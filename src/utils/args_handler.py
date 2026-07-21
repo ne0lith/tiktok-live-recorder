@@ -4,6 +4,7 @@ import re
 from utils.custom_exceptions import ArgsParseError
 from utils.enums import Mode, Regex
 from utils.utils import default_output_base
+from utils.version import get_version
 
 
 def parse_args():
@@ -13,6 +14,13 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="TikTok Live Recorder - A tool for recording live TikTok sessions.",
         formatter_class=argparse.RawTextHelpFormatter,
+    )
+
+    parser.add_argument(
+        "--version",
+        "-V",
+        action="version",
+        version=f"%(prog)s {get_version()}",
     )
 
     parser.add_argument(

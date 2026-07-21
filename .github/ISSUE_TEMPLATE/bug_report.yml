@@ -1,0 +1,84 @@
+name: Bug Report
+description: Report a bug or unexpected behavior
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please search [existing issues](https://github.com/ne0lith/tiktok-live-recorder/issues) first.
+
+        **Do not report security vulnerabilities here.** See [SECURITY.md](../../SECURITY.md).
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the bug and what you expected to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Command you ran and minimal steps to reproduce the issue.
+      placeholder: |
+        uv run python src/main.py -mode watchlist -user example
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `uv run python src/main.py --version` or version from pyproject.toml
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - Windows
+        - Linux
+        - macOS
+        - Android (Termux)
+        - Docker
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      placeholder: "3.11"
+    validations:
+      required: true
+
+  - type: input
+    id: ffmpeg
+    attributes:
+      label: FFmpeg version
+      description: Output of `ffmpeg -version` (first line) or "not installed"
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / error output
+      description: Paste relevant log output or traceback.
+      render: shell
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I have read the [README](https://github.com/ne0lith/tiktok-live-recorder/blob/main/README.md) and [Troubleshooting](https://github.com/ne0lith/tiktok-live-recorder/blob/main/README.md#troubleshooting) sections
+          required: true
+        - label: I am using the latest release
+          required: true

@@ -38,11 +38,16 @@ RUN apt-get update && \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+RUN groupadd -r recorder && useradd -r -g recorder -d /app recorder
+
 WORKDIR /app
 
 COPY --from=builder /app/.venv /app/.venv
 COPY --from=builder /app /app
 
-RUN chmod +x /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh && \
+    chown -R recorder:recorder /app
+
+USER recorder
 
 ENTRYPOINT ["/app/entrypoint.sh"]

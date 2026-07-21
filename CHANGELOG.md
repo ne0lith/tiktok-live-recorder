@@ -1,66 +1,103 @@
 # Changelog
 
-All notable changes in this fork since upstream `7.7.1`. Entries follow [Conventional Commits](https://www.conventionalcommits.org/).
+All notable changes in this fork since upstream `7.7.1`.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [8.1.0] - 2026-07-21
+
+### Added
+
+- `SECURITY.md` security policy and private vulnerability reporting
+- GitHub issue and pull request templates
+- CI status badges, `--version` / `-V` CLI flag
+- Dependabot for dependency and GitHub Actions updates
+- pytest coverage reporting in CI
+- `.dockerignore` and non-root Docker runtime user
+
+### Changed
+
+- `CHANGELOG.md` restructured to [Keep a Changelog](https://keepachangelog.com/) format
+- `CONTRIBUTING.md` cleaned up with PR workflow and CI expectations
+- `CODE_OF_CONDUCT.md` updated to Contributor Covenant 2.1
+- Auto-update check is now notify-only (no longer overwrites local `src/` files)
+- CI uses `uv sync --frozen` for reproducible installs
+- Ruff lint is enforced in CI alongside format checks
+
+### Fixed
+
+- CLI now exits with code 1 on fatal errors instead of silently succeeding
 
 ## [8.0.1] - 2026-07-21
 
-### feat
+### Added
 
-- add FFmpeg path logging at startup when the binary is found
+- FFmpeg path logging at startup when the binary is found
 
-### chore
+### Changed
 
-- bump version to `8.0.1`
-- remove Docker Hub publish workflow (local `docker build` only)
-- drop unused `develop` branch triggers from pytest CI
+- Bumped version to `8.0.1`
+
+### Removed
+
+- Docker Hub publish workflow (local `docker build` only)
+- Unused `develop` branch triggers from pytest CI
 
 ## [8.0.0] - 2026-07-21
 
 Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tiktok-live-recorder).
 
-### feat
+### Added
 
-- add watchlist mode to poll many users in one process with per-user recording threads
-- add `-users-file` flag and `config/users.json` watchlist support
-- add project `config/` directory with committed `*.example` templates and first-run bootstrap
-- add `TIKTOK_RECORDER_CONFIG_DIR` environment variable to override the config location
-- add WAF `4003110` fallback that scrapes stream URLs from live page HTML (`SIGI_STATE` / embedded JSON)
-- add `-ffmpeg-path` flag for a custom FFmpeg binary
-- add instance lock to prevent two recorder processes from using the same output directory
-- add early watchlist re-poll when a recording ends instead of waiting for the full poll interval
-- reload watchlist users from file on each poll cycle without restarting the process
-- add cookie status logging at startup (`sessionid`, `sessionid_ss`, `tt-target-idc`)
-- add default per-user output layout at `output/<username>/`
-- add centralized version helper reading from `pyproject.toml`
+- Watchlist mode to poll many users in one process with per-user recording threads
+- `-users-file` flag and `config/users.json` watchlist support
+- Project `config/` directory with committed `*.example` templates and first-run bootstrap
+- `TIKTOK_RECORDER_CONFIG_DIR` environment variable to override the config location
+- WAF `4003110` fallback that scrapes stream URLs from live page HTML (`SIGI_STATE` / embedded JSON)
+- `-ffmpeg-path` flag for a custom FFmpeg binary
+- Instance lock to prevent two recorder processes from using the same output directory
+- Early watchlist re-poll when a recording ends instead of waiting for the full poll interval
+- Reload watchlist users from file on each poll cycle without restarting the process
+- Cookie status logging at startup (`sessionid`, `sessionid_ss`, `tt-target-idc`)
+- Default per-user output layout at `output/<username>/`
+- Centralized version helper reading from `pyproject.toml`
 
-### fix
+### Fixed
 
-- reject ended TikTok rooms that still expose stale stream URLs
-- try alternate stream URLs when a CDN pull fails or returns empty data
-- resolve room IDs before country checks for manual username recordings
-- validate live rooms with stream info to avoid fake recordings
-- improve FLV-to-MP4 conversion and video post-processing behavior
-- restrict automatic mode to a single username; multiple users require watchlist mode
+- Reject ended TikTok rooms that still expose stale stream URLs
+- Try alternate stream URLs when a CDN pull fails or returns empty data
+- Resolve room IDs before country checks for manual username recordings
+- Validate live rooms with stream info to avoid fake recordings
+- Improve FLV-to-MP4 conversion and video post-processing behavior
+- Restrict automatic mode to a single username; multiple users require watchlist mode
 
-### refactor
+### Changed
 
-- move `cookies.json`, `users.json`, and `telegram.json` out of `src/` into `config/`
-- centralize config, output, and app-root path helpers in `utils.py`
-- update auto-updater to preserve user `config/*.json` files and refresh only `*.example` templates
-- point update checks at `ne0lith/tiktok-live-recorder` instead of upstream
+- Move `cookies.json`, `users.json`, and `telegram.json` out of `src/` into `config/`
+- Centralize config, output, and app-root path helpers in `utils.py`
+- Update auto-updater to preserve user `config/*.json` files and refresh only `*.example` templates
+- Point update checks at `ne0lith/tiktok-live-recorder` instead of upstream
 
-### chore
+### Removed
 
-- bump version to `8.0.0`
-- repoint `pyproject.toml` repository URLs to `ne0lith/tiktok-live-recorder`
-- remove `.github/FUNDING.yml`
-- remove `bump-my-version` tooling
-- gitignore `config/*.json` instead of `src/cookies.json` and `src/users.json`
-- ship `config/*.example` templates in the Docker image
+- `.github/FUNDING.yml`
+- `bump-my-version` tooling
 
-### test
+### Security
 
-- add `tests/test_config_paths.py` for config bootstrap and path resolution
-- add `tests/test_output_paths.py` for default output directory behavior
-- add `tests/test_version.py` and `tests/test_waf_utils.py`
-- expand recorder, API, and CLI validation test coverage
+- Gitignore `config/*.json` instead of `src/cookies.json` and `src/users.json`
+
+### Added (tests)
+
+- `tests/test_config_paths.py` for config bootstrap and path resolution
+- `tests/test_output_paths.py` for default output directory behavior
+- `tests/test_version.py` and `tests/test_waf_utils.py`
+- Expanded recorder, API, and CLI validation test coverage
+
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.1.0...HEAD
+[8.1.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.0.1...v8.1.0
+[8.0.1]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.0.0...v8.0.1
+[8.0.0]: https://github.com/ne0lith/tiktok-live-recorder/releases/tag/v8.0.0

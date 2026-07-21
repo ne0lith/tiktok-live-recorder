@@ -6,6 +6,8 @@ _A tool for recording TikTok live streams._
 
 ![Python](https://img.shields.io/badge/python-3.11+-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54)
 [![Licence](https://img.shields.io/github/license/ne0lith/tiktok-live-recorder?style=for-the-badge)](./LICENSE)
+[![Pytest](https://img.shields.io/github/actions/workflow/status/ne0lith/tiktok-live-recorder/pytest.yml?branch=main&style=for-the-badge&label=tests)](https://github.com/ne0lith/tiktok-live-recorder/actions/workflows/pytest.yml)
+[![Ruff](https://img.shields.io/github/actions/workflow/status/ne0lith/tiktok-live-recorder/ruff.yml?branch=main&style=for-the-badge&label=ruff)](https://github.com/ne0lith/tiktok-live-recorder/actions/workflows/ruff.yml)
 
 Record TikTok live streams to disk with support for watchlists, restricted/WAF-blocked lives, and reliable long-running polling.
 
@@ -25,6 +27,7 @@ Forked from [Michele0303/tiktok-live-recorder](https://github.com/Michele0303/ti
 - [Changelog](CHANGELOG.md)
 - [Guide](#guide)
 - [Contributing](#contributing)
+- [Community](#community)
 - [Legal](#legal)
 
 ## Quick Start
@@ -66,6 +69,8 @@ This fork adds reliability and workflow improvements on top of the upstream proj
 <details>
 <summary>Windows</summary>
 
+Install [FFmpeg](https://ffmpeg.org/download.html) and add it to your `PATH`, then:
+
 ```powershell
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 git clone https://github.com/ne0lith/tiktok-live-recorder
@@ -80,6 +85,7 @@ uv run python src/main.py -h
 <summary>Linux</summary>
 
 ```bash
+sudo apt-get update && sudo apt-get install -y ffmpeg
 curl -LsSf https://astral.sh/uv/install.sh | sh
 git clone https://github.com/ne0lith/tiktok-live-recorder
 cd tiktok-live-recorder
@@ -151,6 +157,8 @@ The image ships only `config/*.example` templates. Mount `./config` so your real
 
 ```bash
 uv run python src/main.py [options]
+# or, after install:
+uv run tiktok-live-recorder [options]
 ```
 
 ### Options
@@ -170,6 +178,7 @@ uv run python src/main.py [options]
 | `-ffmpeg-path <PATH>` | Path to a custom FFmpeg binary (default: `ffmpeg` on `PATH`). |
 | `-telegram` | Upload the recording to Telegram when done. Requires `config/telegram.json`. |
 | `-no-update-check` | Skip the automatic update check on startup. |
+| `--version`, `-V` | Print the installed version and exit. |
 
 ### Recording Modes
 
@@ -181,6 +190,35 @@ uv run python src/main.py [options]
 | **`followers`** | Poll all TikTok accounts you follow. Requires valid `config/cookies.json`. |
 
 **`automatic` vs `watchlist`:** use `automatic` for a single creator. Use `watchlist` when you want many usernames in one process.
+
+### Manual Examples
+
+Record a user who is live right now:
+
+```powershell
+uv run python src/main.py -user creator1
+```
+
+Record from a live URL or room ID:
+
+```powershell
+uv run python src/main.py -url https://www.tiktok.com/@creator1/live
+uv run python src/main.py -room_id 1234567890
+```
+
+### Automatic Examples
+
+Poll one user every 5 minutes and record when they go live:
+
+```powershell
+uv run python src/main.py -mode automatic -user creator1
+```
+
+Change the poll interval to 10 minutes:
+
+```powershell
+uv run python src/main.py -mode automatic -user creator1 -automatic_interval 10
+```
 
 ### Watchlist Examples
 
@@ -296,6 +334,13 @@ Install FFmpeg and ensure it is on your `PATH`, or pass `-ffmpeg-path` with the 
 ## Contributing
 
 Contributions are welcome! Open an [issue](https://github.com/ne0lith/tiktok-live-recorder/issues) or [pull request](https://github.com/ne0lith/tiktok-live-recorder/pulls). See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+
+## Community
+
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Security Policy](SECURITY.md) — report vulnerabilities privately
+
+When a newer version is available, the recorder prints a notification with upgrade instructions (`git pull` or re-clone). It does not modify your local files automatically.
 
 ## Legal
 
