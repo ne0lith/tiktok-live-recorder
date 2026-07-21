@@ -2,6 +2,18 @@
 
 All notable changes in this fork since upstream `7.7.1`. Entries follow [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [8.0.1] - 2026-07-21
+
+### feat
+
+- add FFmpeg path logging at startup when the binary is found
+
+### chore
+
+- bump version to `8.0.1`
+- remove Docker Hub publish workflow (local `docker build` only)
+- drop unused `develop` branch triggers from pytest CI
+
 ## [8.0.0] - 2026-07-21
 
 Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tiktok-live-recorder).

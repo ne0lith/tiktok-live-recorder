@@ -1,3 +1,4 @@
+import shutil
 import subprocess
 import platform
 from subprocess import SubprocessError
@@ -16,6 +17,12 @@ def check_ffmpeg_binary(ffmpeg_path="ffmpeg"):
     except FileNotFoundError:
         logger.error("FFmpeg binary is not installed")
         return False
+
+
+def _resolve_ffmpeg_path(ffmpeg_path="ffmpeg"):
+    """Return an absolute path when possible for clearer startup logging."""
+    resolved = shutil.which(ffmpeg_path)
+    return resolved or ffmpeg_path
 
 
 def install_ffmpeg_binary():
@@ -166,3 +173,6 @@ def check_and_install_dependencies():
 def check_ffmpeg(ffmpeg_path="ffmpeg"):
     if not check_ffmpeg_binary(ffmpeg_path):
         install_ffmpeg_binary()
+        return
+
+    logger.info(f"FFmpeg found: {_resolve_ffmpeg_path(ffmpeg_path)}")
