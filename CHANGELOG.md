@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Upgrade GitHub Actions to Node 24-compatible versions (`checkout@v5`, `setup-uv@v9.0.0`, `ruff-action@v4.1.0`, `action-gh-release@v3`)
+- Install FFmpeg on Windows CI via Chocolatey instead of the deprecated Node 20 `setup-ffmpeg` action
+
 ## [8.1.0] - 2026-07-21
 
 ### Added

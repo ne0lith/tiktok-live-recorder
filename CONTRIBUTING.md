@@ -148,6 +148,8 @@ Use the [feature request template](https://github.com/ne0lith/tiktok-live-record
    - **Ruff** — format and lint checks
    - **Installation Test** — smoke test on Ubuntu, Windows, and macOS
 
+Keep third-party GitHub Actions on Node 24-compatible releases to avoid deprecation warnings from GitHub-hosted runners.
+
 ### Improving The Documentation
 
 Documentation lives in:
