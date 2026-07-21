@@ -100,7 +100,9 @@ def _cookie_value(cookies: dict | None, key: str) -> str:
 def has_session_cookie(cookies: dict | None) -> bool:
     if not cookies:
         return False
-    return bool(_cookie_value(cookies, "sessionid") or _cookie_value(cookies, "sessionid_ss"))
+    return bool(
+        _cookie_value(cookies, "sessionid") or _cookie_value(cookies, "sessionid_ss")
+    )
 
 
 def cookie_key_summary(cookies: dict | None) -> str:
@@ -125,7 +127,9 @@ def log_cookie_status(cookies: dict | None) -> None:
         return
     if has_session_cookie(cookies):
         logger.info(f"Loaded cookies.json from {path} ({cookie_key_summary(cookies)})")
-        if _cookie_value(cookies, "sessionid_ss") and not _cookie_value(cookies, "sessionid"):
+        if _cookie_value(cookies, "sessionid_ss") and not _cookie_value(
+            cookies, "sessionid"
+        ):
             logger.warning(
                 "Only sessionid_ss is set. Add sessionid from browser cookies for better "
                 "WAF and restricted-live access."

@@ -81,7 +81,9 @@ def _append_stream_url(found: list[str], url: str | None) -> None:
 
 
 def collect_video_stream_urls_from_sdk_data(sdk_root: dict) -> list[str]:
-    sdk_data = sdk_root.get("data") if isinstance(sdk_root.get("data"), dict) else sdk_root
+    sdk_data = (
+        sdk_root.get("data") if isinstance(sdk_root.get("data"), dict) else sdk_root
+    )
     if not isinstance(sdk_data, dict):
         return []
 
@@ -300,7 +302,9 @@ def extract_user_live_context_from_obj(
 
     def consider(node: dict) -> None:
         nonlocal best
-        if not _is_room_node_for_user(node, user) or not _node_looks_like_live_room(node):
+        if not _is_room_node_for_user(node, user) or not _node_looks_like_live_room(
+            node
+        ):
             return
 
         status = _room_status(node)
@@ -328,7 +332,11 @@ def extract_user_live_context_from_obj(
             best = candidate
             return
 
-        if room_id and node_room_id == str(room_id) and best.get("room_id") != str(room_id):
+        if (
+            room_id
+            and node_room_id == str(room_id)
+            and best.get("room_id") != str(room_id)
+        ):
             best = candidate
 
     def walk(node):
@@ -353,9 +361,7 @@ def extract_user_live_context_from_page(
         context = extract_user_live_context_from_obj(blob, user, room_id=room_id)
         if context is None:
             continue
-        if best is None or (
-            context.get("status") == 2 and best.get("status") != 2
-        ):
+        if best is None or (context.get("status") == 2 and best.get("status") != 2):
             best = context
 
     return best
@@ -678,7 +684,9 @@ class TikTokAPI:
     def _log_waf_cookie_status(self) -> None:
         cookies = self._cookies or {}
         logger.debug(f"WAF cookies: {cookie_key_summary(cookies)}")
-        if _cookie_value(cookies, "sessionid_ss") and not _cookie_value(cookies, "sessionid"):
+        if _cookie_value(cookies, "sessionid_ss") and not _cookie_value(
+            cookies, "sessionid"
+        ):
             logger.warning(
                 "Only sessionid_ss is set. Add sessionid from browser cookies to improve "
                 "WAF and restricted-live access."

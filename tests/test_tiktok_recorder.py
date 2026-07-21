@@ -27,7 +27,6 @@ def test_is_stream_url_gone_detects_404():
     assert _is_stream_url_gone(HTTPError("connection reset")) is False
 
 
-
 class FakeTikTokAPI:
     def __init__(self, blacklisted=True):
         self.blacklisted = blacklisted
@@ -193,9 +192,7 @@ def test_poll_users_once_keeps_recording_user_removed_from_watchlist():
 
     active_thread = MagicMock(spec=Thread)
     active_thread.is_alive.return_value = True
-    active_recordings = {
-        "alpha": {"thread": active_thread, "room_id": "room-alpha"}
-    }
+    active_recordings = {"alpha": {"thread": active_thread, "room_id": "room-alpha"}}
 
     recorder._poll_users_once(
         ["beta"],
@@ -219,9 +216,7 @@ def test_poll_users_once_logs_offline_and_skips_active_recording(monkeypatch):
 
     active_thread = MagicMock(spec=Thread)
     active_thread.is_alive.return_value = True
-    active_recordings = {
-        "alpha": {"thread": active_thread, "room_id": "room-alpha"}
-    }
+    active_recordings = {"alpha": {"thread": active_thread, "room_id": "room-alpha"}}
 
     recorder._poll_users_once(
         ["alpha", "beta"],
@@ -389,9 +384,7 @@ def test_poll_users_once_skips_duplicate_room(monkeypatch):
 
     live_thread = MagicMock(spec=Thread)
     live_thread.is_alive.return_value = True
-    active_recordings = {
-        "alpha": {"thread": live_thread, "room_id": "shared-room"}
-    }
+    active_recordings = {"alpha": {"thread": live_thread, "room_id": "shared-room"}}
 
     class FakeAPI(PollFakeTikTokAPI):
         def get_room_id_from_user(self, user):
@@ -410,7 +403,9 @@ def test_poll_users_once_skips_duplicate_room(monkeypatch):
 
 def test_start_recording_finalizes_when_user_goes_offline(tmp_path, monkeypatch):
     recorder = TikTokRecorder(
-        RecorderConfig(mode=Mode.AUTOMATIC, user="alpha", output=str(tmp_path), cookies={})
+        RecorderConfig(
+            mode=Mode.AUTOMATIC, user="alpha", output=str(tmp_path), cookies={}
+        )
     )
 
     class RecordingFakeAPI:
@@ -447,7 +442,9 @@ def test_start_recording_finalizes_when_user_goes_offline(tmp_path, monkeypatch)
 
 def test_cdn_404_tries_all_refreshed_candidates_before_giving_up(tmp_path, monkeypatch):
     recorder = TikTokRecorder(
-        RecorderConfig(mode=Mode.AUTOMATIC, user="alpha", output=str(tmp_path), cookies={})
+        RecorderConfig(
+            mode=Mode.AUTOMATIC, user="alpha", output=str(tmp_path), cookies={}
+        )
     )
     urls = [
         "https://cdn.example.com/a.flv",
@@ -567,9 +564,12 @@ def test_404_after_data_finalizes_then_poll_can_start_again(tmp_path, monkeypatc
     assert fake.download_calls == 2
     assert len(list(tmp_path.glob("TK_alpha_*_flv.mp4"))) >= 1
 
+
 def test_request_stop_ends_recording_and_finalizes(tmp_path, monkeypatch):
     recorder = TikTokRecorder(
-        RecorderConfig(mode=Mode.AUTOMATIC, user="alpha", output=str(tmp_path), cookies={})
+        RecorderConfig(
+            mode=Mode.AUTOMATIC, user="alpha", output=str(tmp_path), cookies={}
+        )
     )
 
     class FakeAPI:
@@ -602,7 +602,9 @@ def test_cdn_refresh_offline_still_finalizes(tmp_path, monkeypatch):
     still convert — that exception used to escape the except-handler and skip finalize.
     """
     recorder = TikTokRecorder(
-        RecorderConfig(mode=Mode.AUTOMATIC, user="alpha", output=str(tmp_path), cookies={})
+        RecorderConfig(
+            mode=Mode.AUTOMATIC, user="alpha", output=str(tmp_path), cookies={}
+        )
     )
 
     class FakeAPI:

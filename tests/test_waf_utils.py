@@ -90,7 +90,9 @@ def test_extract_user_live_context_ignores_recommended_streams_for_offline_user(
         "LiveRoom": {
             "status": 4,
             "owner": {"uniqueId": "offline_user"},
-            "stream_url": {"flv_pull_url": {"HD1": "https://cdn.example.com/stale.flv"}},
+            "stream_url": {
+                "flv_pull_url": {"HD1": "https://cdn.example.com/stale.flv"}
+            },
         },
         "SuggestedLives": [
             {

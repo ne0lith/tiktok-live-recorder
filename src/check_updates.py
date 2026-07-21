@@ -10,9 +10,7 @@ GITHUB_BRANCH = "main"
 URL_PYPROJECT = (
     f"https://raw.githubusercontent.com/{GITHUB_REPO}/{GITHUB_BRANCH}/pyproject.toml"
 )
-URL_ENUMS = (
-    f"https://raw.githubusercontent.com/{GITHUB_REPO}/{GITHUB_BRANCH}/src/utils/enums.py"
-)
+URL_ENUMS = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{GITHUB_BRANCH}/src/utils/enums.py"
 URL_REPO = f"https://github.com/{GITHUB_REPO}/archive/refs/heads/{GITHUB_BRANCH}.zip"
 FILE_TEMP_PYPROJECT = "pyproject_temp.toml"
 FILE_TEMP = "enums_temp.py"
@@ -108,10 +106,7 @@ def check_updates() -> bool:
         delete_tmp_file()
         return False
 
-    print(
-        f"Current version: {local_version}\n"
-        f"New version available: {remote_version}"
-    )
+    print(f"Current version: {local_version}\nNew version available: {remote_version}")
     print("\nNew features:")
     for feature in Info.NEW_FEATURES:
         print("*", feature)

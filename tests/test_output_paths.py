@@ -22,7 +22,9 @@ def test_default_output_base_is_repo_output():
     assert default_output_base() == repo_root_path() / "output"
 
 
-def test_output_dir_for_user_uses_username_subfolder_when_base_omitted(creator_output_dir):
+def test_output_dir_for_user_uses_username_subfolder_when_base_omitted(
+    creator_output_dir,
+):
     out_dir = output_dir_for_user(None, "creator")
     assert out_dir == default_output_base() / "creator"
     assert out_dir == creator_output_dir

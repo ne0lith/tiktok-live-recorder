@@ -85,9 +85,7 @@ class TikTokRecorder:
             logger.info("Followers mode activated\n")
         elif self.mode == Mode.WATCHLIST:
             self.check_country_blacklisted()
-            logger.info(
-                f"Watching {len(self.users)} users: {', '.join(self.users)}\n"
-            )
+            logger.info(f"Watching {len(self.users)} users: {', '.join(self.users)}\n")
         else:
             if self.url:
                 self.user, self.room_id = self.tiktok.get_room_and_user_from_url(
@@ -304,9 +302,13 @@ class TikTokRecorder:
                 f"  recording: {', '.join(f'@{u}' for u in groups['recording'])}"
             )
         if groups["finished"]:
-            logger.info(f"  finished:  {', '.join(f'@{u}' for u in groups['finished'])}")
+            logger.info(
+                f"  finished:  {', '.join(f'@{u}' for u in groups['finished'])}"
+            )
         if groups["starting"]:
-            logger.info(f"  live:      {', '.join(f'@{u}' for u, _ in groups['starting'])}")
+            logger.info(
+                f"  live:      {', '.join(f'@{u}' for u, _ in groups['starting'])}"
+            )
         if groups["skipped"]:
             logger.info(f"  skipped:   {', '.join(groups['skipped'])}")
         if groups["errors"]:
@@ -517,9 +519,7 @@ class TikTokRecorder:
                                 refreshed = self._refresh_live_urls(
                                     room_id, user, fallback=live_urls
                                 )
-                                nxt = self._pick_next_stream_url(
-                                    refreshed, failed_urls
-                                )
+                                nxt = self._pick_next_stream_url(refreshed, failed_urls)
                                 if nxt:
                                     live_url = nxt
                                     logger.debug(
@@ -560,7 +560,10 @@ class TikTokRecorder:
                             time.sleep(min(2 * max(empty_reconnects, 1), 10))
 
                     except ConnectionError:
-                        if self.mode in (Mode.AUTOMATIC, Mode.WATCHLIST) and not self._should_stop():
+                        if (
+                            self.mode in (Mode.AUTOMATIC, Mode.WATCHLIST)
+                            and not self._should_stop()
+                        ):
                             self._log_recording(
                                 user, str(Error.CONNECTION_CLOSED_AUTOMATIC), "error"
                             )

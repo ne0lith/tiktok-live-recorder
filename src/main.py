@@ -70,7 +70,12 @@ def run_recordings(args, mode, cookies):
 
 def main():
     from utils.args_handler import validate_and_parse_args
-    from utils.utils import read_cookies, log_cookie_status, InstanceLock, default_output_base
+    from utils.utils import (
+        read_cookies,
+        log_cookie_status,
+        InstanceLock,
+        default_output_base,
+    )
     from utils.logger_manager import logger
     from utils.custom_exceptions import TikTokRecorderError
     from utils.dependencies import check_ffmpeg

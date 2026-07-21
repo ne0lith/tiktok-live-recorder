@@ -77,9 +77,7 @@ class TikTokError(Enum):
         "How to set cookies: https://github.com/ne0lith/tiktok-live-recorder/blob/main/docs/GUIDE.md#how-to-set-cookies\n"
     )
 
-    COOKIES_GUIDE_URL = (
-        "https://github.com/ne0lith/tiktok-live-recorder/blob/main/docs/GUIDE.md#how-to-set-cookies"
-    )
+    COOKIES_GUIDE_URL = "https://github.com/ne0lith/tiktok-live-recorder/blob/main/docs/GUIDE.md#how-to-set-cookies"
 
     ACCOUNT_PRIVATE = (
         "Account is private, login required. "

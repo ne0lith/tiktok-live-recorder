@@ -37,7 +37,11 @@ class VideoManagement:
         """
         probe = ffmpeg.probe(file, cmd=ffprobe_cmd)
         video = next(
-            (stream for stream in probe["streams"] if stream.get("codec_type") == "video"),
+            (
+                stream
+                for stream in probe["streams"]
+                if stream.get("codec_type") == "video"
+            ),
             None,
         )
         if not video:
@@ -70,9 +74,7 @@ class VideoManagement:
         output_file = file.replace("_flv.mp4", ".mp4")
         ffmpeg_cmd = ffmpeg_path or "ffmpeg"
         ffprobe_cmd = (
-            str(ffmpeg_path).replace("ffmpeg", "ffprobe")
-            if ffmpeg_path
-            else "ffprobe"
+            str(ffmpeg_path).replace("ffmpeg", "ffprobe") if ffmpeg_path else "ffprobe"
         )
 
         try:
