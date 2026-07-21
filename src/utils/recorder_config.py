@@ -8,6 +8,7 @@ class RecorderConfig:
     mode: Mode
     url: str | None = None
     user: str | None = None
+    users: list[str] | None = None
     room_id: str | None = None
     automatic_interval: int = 5
     cookies: dict | None = None
@@ -17,3 +18,4 @@ class RecorderConfig:
     use_telegram: bool = False
     bitrate: str | None = None
     ffmpeg_path: str | None = None
+    users_file: str | None = None

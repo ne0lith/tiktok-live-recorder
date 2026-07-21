@@ -68,7 +68,7 @@ class Telegram:
                     file=file_path,
                     caption=(
                         "🎥 <b>Video recorded via "
-                        '<a href="https://github.com/Michele0303/'
+                        '<a href="https://github.com/ne0lith/'
                         'tiktok-live-recorder">'
                         "TikTok Live Recorder</a></b>"
                     ),

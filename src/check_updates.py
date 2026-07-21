@@ -1,61 +1,30 @@
-import json
 import os
 from pathlib import Path
 import requests
 import zipfile
 import shutil
 
-URL = "https://raw.githubusercontent.com/Michele0303/tiktok-live-recorder/main/src/utils/enums.py"
-URL_REPO = (
-    "https://github.com/Michele0303/tiktok-live-recorder/archive/refs/heads/main.zip"
+GITHUB_REPO = "ne0lith/tiktok-live-recorder"
+GITHUB_BRANCH = "main"
+
+URL_PYPROJECT = (
+    f"https://raw.githubusercontent.com/{GITHUB_REPO}/{GITHUB_BRANCH}/pyproject.toml"
 )
+URL_ENUMS = (
+    f"https://raw.githubusercontent.com/{GITHUB_REPO}/{GITHUB_BRANCH}/src/utils/enums.py"
+)
+URL_REPO = f"https://github.com/{GITHUB_REPO}/archive/refs/heads/{GITHUB_BRANCH}.zip"
+FILE_TEMP_PYPROJECT = "pyproject_temp.toml"
 FILE_TEMP = "enums_temp.py"
 FILE_NAME_UPDATE = URL_REPO.split("/")[-1]
 
 
 def delete_tmp_file():
-    try:
-        os.remove(FILE_TEMP)
-    except Exception as ex:
-        print(ex)
-
-
-def _merge_cookies(existing_path: Path, new_path: Path) -> None:
-    """
-    Merge cookies.json from the new version into the existing one.
-
-    New keys from the update are added with their default values.
-    All existing keys are kept as-is, so user session data is never overwritten.
-
-    Args:
-        existing_path (Path): Path to the user's current cookies.json.
-        new_path (Path): Path to the cookies.json shipped with the new version.
-    """
-    try:
-        with open(existing_path, "r", encoding="utf-8") as f:
-            existing = json.load(f)
-    except (OSError, json.JSONDecodeError):
-        existing = {}
-    if not isinstance(existing, dict):
-        existing = {}
-
-    try:
-        with open(new_path, "r", encoding="utf-8") as f:
-            new_defaults = json.load(f)
-    except (OSError, json.JSONDecodeError):
-        return
-    if not isinstance(new_defaults, dict):
-        return
-
-    # Preserve all existing user cookies and add only new defaults shipped by updates.
-    merged = dict(existing)
-    for key, default in new_defaults.items():
-        if key not in merged:
-            merged[key] = default
-
-    with open(existing_path, "w", encoding="utf-8") as f:
-        json.dump(merged, f, indent=2)
-        f.write("\n")
+    for name in (FILE_TEMP, FILE_TEMP_PYPROJECT):
+        try:
+            os.remove(name)
+        except OSError:
+            pass
 
 
 def check_file(path: str) -> bool:
@@ -89,6 +58,13 @@ def download_file(url: str, file_name: str) -> None:
         print("Error downloading the file.")
 
 
+def _read_version_from_pyproject(path: str | Path) -> str:
+    import tomllib
+
+    with open(path, "rb") as f:
+        return tomllib.load(f)["project"]["version"]
+
+
 def check_updates() -> bool:
     """
     Check if there is a new version available and update if necessary.
@@ -96,7 +72,29 @@ def check_updates() -> bool:
     Returns:
         bool: True if the update was successful, False otherwise.
     """
-    download_file(URL, FILE_TEMP)
+    download_file(URL_PYPROJECT, FILE_TEMP_PYPROJECT)
+
+    if not check_file(FILE_TEMP_PYPROJECT):
+        delete_tmp_file()
+        print("The temporary file does not exist.")
+        return False
+
+    from utils.version import get_version
+
+    def _parse_version(v):
+        try:
+            return (float(str(v)),)
+        except ValueError:
+            return tuple(int(x) for x in str(v).split("."))
+
+    remote_version = _read_version_from_pyproject(FILE_TEMP_PYPROJECT)
+    local_version = get_version()
+
+    if _parse_version(remote_version) == _parse_version(local_version):
+        delete_tmp_file()
+        return False
+
+    download_file(URL_ENUMS, FILE_TEMP)
 
     if not check_file(FILE_TEMP):
         delete_tmp_file()
@@ -105,29 +103,18 @@ def check_updates() -> bool:
 
     try:
         from enums_temp import Info
-        from utils.enums import Info as InfoOld
     except ImportError:
         print("Error importing the file or missing module.")
         delete_tmp_file()
         return False
 
-    def _parse_version(v):
-        try:
-            return (float(str(v)),)
-        except ValueError:
-            return tuple(int(x) for x in str(v).split("."))
-
-    if _parse_version(Info.VERSION) != _parse_version(InfoOld.VERSION):
-        print(
-            f"Current version: {InfoOld.__str__(InfoOld.VERSION)}\nNew version available: {Info.__str__(Info.VERSION)}"
-        )
-        print("\nNew features:")
-        for feature in Info.NEW_FEATURES:
-            print("*", feature)
-    else:
-        delete_tmp_file()
-        # print("No updates available.")
-        return False
+    print(
+        f"Current version: {local_version}\n"
+        f"New version available: {remote_version}"
+    )
+    print("\nNew features:")
+    for feature in Info.NEW_FEATURES:
+        print("*", feature)
 
     download_file(URL_REPO, FILE_NAME_UPDATE)
 
@@ -139,19 +126,14 @@ def check_updates() -> bool:
         zip_ref.extractall(temp_update_dir)
 
     # Find the extracted folder (it will have the name 'tiktok-live-recorder-main')
-    extracted_folder = temp_update_dir / "tiktok-live-recorder-main" / "src"
+    extracted_root = temp_update_dir / "tiktok-live-recorder-main"
+    extracted_folder = extracted_root / "src"
 
     # Copy all files and folders from the extracted folder to the main directory
-    files_to_preserve = {"check_updates.py", "telegram.json"}
+    files_to_preserve = {"check_updates.py"}
     for item in extracted_folder.iterdir():
         source = item
         destination = dir_path / item.name
-
-        # Merge cookies.json so user session values are kept but new keys are
-        # picked up from the updated version.
-        if source.name == "cookies.json":
-            _merge_cookies(destination, source)
-            continue
 
         # Skip overwriting the files we want to preserve
         if source.name in files_to_preserve or source.suffix == ".session":
@@ -167,6 +149,15 @@ def check_updates() -> bool:
                 if sub_item.is_file():
                     sub_destination.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(sub_item, sub_destination)
+
+    # Update config templates only; never overwrite user config/*.json files.
+    extracted_config = extracted_root / "config"
+    config_dest = dir_path.parent / "config"
+    if extracted_config.is_dir():
+        config_dest.mkdir(parents=True, exist_ok=True)
+        for item in extracted_config.iterdir():
+            if item.is_file() and item.name.endswith(".example"):
+                shutil.copy2(item, config_dest / item.name)
 
     # Delete the temporary files and folders
     shutil.rmtree(temp_update_dir)

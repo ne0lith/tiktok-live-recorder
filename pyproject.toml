@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tiktok-live-recorder"
-version = "7.7.1"
+version = "8.0.0"
 description = "A tool for recording TikTok live streams"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -21,14 +21,13 @@ dependencies = [
 dev = [
     "ruff>=0.12.0",
     "pre-commit>=4.3.0",
-    "bump-my-version>=0.32.0",
     "pytest",
 ]
 
 [project.urls]
-Homepage = "https://github.com/Michele0303/tiktok-live-recorder"
-Repository = "https://github.com/Michele0303/tiktok-live-recorder"
-Issues = "https://github.com/Michele0303/tiktok-live-recorder/issues"
+Homepage = "https://github.com/ne0lith/tiktok-live-recorder"
+Repository = "https://github.com/ne0lith/tiktok-live-recorder"
+Issues = "https://github.com/ne0lith/tiktok-live-recorder/issues"
 
 [project.scripts]
 tiktok-live-recorder = "main:main"
@@ -50,20 +49,3 @@ addopts = ["--import-mode=importlib"]
 testpaths = [
     "tests",
 ]
-
-[tool.bumpversion]
-current_version = "7.7.1"
-commit = true
-tag = true
-tag_name = "v{new_version}"
-message = "chore: bump version {current_version} → {new_version}"
-
-[[tool.bumpversion.files]]
-filename = "pyproject.toml"
-search = 'version = "{current_version}"'
-replace = 'version = "{new_version}"'
-
-[[tool.bumpversion.files]]
-filename = "src/utils/enums.py"
-search = 'VERSION = "{current_version}"'
-replace = 'VERSION = "{new_version}"'

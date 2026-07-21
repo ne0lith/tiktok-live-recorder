@@ -140,3 +140,6 @@ dmypy.json
 
 .idea/
 .vscode/
+
+output/
+config/*.json

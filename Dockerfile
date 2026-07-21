@@ -22,6 +22,9 @@ RUN uv sync --frozen --no-dev --no-install-project
 # Copy source code
 COPY src/ ./
 
+# Ship config templates (user secrets are mounted at runtime)
+COPY config/*.example ./config/
+
 # ---- Stage 2: Runtime ----
 FROM python:3.13-slim
 

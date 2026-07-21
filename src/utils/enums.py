@@ -35,6 +35,7 @@ class Mode(IntEnum):
     MANUAL = 0
     AUTOMATIC = 1
     FOLLOWERS = 2
+    WATCHLIST = 3
 
 
 class Error(Enum):
@@ -60,26 +61,42 @@ class TikTokError(Enum):
     COUNTRY_BLACKLISTED = (
         "Captcha required or country blocked. "
         "Use a VPN, room_id, or authenticate with cookies.\n"
-        "How to set cookies: https://github.com/Michele0303/tiktok-live-recorder/blob/main/docs/GUIDE.md#how-to-set-cookies\n"
-        "How to get room_id: https://github.com/Michele0303/TikTok-Live-Recorder/blob/main/docs/GUIDE.md#how-to-get-room_id\n"
+        "How to set cookies: https://github.com/ne0lith/tiktok-live-recorder/blob/main/docs/GUIDE.md#how-to-set-cookies\n"
+        "How to get room_id: https://github.com/ne0lith/tiktok-live-recorder/blob/main/docs/GUIDE.md#how-to-get-room_id\n"
     )
 
     COUNTRY_BLACKLISTED_AUTO_MODE = (
         "Automatic mode is available only in unblocked countries. "
         "Use a VPN or authenticate with cookies.\n"
-        "How to set cookies: https://github.com/Michele0303/tiktok-live-recorder/blob/main/docs/GUIDE.md#how-to-set-cookies\n"
+        "How to set cookies: https://github.com/ne0lith/tiktok-live-recorder/blob/main/docs/GUIDE.md#how-to-set-cookies\n"
     )
 
     COUNTRY_BLACKLISTED_FOLLOWERS_MODE = (
         "Followers mode is available only in unblocked countries. "
         "Use a VPN or authenticate with cookies.\n"
-        "How to set cookies: https://github.com/Michele0303/tiktok-live-recorder/blob/main/docs/GUIDE.md#how-to-set-cookies\n"
+        "How to set cookies: https://github.com/ne0lith/tiktok-live-recorder/blob/main/docs/GUIDE.md#how-to-set-cookies\n"
+    )
+
+    COOKIES_GUIDE_URL = (
+        "https://github.com/ne0lith/tiktok-live-recorder/blob/main/docs/GUIDE.md#how-to-set-cookies"
     )
 
     ACCOUNT_PRIVATE = (
         "Account is private, login required. "
-        "Please add your cookies to cookies.json "
-        "https://github.com/Michele0303/tiktok-live-recorder/blob/main/docs/GUIDE.md#how-to-set-cookies"
+        "Please add your sessionid_ss cookie to config/cookies.json. "
+        f"How to set cookies: {COOKIES_GUIDE_URL}"
+    )
+
+    ACCOUNT_PRIVATE_COOKIES_PRESENT = (
+        "Account is private. config/cookies.json was loaded but access was denied. "
+        "Your session may be expired — refresh sessionid_ss in config/cookies.json, "
+        "or ensure you follow this account."
+    )
+
+    ACCOUNT_PRIVATE_SESSION_EXPIRED = (
+        "Account is private. config/cookies.json was loaded but your TikTok session "
+        "appears expired. Refresh sessionid_ss in config/cookies.json. "
+        f"How to set cookies: {COOKIES_GUIDE_URL}"
     )
 
     ACCOUNT_PRIVATE_FOLLOW = (
@@ -87,9 +104,22 @@ class TikTokError(Enum):
     )
 
     LIVE_RESTRICTION = (
-        "Live is private, login required. "
-        "Please add your cookies to cookies.json"
-        "https://github.com/Michele0303/tiktok-live-recorder/blob/main/docs/GUIDE.md#how-to-set-cookies"
+        "Live is restricted or private, login required. "
+        "Please add your sessionid_ss cookie to config/cookies.json. "
+        f"How to set cookies: {COOKIES_GUIDE_URL}"
+    )
+
+    LIVE_RESTRICTION_COOKIES_PRESENT = (
+        "Live access blocked by WAF or restriction. config/cookies.json was loaded "
+        "but no stream URL could be retrieved from the live page. "
+        "Your session may be expired — refresh sessionid_ss in config/cookies.json, "
+        "or try a VPN/proxy."
+    )
+
+    LIVE_RESTRICTION_SESSION_EXPIRED = (
+        "Live access blocked. config/cookies.json was loaded but your TikTok session "
+        "appears expired. Refresh sessionid_ss in config/cookies.json. "
+        f"How to set cookies: {COOKIES_GUIDE_URL}"
     )
 
     USERNAME_ERROR = "Username / RoomID not found or the user has never been in live."
@@ -109,7 +139,7 @@ class TikTokError(Enum):
 
 class Info(Enum):
     """
-    Enumeration that defines the version number and the banner message.
+    Release notes shown when an update is available.
     """
 
     def __str__(self):
@@ -126,14 +156,3 @@ class Info(Enum):
         "Added restricted LIVE fallback for TikTok 4003110 responses.",
         "Added -ffmpeg-path for custom FFmpeg binaries.",
     ]
-
-    VERSION = "7.7.1"
-    BANNER = rf"""
-
-  _____ _ _   _____    _     _    _           ___                   _         
- |_   _(_) |_|_   _|__| |__ | |  (_)_ _____  | _ \___ __ ___ _ _ __| |___ _ _ 
-   | | | | / / | |/ _ \ / / | |__| \ V / -_) |   / -_) _/ _ \ '_/ _` / -_) '_|
-   |_| |_|_\_\ |_|\___/_\_\ |____|_|\_/\___| |_|_\___\__\___/_| \__,_\___|_| 
-
-   V{VERSION}
-"""

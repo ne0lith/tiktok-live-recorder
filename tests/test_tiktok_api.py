@@ -31,6 +31,9 @@ def build_api(*responses):
     api = TikTokAPI.__new__(TikTokAPI)
     api.WEBCAST_URL = "https://webcast.tiktok.com"
     api.http_client = FakeHttpClient(list(responses))
+    api._http_lock = __import__("threading").Lock()
+    api._cookies = {}
+    api._stream_headers = {}
     return api
 
 
@@ -60,13 +63,33 @@ def test_is_room_alive_accepts_confirmed_stream_room():
     assert api.is_room_alive("123") is True
 
 
-def test_is_room_alive_keeps_restricted_live_as_alive():
+def test_is_room_alive_rejects_waf_without_user():
     api = build_api(
         {"data": [{"alive": True, "room_id": 123}], "status_code": 0},
         {"data": {}, "status_code": 4003110},
     )
 
-    assert api.is_room_alive("123") is True
+    assert api.is_room_alive("123") is False
+
+
+def test_is_room_alive_confirms_waf_live_via_page_scrape():
+    api = build_api(
+        {"data": [{"alive": True, "room_id": 123}], "status_code": 0},
+        {"data": {}, "status_code": 4003110},
+    )
+    api._get_stream_url_from_page = lambda user, room_id=None: "https://cdn/example.flv"
+
+    assert api.is_room_alive("123", user="creator") is True
+
+
+def test_is_room_alive_rejects_waf_when_page_has_no_stream():
+    api = build_api(
+        {"data": [{"alive": True, "room_id": 123}], "status_code": 0},
+        {"data": {}, "status_code": 4003110},
+    )
+    api._get_stream_url_from_page = lambda user, room_id=None: None
+
+    assert api.is_room_alive("123", user="creator") is False
 
 
 def test_is_room_alive_skips_room_info_when_check_alive_is_false():
@@ -74,6 +97,14 @@ def test_is_room_alive_skips_room_info_when_check_alive_is_false():
 
     assert api.is_room_alive("123") is False
     assert len(api.http_client.urls) == 1
+
+
+def test_check_alive_is_lightweight():
+    api = build_api({"data": [{"alive": True, "room_id": 123}], "status_code": 0})
+
+    assert api.check_alive("123") is True
+    assert len(api.http_client.urls) == 1
+    assert "check_alive" in api.http_client.urls[0]
 
 
 def test_is_room_alive_rejects_null_check_alive_data():
