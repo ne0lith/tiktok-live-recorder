@@ -40,4 +40,4 @@ The following are **not** security vulnerabilities for this project:
 
 ## Code of Conduct Reports
 
-Code of Conduct violations should also be reported privately — not in public issues. Use [GitHub Security Advisories](https://github.com/ne0lith/tiktok-live-recorder/security/advisories/new) and note that the report is a Code of Conduct matter.
+Code of Conduct violations should also be reported privately - not in public issues. Use [GitHub Security Advisories](https://github.com/ne0lith/tiktok-live-recorder/security/advisories/new) and note that the report is a Code of Conduct matter.

@@ -338,7 +338,7 @@ Contributions are welcome! Open an [issue](https://github.com/ne0lith/tiktok-liv
 ## Community
 
 - [Code of Conduct](CODE_OF_CONDUCT.md)
-- [Security Policy](SECURITY.md) — report vulnerabilities privately
+- [Security Policy](SECURITY.md) - report vulnerabilities privately
 
 When a newer version is available, the recorder prints a notification with upgrade instructions (`git pull` or re-clone). It does not modify your local files automatically.
 

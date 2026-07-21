@@ -30,7 +30,7 @@ This project and everyone participating in it is governed by the
 [TikTok Live Recorder Code of Conduct](./CODE_OF_CONDUCT.md).
 By participating, you are expected to uphold this code.
 
-Report Code of Conduct violations privately — not in public issues. See [SECURITY.md](./SECURITY.md).
+Report Code of Conduct violations privately - not in public issues. See [SECURITY.md](./SECURITY.md).
 
 ## I Have a Question
 
@@ -144,21 +144,21 @@ Use the [feature request template](https://github.com/ne0lith/tiktok-live-record
 4. Add a `CHANGELOG.md` entry under `[Unreleased]` if the change is user-facing.
 5. Open a pull request against `main` using the PR template.
 6. Ensure CI passes:
-   - **Pytest** — unit tests on Ubuntu
-   - **Ruff** — format and lint checks
-   - **Installation Test** — smoke test on Ubuntu, Windows, and macOS
+   - **Pytest** - unit tests on Ubuntu
+   - **Ruff** - format and lint checks
+   - **Installation Test** - smoke test on Ubuntu, Windows, and macOS
 
 Keep third-party GitHub Actions on Node 24-compatible releases to avoid deprecation warnings from GitHub-hosted runners.
 
 ### Improving The Documentation
 
 Documentation lives in:
-- `README.md` — installation and usage overview
-- `CHANGELOG.md` — release notes ([Keep a Changelog](https://keepachangelog.com/) format)
-- `docs/GUIDE.md` — detailed guides (cookies, watchlist, room_id, Telegram, config)
-- `config/` — user configuration (`cookies.json`, `users.json`, `telegram.json`; see `*.example` templates)
-- `SECURITY.md` — security policy and private reporting
-- `CONTRIBUTING.md` — this file
+- `README.md` - installation and usage overview
+- `CHANGELOG.md` - release notes ([Keep a Changelog](https://keepachangelog.com/) format)
+- `docs/GUIDE.md` - detailed guides (cookies, watchlist, room_id, Telegram, config)
+- `config/` - user configuration (`cookies.json`, `users.json`, `telegram.json`; see `*.example` templates)
+- `SECURITY.md` - security policy and private reporting
+- `CONTRIBUTING.md` - this file
 
 ## Styleguides
 
