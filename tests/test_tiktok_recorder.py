@@ -1,22 +1,21 @@
-import sys
 import time
-from pathlib import Path
 from threading import Thread
 from unittest.mock import MagicMock
 
 import pytest
+from requests import HTTPError
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-
-from core.tiktok_recorder import TikTokRecorder, _is_stream_url_gone  # noqa: E402
-from utils.custom_exceptions import (  # noqa: E402
+from tiktok_live_recorder.core.tiktok_recorder import (
+    TikTokRecorder,
+    _is_stream_url_gone,
+)
+from tiktok_live_recorder.utils.custom_exceptions import (
     LiveNotFound,
     TikTokRecorderError,
     UserLiveError,
 )
-from utils.enums import Mode, TikTokError  # noqa: E402
-from utils.recorder_config import RecorderConfig  # noqa: E402
-from requests import HTTPError  # noqa: E402
+from tiktok_live_recorder.utils.enums import Mode, TikTokError
+from tiktok_live_recorder.utils.recorder_config import RecorderConfig
 
 
 def test_is_stream_url_gone_detects_404():
@@ -275,7 +274,7 @@ def test_poll_users_once_rechecks_finished_user_same_cycle(monkeypatch):
         started["room_id"] = room_id
 
     recorder._recording_worker = fake_worker
-    monkeypatch.setattr("core.tiktok_recorder.time.sleep", lambda *_: None)
+    monkeypatch.setattr("tiktok_live_recorder.core.tiktok_recorder.time.sleep", lambda *_: None)
 
     class ImmediateThread:
         def __init__(self, target, args, daemon=False, name=None):
@@ -291,7 +290,7 @@ def test_poll_users_once_rechecks_finished_user_same_cycle(monkeypatch):
         def join(self, timeout=None):
             return None
 
-    monkeypatch.setattr("core.tiktok_recorder.Thread", ImmediateThread)
+    monkeypatch.setattr("tiktok_live_recorder.core.tiktok_recorder.Thread", ImmediateThread)
 
     dead_thread = MagicMock(spec=Thread)
     dead_thread.is_alive.return_value = False
@@ -323,7 +322,7 @@ def test_wait_for_next_poll_wakes_early(monkeypatch):
     recorder._poll_wake.set()
 
     start = time.time()
-    monkeypatch.setattr("core.tiktok_recorder.time.sleep", lambda *_: None)
+    monkeypatch.setattr("tiktok_live_recorder.core.tiktok_recorder.time.sleep", lambda *_: None)
     recorder._wait_for_next_poll(300)
     elapsed = time.time() - start
 
@@ -342,7 +341,7 @@ def test_poll_users_once_starts_recording_for_live_user(monkeypatch):
         started["room_id"] = room_id
 
     recorder._recording_worker = fake_worker
-    monkeypatch.setattr("core.tiktok_recorder.time.sleep", lambda *_: None)
+    monkeypatch.setattr("tiktok_live_recorder.core.tiktok_recorder.time.sleep", lambda *_: None)
 
     class ImmediateThread:
         def __init__(self, target, args, daemon=False, name=None):
@@ -358,7 +357,7 @@ def test_poll_users_once_starts_recording_for_live_user(monkeypatch):
         def join(self, timeout=None):
             return None
 
-    monkeypatch.setattr("core.tiktok_recorder.Thread", ImmediateThread)
+    monkeypatch.setattr("tiktok_live_recorder.core.tiktok_recorder.Thread", ImmediateThread)
 
     active_recordings = recorder._poll_users_once(
         ["alpha"],
@@ -380,7 +379,7 @@ def test_poll_users_once_skips_duplicate_room(monkeypatch):
     )
     recorder.tiktok = PollFakeTikTokAPI(live_users={"alpha", "beta"})
     recorder._recording_worker = MagicMock()
-    monkeypatch.setattr("core.tiktok_recorder.time.sleep", lambda *_: None)
+    monkeypatch.setattr("tiktok_live_recorder.core.tiktok_recorder.time.sleep", lambda *_: None)
 
     live_thread = MagicMock(spec=Thread)
     live_thread.is_alive.return_value = True
@@ -427,7 +426,7 @@ def test_start_recording_finalizes_when_user_goes_offline(tmp_path, monkeypatch)
     recorder.tiktok = fake
     convert = MagicMock()
     monkeypatch.setattr(
-        "core.tiktok_recorder.VideoManagement.convert_flv_to_mp4",
+        "tiktok_live_recorder.core.tiktok_recorder.VideoManagement.convert_flv_to_mp4",
         convert,
     )
 
@@ -471,7 +470,7 @@ def test_cdn_404_tries_all_refreshed_candidates_before_giving_up(tmp_path, monke
     fake = FakeAPI()
     recorder.tiktok = fake
     monkeypatch.setattr(
-        "core.tiktok_recorder.VideoManagement.convert_flv_to_mp4",
+        "tiktok_live_recorder.core.tiktok_recorder.VideoManagement.convert_flv_to_mp4",
         MagicMock(),
     )
 
@@ -524,10 +523,10 @@ def test_404_after_data_finalizes_then_poll_can_start_again(tmp_path, monkeypatc
     recorder.tiktok = fake
     convert = MagicMock()
     monkeypatch.setattr(
-        "core.tiktok_recorder.VideoManagement.convert_flv_to_mp4",
+        "tiktok_live_recorder.core.tiktok_recorder.VideoManagement.convert_flv_to_mp4",
         convert,
     )
-    monkeypatch.setattr("core.tiktok_recorder.time.sleep", lambda *_: None)
+    monkeypatch.setattr("tiktok_live_recorder.core.tiktok_recorder.time.sleep", lambda *_: None)
 
     # First session: download some bytes, then 404 + offline → finalize
     recorder.start_recording("alpha", "room-alpha")
@@ -557,7 +556,7 @@ def test_404_after_data_finalizes_then_poll_can_start_again(tmp_path, monkeypatc
         def join(self, timeout=None):
             return None
 
-    monkeypatch.setattr("core.tiktok_recorder.Thread", ImmediateThread)
+    monkeypatch.setattr("tiktok_live_recorder.core.tiktok_recorder.Thread", ImmediateThread)
 
     recorder._poll_users_once(["alpha"], {}, label="Watchlist")
     assert convert.call_count == 1
@@ -587,7 +586,7 @@ def test_request_stop_ends_recording_and_finalizes(tmp_path, monkeypatch):
     recorder.tiktok = FakeAPI()
     convert = MagicMock()
     monkeypatch.setattr(
-        "core.tiktok_recorder.VideoManagement.convert_flv_to_mp4",
+        "tiktok_live_recorder.core.tiktok_recorder.VideoManagement.convert_flv_to_mp4",
         convert,
     )
 
@@ -631,7 +630,7 @@ def test_cdn_refresh_offline_still_finalizes(tmp_path, monkeypatch):
     recorder.tiktok = fake
     convert = MagicMock()
     monkeypatch.setattr(
-        "core.tiktok_recorder.VideoManagement.convert_flv_to_mp4",
+        "tiktok_live_recorder.core.tiktok_recorder.VideoManagement.convert_flv_to_mp4",
         convert,
     )
 

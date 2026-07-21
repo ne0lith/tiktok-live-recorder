@@ -126,7 +126,7 @@ Use the [feature request template](https://github.com/ne0lith/tiktok-live-record
 
 5. Run the tool locally and the test suite:
    ```bash
-   uv run python src/main.py -h
+   uv run tiktok-live-recorder -h
    uv run pytest
    ```
 

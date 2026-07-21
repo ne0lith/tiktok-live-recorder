@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Upgrade GitHub Actions to Node 24-compatible versions (`checkout@v5`, `setup-uv@v9.0.0`, `ruff-action@v4.1.0`, `action-gh-release@v3`)
 - Install FFmpeg on Windows CI via Chocolatey instead of the deprecated Node 20 `setup-ffmpeg` action
+- Restructure application code into the `tiktok_live_recorder` package and remove `sys.path` hacks
+- Docker image now installs the project with `uv sync` and runs the `tiktok-live-recorder` console script
+- Documentation and CI use `uv run tiktok-live-recorder` as the primary invocation
 
 ## [8.1.0] - 2026-07-21
 

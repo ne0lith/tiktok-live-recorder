@@ -1,8 +1,8 @@
 import requests
 
-from utils.enums import StatusCode
-from utils.logger_manager import logger
-from utils.utils import is_termux
+from tiktok_live_recorder.utils.enums import StatusCode
+from tiktok_live_recorder.utils.logger_manager import logger
+from tiktok_live_recorder.utils.utils import is_termux
 
 
 class HttpClient:

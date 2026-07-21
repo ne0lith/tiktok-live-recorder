@@ -11,7 +11,7 @@
 - [ ] `uv run pytest`
 - [ ] `uv run ruff check .`
 - [ ] `uv run ruff format --check .`
-- [ ] `uv run python src/main.py -h` (or `uv run tiktok-live-recorder -h`)
+- [ ] `uv run tiktok-live-recorder -h` (or `uv run python -m tiktok_live_recorder --help`)
 
 <!-- Describe manual testing steps if applicable -->
 

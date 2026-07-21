@@ -56,7 +56,7 @@ def check_updates() -> bool:
         return False
 
     try:
-        from utils.version import get_version
+        from tiktok_live_recorder.utils.version import get_version
 
         remote_version = _read_version_from_pyproject(FILE_TEMP_PYPROJECT)
         local_version = get_version()

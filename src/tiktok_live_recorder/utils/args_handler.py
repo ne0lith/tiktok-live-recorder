@@ -1,10 +1,10 @@
 import argparse
 import re
 
-from utils.custom_exceptions import ArgsParseError
-from utils.enums import Mode, Regex
-from utils.utils import default_output_base
-from utils.version import get_version
+from tiktok_live_recorder.utils.custom_exceptions import ArgsParseError
+from tiktok_live_recorder.utils.enums import Mode, Regex
+from tiktok_live_recorder.utils.utils import default_output_base
+from tiktok_live_recorder.utils.version import get_version
 
 
 def parse_args():
@@ -150,7 +150,7 @@ def parse_args():
 
 
 def validate_and_parse_args():
-    from utils.utils import read_users, users_file_path
+    from tiktok_live_recorder.utils.utils import read_users, users_file_path
 
     args = parse_args()
 

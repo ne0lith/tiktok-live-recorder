@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from utils.enums import Mode
+from tiktok_live_recorder.utils.enums import Mode
 
 
 @dataclass

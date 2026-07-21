@@ -34,8 +34,8 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen
 
-      - name: Verify help output (script)
-        run: uv run python src/main.py -h
+      - name: Verify help output (module)
+        run: uv run python -m tiktok_live_recorder --help
 
       - name: Verify help output (console entry point)
         run: uv run tiktok-live-recorder -h

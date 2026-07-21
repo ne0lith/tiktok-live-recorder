@@ -3,8 +3,8 @@ from pathlib import Path
 
 from telethon import TelegramClient
 
-from utils.logger_manager import logger
-from utils.utils import read_telegram_config
+from tiktok_live_recorder.utils.logger_manager import logger
+from tiktok_live_recorder.utils.utils import read_telegram_config
 
 
 FREE_USER_MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024

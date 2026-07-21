@@ -5,11 +5,15 @@ import threading
 
 import requests
 
-from http_utils.http_client import HttpClient
-from utils.enums import StatusCode, TikTokError
-from utils.logger_manager import logger
-from utils.utils import has_session_cookie, cookie_key_summary, _cookie_value
-from utils.custom_exceptions import (
+from tiktok_live_recorder.http_utils.http_client import HttpClient
+from tiktok_live_recorder.utils.enums import StatusCode, TikTokError
+from tiktok_live_recorder.utils.logger_manager import logger
+from tiktok_live_recorder.utils.utils import (
+    has_session_cookie,
+    cookie_key_summary,
+    _cookie_value,
+)
+from tiktok_live_recorder.utils.custom_exceptions import (
     UserLiveError,
     TikTokRecorderError,
     LiveNotFound,

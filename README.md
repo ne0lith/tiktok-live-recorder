@@ -47,7 +47,7 @@ On first run, the recorder creates blank config files from the committed `*.exam
 3. Start watchlist mode:
 
 ```powershell
-uv run python src/main.py -mode watchlist
+uv run tiktok-live-recorder -mode watchlist
 ```
 
 Recordings are saved to `output/<username>/` by default.
@@ -76,7 +76,7 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 git clone https://github.com/ne0lith/tiktok-live-recorder
 cd tiktok-live-recorder
 uv sync
-uv run python src/main.py -h
+uv run tiktok-live-recorder -h
 ```
 
 </details>
@@ -90,7 +90,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 git clone https://github.com/ne0lith/tiktok-live-recorder
 cd tiktok-live-recorder
 uv sync
-uv run python src/main.py -h
+uv run tiktok-live-recorder -h
 ```
 
 </details>
@@ -104,7 +104,7 @@ brew install ffmpeg
 git clone https://github.com/ne0lith/tiktok-live-recorder
 cd tiktok-live-recorder
 uv sync
-uv run python src/main.py -h
+uv run tiktok-live-recorder -h
 ```
 
 </details>
@@ -122,7 +122,7 @@ pkg install python3.11
 git clone https://github.com/ne0lith/tiktok-live-recorder
 cd tiktok-live-recorder
 uv sync
-uv run python src/main.py -h
+uv run tiktok-live-recorder -h
 ```
 
 </details>
@@ -156,9 +156,9 @@ The image ships only `config/*.example` templates. Mount `./config` so your real
 ## Command-Line Usage
 
 ```bash
-uv run python src/main.py [options]
-# or, after install:
 uv run tiktok-live-recorder [options]
+# or:
+uv run python -m tiktok_live_recorder [options]
 ```
 
 ### Options
@@ -196,14 +196,14 @@ uv run tiktok-live-recorder [options]
 Record a user who is live right now:
 
 ```powershell
-uv run python src/main.py -user creator1
+uv run tiktok-live-recorder -user creator1
 ```
 
 Record from a live URL or room ID:
 
 ```powershell
-uv run python src/main.py -url https://www.tiktok.com/@creator1/live
-uv run python src/main.py -room_id 1234567890
+uv run tiktok-live-recorder -url https://www.tiktok.com/@creator1/live
+uv run tiktok-live-recorder -room_id 1234567890
 ```
 
 ### Automatic Examples
@@ -211,13 +211,13 @@ uv run python src/main.py -room_id 1234567890
 Poll one user every 5 minutes and record when they go live:
 
 ```powershell
-uv run python src/main.py -mode automatic -user creator1
+uv run tiktok-live-recorder -mode automatic -user creator1
 ```
 
 Change the poll interval to 10 minutes:
 
 ```powershell
-uv run python src/main.py -mode automatic -user creator1 -automatic_interval 10
+uv run tiktok-live-recorder -mode automatic -user creator1 -automatic_interval 10
 ```
 
 ### Watchlist Examples
@@ -233,19 +233,19 @@ Edit `config/users.json`:
 Run watchlist mode:
 
 ```powershell
-uv run python src/main.py -mode watchlist
+uv run tiktok-live-recorder -mode watchlist
 ```
 
 Or pass users on the command line:
 
 ```powershell
-uv run python src/main.py -mode watchlist -user creator1,creator2,creator3
+uv run tiktok-live-recorder -mode watchlist -user creator1,creator2,creator3
 ```
 
 Change the poll interval (minutes):
 
 ```powershell
-uv run python src/main.py -mode watchlist -automatic_interval 3
+uv run tiktok-live-recorder -mode watchlist -automatic_interval 3
 ```
 
 Each poll cycle logs every user's status (`offline`, `recording`, `live -> starting`). When multiple streams run at once, log lines are prefixed with `[@username]`.

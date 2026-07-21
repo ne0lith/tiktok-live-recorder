@@ -1,10 +1,6 @@
 import json
-import sys
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-
-from core.tiktok_api import (  # noqa: E402
+from tiktok_live_recorder.core.tiktok_api import (
     collect_stream_urls_from_obj,
     extract_embedded_json_from_page,
     extract_user_live_context_from_obj,
@@ -13,7 +9,7 @@ from core.tiktok_api import (  # noqa: E402
     order_stream_urls,
     pick_preferred_stream_url,
 )
-from utils.utils import cookie_key_summary, has_session_cookie  # noqa: E402
+from tiktok_live_recorder.utils.utils import cookie_key_summary, has_session_cookie
 
 
 def test_has_session_cookie_accepts_sessionid_only():

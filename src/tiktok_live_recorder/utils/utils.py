@@ -3,7 +3,7 @@ import os
 import shutil
 from pathlib import Path
 
-from utils.version import banner_text
+from tiktok_live_recorder.utils.version import banner_text
 
 
 def banner() -> None:
@@ -14,18 +14,16 @@ def banner() -> None:
 
 
 def app_root_path() -> Path:
-    """Directory containing the application package (src/ in dev, /app in Docker)."""
-    return Path(__file__).resolve().parent.parent
+    """Source root directory containing the package (src/ in dev)."""
+    return Path(__file__).resolve().parents[2]
 
 
 def repo_root_path() -> Path:
-    """Project root directory (parent of src/ in dev, /app when config/ lives there)."""
-    app_root = app_root_path()
-    if (app_root.parent / "config").is_dir():
-        return app_root.parent
-    if (app_root / "config").is_dir():
-        return app_root
-    return app_root.parent
+    """Project root directory."""
+    for parent in Path(__file__).resolve().parents:
+        if (parent / "config").is_dir() or (parent / "pyproject.toml").is_file():
+            return parent
+    return Path.cwd()
 
 
 def config_dir() -> Path:
@@ -44,7 +42,7 @@ def _ensure_config_file(name: str) -> Path:
     """
     Ensure a config file exists, bootstrapping from its .example template if missing.
     """
-    from utils.logger_manager import logger
+    from tiktok_live_recorder.utils.logger_manager import logger
 
     path = _config_file_path(name)
     example = config_dir() / f"{name}.example"
@@ -119,7 +117,7 @@ def cookie_key_summary(cookies: dict | None) -> str:
 
 
 def log_cookie_status(cookies: dict | None) -> None:
-    from utils.logger_manager import logger
+    from tiktok_live_recorder.utils.logger_manager import logger
 
     path = cookies_file_path()
     if cookies is None:
@@ -145,7 +143,7 @@ def read_cookies():
     """
     Loads the config file and returns it.
     """
-    from utils.logger_manager import logger
+    from tiktok_live_recorder.utils.logger_manager import logger
 
     config_path = cookies_file_path()
     try:
@@ -166,7 +164,7 @@ def read_users(file_path: str | None = None) -> list[str]:
     """
     Load usernames from a JSON file (list or {"users": [...]}).
     """
-    from utils.logger_manager import logger
+    from tiktok_live_recorder.utils.logger_manager import logger
 
     path = file_path or users_file_path()
     try:
@@ -267,8 +265,8 @@ class InstanceLock:
         self._fd: int | None = None
 
     def acquire(self) -> None:
-        from utils.custom_exceptions import TikTokRecorderError
-        from utils.logger_manager import logger
+        from tiktok_live_recorder.utils.custom_exceptions import TikTokRecorderError
+        from tiktok_live_recorder.utils.logger_manager import logger
 
         self.lock_dir.mkdir(parents=True, exist_ok=True)
 

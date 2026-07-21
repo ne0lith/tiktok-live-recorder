@@ -31,13 +31,7 @@ Repository = "https://github.com/ne0lith/tiktok-live-recorder"
 Issues = "https://github.com/ne0lith/tiktok-live-recorder/issues"
 
 [project.scripts]
-tiktok-live-recorder = "main:main"
-
-[tool.setuptools]
-py-modules = ["main", "check_updates"]
-
-[tool.setuptools.package-dir]
-"" = "src"
+tiktok-live-recorder = "tiktok_live_recorder.cli:run"
 
 [tool.setuptools.packages.find]
 where = ["src"]

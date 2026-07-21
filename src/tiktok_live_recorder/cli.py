@@ -1,13 +1,10 @@
-import sys
-import os
 import multiprocessing
-
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import sys
 
 
 def record_user(config):
-    from core.tiktok_recorder import TikTokRecorder
-    from utils.logger_manager import logger
+    from tiktok_live_recorder.core.tiktok_recorder import TikTokRecorder
+    from tiktok_live_recorder.utils.logger_manager import logger
 
     try:
         TikTokRecorder(config).run()
@@ -16,7 +13,7 @@ def record_user(config):
 
 
 def _build_config(args, mode, cookies, user=None, users=None):
-    from utils.recorder_config import RecorderConfig
+    from tiktok_live_recorder.utils.recorder_config import RecorderConfig
 
     return RecorderConfig(
         url=args.url,
@@ -37,7 +34,7 @@ def _build_config(args, mode, cookies, user=None, users=None):
 
 
 def run_recordings(args, mode, cookies):
-    from utils.enums import Mode
+    from tiktok_live_recorder.utils.enums import Mode
 
     if mode == Mode.WATCHLIST:
         users = args.user if isinstance(args.user, list) else [args.user]
@@ -69,42 +66,37 @@ def run_recordings(args, mode, cookies):
 
 
 def main() -> int:
-    from utils.args_handler import validate_and_parse_args
-    from utils.utils import (
-        read_cookies,
-        log_cookie_status,
+    from tiktok_live_recorder.check_updates import check_updates
+    from tiktok_live_recorder.utils.args_handler import validate_and_parse_args
+    from tiktok_live_recorder.utils.custom_exceptions import TikTokRecorderError
+    from tiktok_live_recorder.utils.dependencies import check_ffmpeg
+    from tiktok_live_recorder.utils.logger_manager import logger
+    from tiktok_live_recorder.utils.utils import (
         InstanceLock,
         default_output_base,
+        log_cookie_status,
+        read_cookies,
     )
-    from utils.logger_manager import logger
-    from utils.custom_exceptions import TikTokRecorderError
-    from utils.dependencies import check_ffmpeg
-    from check_updates import check_updates
 
     instance_lock = None
     exit_code = 0
     try:
-        # validate and parse command line arguments
         args, mode = validate_and_parse_args()
 
-        # check ffmpeg binary (supports custom path via -ffmpeg-path)
         check_ffmpeg(args.ffmpeg_path or "ffmpeg")
 
-        # check for updates
         if args.update_check is True:
             logger.info("Checking for updates...\n")
             check_updates()
         else:
             logger.info("Skipped update check\n")
 
-        # read cookies from the config file
         cookies = read_cookies()
         log_cookie_status(cookies)
 
         instance_lock = InstanceLock(str(args.output or default_output_base()))
         instance_lock.acquire()
 
-        # run the recordings based on the parsed arguments
         run_recordings(args, mode, cookies)
 
     except TikTokRecorderError as ex:
@@ -122,19 +114,12 @@ def main() -> int:
     return exit_code
 
 
-if __name__ == "__main__":
-    # print the banner
-    from utils.utils import banner
+def run() -> None:
+    """Console entry point with startup banner and dependency checks."""
+    from tiktok_live_recorder.utils.dependencies import check_and_install_dependencies
+    from tiktok_live_recorder.utils.utils import banner
 
     banner()
-
-    # check and install dependencies
-    from utils.dependencies import check_and_install_dependencies
-
     check_and_install_dependencies()
-
-    # set up signal handling for graceful shutdown
     multiprocessing.freeze_support()
-
-    # run
     sys.exit(main())

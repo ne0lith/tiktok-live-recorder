@@ -1,14 +1,10 @@
 import sys
 
-
 import pytest
 
-
-from utils.args_handler import validate_and_parse_args
-
-from utils.custom_exceptions import ArgsParseError
-
-from utils.enums import Mode
+from tiktok_live_recorder.utils.args_handler import validate_and_parse_args
+from tiktok_live_recorder.utils.custom_exceptions import ArgsParseError
+from tiktok_live_recorder.utils.enums import Mode
 
 
 def test_manual_mode_valid_with_user(monkeypatch):
@@ -91,7 +87,7 @@ def test_watchlist_mode_valid_without_user(monkeypatch):
 
     monkeypatch.setattr(sys, "argv", ["tiktok-live-recorder", "-mode", "watchlist"])
 
-    monkeypatch.setattr("utils.utils.read_users", lambda *_: [])
+    monkeypatch.setattr("tiktok_live_recorder.utils.utils.read_users", lambda *_: [])
 
     with pytest.raises(
         ArgsParseError,
@@ -388,7 +384,7 @@ def test_watchlist_mode_requires_users_when_missing_everywhere(monkeypatch):
         ["tiktok-live-recorder", "-mode", "watchlist"],
     )
 
-    monkeypatch.setattr("utils.utils.read_users", lambda *_: [])
+    monkeypatch.setattr("tiktok_live_recorder.utils.utils.read_users", lambda *_: [])
 
     with pytest.raises(
         ArgsParseError,

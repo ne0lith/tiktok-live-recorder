@@ -4,7 +4,7 @@ from pathlib import Path
 
 import ffmpeg
 
-from utils.logger_manager import logger
+from tiktok_live_recorder.utils.logger_manager import logger
 
 
 class VideoManagement:

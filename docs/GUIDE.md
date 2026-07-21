@@ -54,23 +54,23 @@ You can also use a plain JSON array:
 2. Run watchlist mode:
 
 ```bash
-uv run python src/main.py -mode watchlist
+uv run tiktok-live-recorder -mode watchlist
 ```
 
 3. (Optional) Change the poll interval in minutes (default 5):
 
 ```bash
-uv run python src/main.py -mode watchlist -automatic_interval 3
+uv run tiktok-live-recorder -mode watchlist -automatic_interval 3
 ```
 
 **Alternatives to editing the file:**
 
 ```bash
 # Comma-separated usernames
-uv run python src/main.py -mode watchlist -user creator1,creator2
+uv run tiktok-live-recorder -mode watchlist -user creator1,creator2
 
 # Custom watchlist file
-uv run python src/main.py -mode watchlist -users-file /path/to/my-list.json
+uv run tiktok-live-recorder -mode watchlist -users-file /path/to/my-list.json
 ```
 
 When a recording ends, the watchlist is rechecked immediately instead of waiting for the next poll interval.
@@ -88,7 +88,7 @@ When a recording ends, the watchlist is rechecked immediately instead of waiting
 Then record with:
 
 ```bash
-uv run python src/main.py -room_id <ROOM_ID>
+uv run tiktok-live-recorder -room_id <ROOM_ID>
 ```
 
 ## How to Enable Upload To Telegram
@@ -121,7 +121,7 @@ uv run python src/main.py -room_id <ROOM_ID>
 6. Record with the `-telegram` flag:
 
 ```bash
-uv run python src/main.py -user creator1 -telegram
+uv run tiktok-live-recorder -user creator1 -telegram
 ```
 
 ## Configuration Directory

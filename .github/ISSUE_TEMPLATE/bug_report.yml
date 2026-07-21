@@ -24,7 +24,7 @@ body:
       label: Steps to reproduce
       description: Command you ran and minimal steps to reproduce the issue.
       placeholder: |
-        uv run python src/main.py -mode watchlist -user example
+        uv run tiktok-live-recorder -mode watchlist -user example
     validations:
       required: true
 
@@ -32,7 +32,7 @@ body:
     id: version
     attributes:
       label: Version
-      description: Output of `uv run python src/main.py --version` or version from pyproject.toml
+      description: Output of `uv run tiktok-live-recorder --version` or version from pyproject.toml
     validations:
       required: true
 

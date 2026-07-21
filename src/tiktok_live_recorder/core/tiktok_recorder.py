@@ -6,13 +6,17 @@ from threading import Event, Thread
 
 from requests import HTTPError, RequestException
 
-from core.tiktok_api import TikTokAPI
-from utils.logger_manager import logger
-from utils.recorder_config import RecorderConfig
-from utils.video_management import VideoManagement
-from utils.utils import output_dir_for_user
-from utils.custom_exceptions import LiveNotFound, UserLiveError, TikTokRecorderError
-from utils.enums import Mode, Error, TimeOut, TikTokError
+from tiktok_live_recorder.core.tiktok_api import TikTokAPI
+from tiktok_live_recorder.utils.logger_manager import logger
+from tiktok_live_recorder.utils.recorder_config import RecorderConfig
+from tiktok_live_recorder.utils.video_management import VideoManagement
+from tiktok_live_recorder.utils.utils import output_dir_for_user
+from tiktok_live_recorder.utils.custom_exceptions import (
+    LiveNotFound,
+    UserLiveError,
+    TikTokRecorderError,
+)
+from tiktok_live_recorder.utils.enums import Mode, Error, TimeOut, TikTokError
 
 
 def _is_stream_url_gone(exc: BaseException) -> bool:
@@ -181,7 +185,7 @@ class TikTokRecorder:
         if not self.users_file:
             return self.users or []
 
-        from utils.utils import read_users
+        from tiktok_live_recorder.utils.utils import read_users
 
         loaded = read_users(self.users_file)
         previous = set(self.users or [])

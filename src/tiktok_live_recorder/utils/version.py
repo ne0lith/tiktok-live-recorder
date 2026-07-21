@@ -16,9 +16,13 @@ def get_version() -> str:
 
     import tomllib
 
-    pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
-    with pyproject.open("rb") as f:
-        return tomllib.load(f)["project"]["version"]
+    for parent in Path(__file__).resolve().parents:
+        pyproject = parent / "pyproject.toml"
+        if pyproject.is_file():
+            with pyproject.open("rb") as f:
+                return tomllib.load(f)["project"]["version"]
+
+    raise FileNotFoundError("pyproject.toml not found")
 
 
 def banner_text() -> str:
