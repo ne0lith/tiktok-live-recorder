@@ -1,0 +1,56 @@
+---
+description: Require version and changelog updates before pushing repo changes
+alwaysApply: true
+---
+
+# Version Bump Before Push
+
+Any meaningful change on `main` should ship with a version bump **before** pushing, unless the user explicitly says otherwise.
+
+## Source of truth
+
+- Version: `pyproject.toml` → `[project].version`
+- Changelog: `CHANGELOG.md` ([Keep a Changelog](https://keepachangelog.com/))
+
+## When to bump
+
+Bump when changes affect users, operators, or release artifacts:
+
+- Application code (`src/`)
+- CLI behavior, config, or Docker/runtime
+- Dependencies that change behavior
+- User-facing docs (`README.md`, `docs/`)
+- CI/workflows that change install, test, or release behavior
+
+**Do not** bump for typo-only doc fixes or comment-only edits unless the user asks.
+
+## SemVer for this project
+
+| Change | Bump |
+|--------|------|
+| Breaking CLI/API/layout (e.g. removed `src/main.py`, import path changes) | **minor** (`8.1.0` → `8.2.0`) |
+| New features, backward-compatible behavior | **minor** |
+| Bug fixes only | **patch** (`8.2.0` → `8.2.1`) |
+
+## Required steps before push
+
+1. Add entries under `CHANGELOG.md` → `[Unreleased]` (Added / Changed / Fixed / Removed / Security).
+2. If releasing now: rename `[Unreleased]` to `[X.Y.Z] - YYYY-MM-DD`, add empty `[Unreleased]`, update compare links at bottom.
+3. Set matching `version` in `pyproject.toml`.
+4. Run `uv sync --extra dev`, `uv run pytest`, `uv run ruff check .`, `uv run ruff format --check .`.
+5. Commit, push, then tag `vX.Y.Z` to trigger `.github/workflows/release.yml`.
+
+## Do not
+
+- Push application or workflow changes with only `[Unreleased]` notes and no version bump when a release is intended.
+- Leave `pyproject.toml` version out of sync with the latest `CHANGELOG.md` release section.
+- Tag without updating both files in the same commit (or release commit immediately after).
+
+## Example (minor release)
+
+```text
+CHANGELOG.md: [Unreleased] → [8.2.0] - 2026-07-21
+pyproject.toml: version = "8.2.0"
+git tag -a v8.2.0 -m "Release 8.2.0: ..."
+git push origin main --follow-tags
+```

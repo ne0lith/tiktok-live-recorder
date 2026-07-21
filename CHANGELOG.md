@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.2.0] - 2026-07-21
+
 ### Changed
 
 - Upgrade GitHub Actions to Node 24-compatible versions (`checkout@v5`, `setup-uv@v9.0.0`, `ruff-action@v4.1.0`, `action-gh-release@v3`)
@@ -14,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Restructure application code into the `tiktok_live_recorder` package and remove `sys.path` hacks
 - Docker image now installs the project with `uv sync` and runs the `tiktok-live-recorder` console script
 - Documentation and CI use `uv run tiktok-live-recorder` as the primary invocation
+
+### Removed
+
+- `python src/main.py` entry path; use `uv run tiktok-live-recorder` or `uv run python -m tiktok_live_recorder`
 
 ## [8.1.0] - 2026-07-21
 
@@ -105,7 +111,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.1.0...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.2.0...HEAD
+[8.2.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.1.0...v8.2.0
 [8.1.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.0.1...v8.1.0
 [8.0.1]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.0.0...v8.0.1
 [8.0.0]: https://github.com/ne0lith/tiktok-live-recorder/releases/tag/v8.0.0
