@@ -13,13 +13,13 @@ jobs:
       - name: Check Ruff formatting
         uses: astral-sh/ruff-action@v4.1.0
         with:
-          version: "latest"
+          version: "0.15.4"
           args: "format --check --diff"
           src: "."
 
       - name: Check Ruff lint
         uses: astral-sh/ruff-action@v4.1.0
         with:
-          version: "latest"
+          version: "0.15.4"
           args: "check"
           src: "."

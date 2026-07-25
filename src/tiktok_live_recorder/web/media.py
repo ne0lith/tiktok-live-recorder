@@ -67,8 +67,8 @@ def scan_media_library(
             if entries:
                 grouped[user_dir.name] = entries
 
-    for username in grouped:
-        grouped[username].sort(key=lambda item: item["modified_at"], reverse=True)
+    for _username, entries in grouped.items():
+        entries.sort(key=lambda item: item["modified_at"], reverse=True)
 
     return dict(sorted(grouped.items(), key=lambda item: item[0].lower()))
 

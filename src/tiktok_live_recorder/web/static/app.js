@@ -4,6 +4,7 @@ const mediaLibrary = document.getElementById("media-library");
 const toast = document.getElementById("toast");
 
 let latestStatus = null;
+let pendingMedia = null;
 
 function showToast(message) {
   toast.textContent = message;
@@ -166,38 +167,134 @@ function renderStatus(status) {
     .join("");
 }
 
+function isAnyMediaPlaying() {
+  for (const video of mediaLibrary.querySelectorAll("video")) {
+    if (!video.paused && !video.ended) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function mediaItemMeta(item) {
+  return `${formatBytes(item.size)} · ${formatTimestamp(item.modified_at)}${
+    item.in_progress ? " · in progress" : ""
+  }${item.source === "legacy" ? " · legacy" : ""}`;
+}
+
+function findMediaItem(url) {
+  return mediaLibrary.querySelector(`.media-item[data-url="${CSS.escape(url)}"]`);
+}
+
+function createMediaItem(item) {
+  const article = document.createElement("article");
+  article.className = "media-item";
+  article.dataset.url = item.url;
+
+  const video = document.createElement("video");
+  video.controls = true;
+  video.preload = "metadata";
+  video.src = item.url;
+  video.addEventListener("pause", maybeApplyPendingMedia);
+  video.addEventListener("ended", maybeApplyPendingMedia);
+
+  const meta = document.createElement("div");
+  meta.className = "media-meta";
+  meta.innerHTML = `
+    <div>${item.filename}</div>
+    <div class="media-meta-detail">${mediaItemMeta(item)}</div>
+  `;
+
+  article.append(video, meta);
+  return article;
+}
+
+function updateMediaItem(article, item) {
+  const detail = article.querySelector(".media-meta-detail");
+  if (detail) {
+    detail.textContent = mediaItemMeta(item);
+  }
+}
+
 function renderMedia(media) {
-  const usernames = Object.keys(media || {});
+  const usernames = Object.keys(media || {}).sort((a, b) =>
+    a.localeCompare(b, undefined, { sensitivity: "base" }),
+  );
+
   if (!usernames.length) {
-    mediaLibrary.innerHTML = '<p class="empty">No recordings yet.</p>';
+    if (!isAnyMediaPlaying()) {
+      mediaLibrary.innerHTML = '<p class="empty">No recordings yet.</p>';
+    }
     return;
   }
 
-  mediaLibrary.innerHTML = usernames
-    .map((username) => {
-      const items = media[username]
-        .map(
-          (item) => `
-            <article class="media-item">
-              <video controls preload="metadata" src="${item.url}"></video>
-              <div class="media-meta">
-                <div>${item.filename}</div>
-                <div>${formatBytes(item.size)} · ${formatTimestamp(item.modified_at)}${
-                  item.in_progress ? " · in progress" : ""
-                }${item.source === "legacy" ? " · legacy" : ""}</div>
-              </div>
-            </article>
-          `,
-        )
-        .join("");
-      return `
-        <section class="user-section">
-          <h3>@${username}</h3>
-          <div class="media-grid">${items}</div>
-        </section>
-      `;
-    })
-    .join("");
+  mediaLibrary.querySelector(".empty")?.remove();
+  const seenUsers = new Set();
+
+  for (const username of usernames) {
+    seenUsers.add(username);
+    let section = mediaLibrary.querySelector(
+      `.user-section[data-username="${CSS.escape(username)}"]`,
+    );
+    if (!section) {
+      section = document.createElement("section");
+      section.className = "user-section";
+      section.dataset.username = username;
+      section.innerHTML = `<h3>@${username}</h3>`;
+      const grid = document.createElement("div");
+      grid.className = "media-grid";
+      section.append(grid);
+      mediaLibrary.append(section);
+    }
+
+    const grid = section.querySelector(".media-grid");
+    const items = media[username] || [];
+    const seenUrls = new Set(items.map((item) => item.url));
+
+    for (const article of grid.querySelectorAll(".media-item")) {
+      if (seenUrls.has(article.dataset.url)) {
+        continue;
+      }
+      const video = article.querySelector("video");
+      if (video && !video.paused && !video.ended) {
+        continue;
+      }
+      article.remove();
+    }
+
+    for (const item of items) {
+      let article = findMediaItem(item.url);
+      if (!article) {
+        article = createMediaItem(item);
+        grid.append(article);
+      } else if (grid.contains(article)) {
+        updateMediaItem(article, item);
+      } else {
+        grid.append(article);
+        updateMediaItem(article, item);
+      }
+    }
+  }
+
+  for (const section of mediaLibrary.querySelectorAll(".user-section")) {
+    const username = section.dataset.username;
+    if (!seenUsers.has(username)) {
+      const hasPlaying = Array.from(section.querySelectorAll("video")).some(
+        (video) => !video.paused && !video.ended,
+      );
+      if (!hasPlaying) {
+        section.remove();
+      }
+    }
+  }
+}
+
+function maybeApplyPendingMedia() {
+  if (pendingMedia && !isAnyMediaPlaying()) {
+    const media = pendingMedia;
+    pendingMedia = null;
+    renderMedia(media);
+  }
 }
 
 async function refreshStatus() {
@@ -205,8 +302,13 @@ async function refreshStatus() {
   renderStatus(status);
 }
 
-async function refreshMedia() {
+async function refreshMedia({ force = false } = {}) {
   const media = await api("/api/media");
+  if (!force && isAnyMediaPlaying()) {
+    pendingMedia = media;
+    return;
+  }
+  pendingMedia = null;
   renderMedia(media);
 }
 
@@ -264,7 +366,7 @@ document.getElementById("force-poll-btn").addEventListener("click", async () => 
 
 document.getElementById("refresh-media-btn").addEventListener("click", async () => {
   try {
-    await refreshMedia();
+    await refreshMedia({ force: true });
     showToast("Media refreshed");
   } catch (error) {
     showToast(error.message);
@@ -325,7 +427,7 @@ async function boot() {
     showToast(error.message);
   }
   setInterval(refreshStatus, 2500);
-  setInterval(refreshMedia, 15000);
+  setInterval(() => refreshMedia(), 60000);
 }
 
 boot();

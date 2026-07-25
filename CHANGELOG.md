@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.3.1] - 2026-07-25
+
+### Fixed
+
+- Web dashboard media library no longer resets video playback during background refresh
+- CI Ruff workflow pinned to 0.15.4 (avoids new 0.16.x rule failures on existing code)
+
 ## [8.3.0] - 2026-07-25
 
 ### Added
@@ -131,7 +138,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.3.0...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.3.1...HEAD
+[8.3.1]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.3.0...v8.3.1
 [8.3.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.2.0...v8.3.0
 [8.2.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.1.0...v8.2.0
 [8.1.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.0.1...v8.1.0
