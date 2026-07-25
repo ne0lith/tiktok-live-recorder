@@ -1,10 +1,25 @@
 const statusBody = document.getElementById("status-body");
 const statusMeta = document.getElementById("status-meta");
 const mediaLibrary = document.getElementById("media-library");
+const librarySummary = document.getElementById("library-summary");
+const mediaSearch = document.getElementById("media-search");
+const mediaPlayer = document.getElementById("media-player");
+const mediaPlayerVideo = document.getElementById("media-player-video");
+const playerTitle = document.getElementById("player-title");
+const playerMeta = document.getElementById("player-meta");
 const toast = document.getElementById("toast");
 
 let latestStatus = null;
 let pendingMedia = null;
+let latestMedia = {};
+const libraryState = {
+  expandedUsers: new Set(),
+  visibleCounts: new Map(),
+  playingUrl: null,
+};
+
+const INITIAL_VISIBLE = 8;
+const LOAD_MORE_STEP = 20;
 
 function showToast(message) {
   toast.textContent = message;
@@ -168,12 +183,12 @@ function renderStatus(status) {
 }
 
 function isAnyMediaPlaying() {
-  for (const video of mediaLibrary.querySelectorAll("video")) {
-    if (!video.paused && !video.ended) {
-      return true;
-    }
-  }
-  return false;
+  return Boolean(
+    mediaPlayerVideo &&
+      mediaPlayerVideo.src &&
+      !mediaPlayerVideo.paused &&
+      !mediaPlayerVideo.ended,
+  );
 }
 
 function mediaItemMeta(item) {
@@ -182,48 +197,197 @@ function mediaItemMeta(item) {
   }${item.source === "legacy" ? " · legacy" : ""}`;
 }
 
-function findMediaItem(url) {
-  return mediaLibrary.querySelector(`.media-item[data-url="${CSS.escape(url)}"]`);
+function sumMediaSize(items) {
+  return items.reduce((total, item) => total + (item.size || 0), 0);
 }
 
-function createMediaItem(item) {
-  const article = document.createElement("article");
-  article.className = "media-item";
-  article.dataset.url = item.url;
+function filterMedia(media, query) {
+  const needle = query.trim().toLowerCase();
+  if (!needle) {
+    return media;
+  }
 
-  const video = document.createElement("video");
-  video.controls = true;
-  video.preload = "metadata";
-  video.src = item.url;
-  video.addEventListener("pause", maybeApplyPendingMedia);
-  video.addEventListener("ended", maybeApplyPendingMedia);
-
-  const meta = document.createElement("div");
-  meta.className = "media-meta";
-  meta.innerHTML = `
-    <div>${item.filename}</div>
-    <div class="media-meta-detail">${mediaItemMeta(item)}</div>
-  `;
-
-  article.append(video, meta);
-  return article;
+  const filtered = {};
+  for (const [username, items] of Object.entries(media || {})) {
+    const usernameMatch = username.toLowerCase().includes(needle);
+    const matchedItems = usernameMatch
+      ? items
+      : items.filter((item) => item.filename.toLowerCase().includes(needle));
+    if (matchedItems.length) {
+      filtered[username] = matchedItems;
+    }
+  }
+  return filtered;
 }
 
-function updateMediaItem(article, item) {
-  const detail = article.querySelector(".media-meta-detail");
-  if (detail) {
-    detail.textContent = mediaItemMeta(item);
+function updateLibrarySummary(media) {
+  const usernames = Object.keys(media || {});
+  const fileCount = usernames.reduce(
+    (total, username) => total + media[username].length,
+    0,
+  );
+  const totalSize = usernames.reduce(
+    (total, username) => total + sumMediaSize(media[username]),
+    0,
+  );
+  librarySummary.textContent = `${fileCount} recording${fileCount === 1 ? "" : "s"} · ${usernames.length} user${usernames.length === 1 ? "" : "s"} · ${formatBytes(totalSize)}`;
+}
+
+function getVisibleCount(username, total) {
+  if (!libraryState.visibleCounts.has(username)) {
+    libraryState.visibleCounts.set(username, Math.min(INITIAL_VISIBLE, total));
+  }
+  return Math.min(libraryState.visibleCounts.get(username), total);
+}
+
+function setExpanded(username, expanded) {
+  if (expanded) {
+    libraryState.expandedUsers.add(username);
+  } else {
+    libraryState.expandedUsers.delete(username);
   }
 }
 
+function playMedia(item, username) {
+  libraryState.playingUrl = item.url;
+  setExpanded(username, true);
+  playerTitle.textContent = `@${username} · ${item.filename}`;
+  playerMeta.textContent = mediaItemMeta(item);
+  mediaPlayer.classList.remove("hidden");
+  const targetUrl = new URL(item.url, window.location.origin).href;
+  if (mediaPlayerVideo.src !== targetUrl) {
+    mediaPlayerVideo.src = item.url;
+  }
+  mediaPlayerVideo.play().catch(() => {});
+  const section = mediaLibrary.querySelector(
+    `.user-section[data-username="${CSS.escape(username)}"]`,
+  );
+  section?.classList.add("expanded");
+  highlightActiveRow();
+}
+
+function closePlayer() {
+  mediaPlayerVideo.pause();
+  mediaPlayerVideo.removeAttribute("src");
+  mediaPlayerVideo.load();
+  libraryState.playingUrl = null;
+  mediaPlayer.classList.add("hidden");
+  highlightActiveRow();
+}
+
+function highlightActiveRow() {
+  for (const row of mediaLibrary.querySelectorAll(".media-row")) {
+    row.classList.toggle("is-active", row.dataset.url === libraryState.playingUrl);
+  }
+}
+
+function createMediaRow(item, username) {
+  const row = document.createElement("button");
+  row.type = "button";
+  row.className = "media-row";
+  row.dataset.url = item.url;
+  row.dataset.username = username;
+
+  const name = document.createElement("span");
+  name.className = "media-row-name";
+  name.title = item.filename;
+  name.textContent = item.filename;
+
+  const meta = document.createElement("span");
+  meta.className = "media-row-meta";
+  meta.textContent = mediaItemMeta(item);
+
+  const play = document.createElement("span");
+  play.className = "media-row-play";
+  play.textContent = "Play";
+
+  row.append(name, meta, play);
+  row.addEventListener("click", () => playMedia(item, username));
+  return row;
+}
+
+function renderUserSection(username, items) {
+  let section = mediaLibrary.querySelector(
+    `.user-section[data-username="${CSS.escape(username)}"]`,
+  );
+  if (!section) {
+    section = document.createElement("section");
+    section.className = "user-section";
+    section.dataset.username = username;
+    section.innerHTML = `
+      <button class="user-section-toggle" type="button">
+        <span class="user-section-title"></span>
+        <span class="user-section-count"></span>
+        <span class="user-section-chevron" aria-hidden="true">'</span>
+      </button>
+      <div class="user-section-body">
+        <div class="media-list"></div>
+        <div class="user-section-footer hidden">
+          <button class="btn btn-ghost btn-small show-more" type="button"></button>
+        </div>
+      </div>
+    `;
+    section.querySelector(".user-section-toggle").addEventListener("click", () => {
+      const expanded = section.classList.toggle("expanded");
+      setExpanded(username, expanded);
+    });
+    section.querySelector(".show-more").addEventListener("click", (event) => {
+      event.stopPropagation();
+      const current = getVisibleCount(username, items.length);
+      libraryState.visibleCounts.set(
+        username,
+        Math.min(current + LOAD_MORE_STEP, items.length),
+      );
+      renderMedia(latestMedia);
+    });
+    mediaLibrary.append(section);
+  }
+
+  const expanded = libraryState.expandedUsers.has(username);
+  section.classList.toggle("expanded", expanded);
+  section.querySelector(".user-section-title").textContent = `@${username}`;
+  section.querySelector(".user-section-count").textContent = `${items.length} recording${
+    items.length === 1 ? "" : "s"
+  } · ${formatBytes(sumMediaSize(items))}`;
+
+  const visibleCount = getVisibleCount(username, items.length);
+  const list = section.querySelector(".media-list");
+  list.replaceChildren();
+  for (const item of items.slice(0, visibleCount)) {
+    const row = createMediaRow(item, username);
+    if (item.url === libraryState.playingUrl) {
+      row.classList.add("is-active");
+    }
+    list.append(row);
+  }
+
+  const footer = section.querySelector(".user-section-footer");
+  const showMore = section.querySelector(".show-more");
+  if (visibleCount < items.length) {
+    footer.classList.remove("hidden");
+    showMore.textContent = `Show ${items.length - visibleCount} more`;
+  } else {
+    footer.classList.add("hidden");
+  }
+
+  return section;
+}
+
 function renderMedia(media) {
-  const usernames = Object.keys(media || {}).sort((a, b) =>
+  latestMedia = media || {};
+  const query = mediaSearch.value || "";
+  const filtered = filterMedia(latestMedia, query);
+  const usernames = Object.keys(filtered).sort((a, b) =>
     a.localeCompare(b, undefined, { sensitivity: "base" }),
   );
 
+  updateLibrarySummary(filtered);
+
   if (!usernames.length) {
     if (!isAnyMediaPlaying()) {
-      mediaLibrary.innerHTML = '<p class="empty">No recordings yet.</p>';
+      mediaLibrary.innerHTML = query
+        ? '<p class="empty">No recordings match your search.</p>'
+        : '<p class="empty">No recordings yet.</p>';
     }
     return;
   }
@@ -233,59 +397,21 @@ function renderMedia(media) {
 
   for (const username of usernames) {
     seenUsers.add(username);
-    let section = mediaLibrary.querySelector(
-      `.user-section[data-username="${CSS.escape(username)}"]`,
-    );
-    if (!section) {
-      section = document.createElement("section");
-      section.className = "user-section";
-      section.dataset.username = username;
-      section.innerHTML = `<h3>@${username}</h3>`;
-      const grid = document.createElement("div");
-      grid.className = "media-grid";
-      section.append(grid);
-      mediaLibrary.append(section);
-    }
-
-    const grid = section.querySelector(".media-grid");
-    const items = media[username] || [];
-    const seenUrls = new Set(items.map((item) => item.url));
-
-    for (const article of grid.querySelectorAll(".media-item")) {
-      if (seenUrls.has(article.dataset.url)) {
-        continue;
-      }
-      const video = article.querySelector("video");
-      if (video && !video.paused && !video.ended) {
-        continue;
-      }
-      article.remove();
-    }
-
-    for (const item of items) {
-      let article = findMediaItem(item.url);
-      if (!article) {
-        article = createMediaItem(item);
-        grid.append(article);
-      } else if (grid.contains(article)) {
-        updateMediaItem(article, item);
-      } else {
-        grid.append(article);
-        updateMediaItem(article, item);
-      }
-    }
+    renderUserSection(username, filtered[username]);
   }
 
   for (const section of mediaLibrary.querySelectorAll(".user-section")) {
     const username = section.dataset.username;
     if (!seenUsers.has(username)) {
-      const hasPlaying = Array.from(section.querySelectorAll("video")).some(
-        (video) => !video.paused && !video.ended,
-      );
-      if (!hasPlaying) {
-        section.remove();
-      }
+      section.remove();
     }
+  }
+
+  if (usernames.length === 1 && !query) {
+    setExpanded(usernames[0], true);
+    mediaLibrary.querySelector(
+      `.user-section[data-username="${CSS.escape(usernames[0])}"]`,
+    )?.classList.add("expanded");
   }
 }
 
@@ -372,6 +498,15 @@ document.getElementById("refresh-media-btn").addEventListener("click", async () 
     showToast(error.message);
   }
 });
+
+mediaSearch.addEventListener("input", () => {
+  renderMedia(latestMedia);
+});
+
+document.getElementById("player-close").addEventListener("click", closePlayer);
+
+mediaPlayerVideo.addEventListener("pause", maybeApplyPendingMedia);
+mediaPlayerVideo.addEventListener("ended", maybeApplyPendingMedia);
 
 document.getElementById("settings-toggle").addEventListener("click", () => {
   document.getElementById("settings-panel").classList.toggle("hidden");

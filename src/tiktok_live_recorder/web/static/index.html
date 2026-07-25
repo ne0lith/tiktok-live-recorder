@@ -59,8 +59,33 @@
 
       <section class="panel library-panel">
         <div class="panel-head">
-          <h2>Media library</h2>
+          <div>
+            <h2>Media library</h2>
+            <p id="library-summary" class="meta">Loading…</p>
+          </div>
           <button id="refresh-media-btn" class="btn btn-ghost">Refresh</button>
+        </div>
+        <div class="library-toolbar">
+          <input
+            id="media-search"
+            type="search"
+            placeholder="Search by username or filename…"
+            autocomplete="off"
+            spellcheck="false"
+          />
+        </div>
+        <div id="media-player" class="media-player hidden">
+          <div class="media-player-head">
+            <div>
+              <p class="eyebrow">Now playing</p>
+              <h3 id="player-title" class="player-title"></h3>
+              <p id="player-meta" class="meta"></p>
+            </div>
+            <button id="player-close" class="btn btn-ghost btn-small" type="button">
+              Close
+            </button>
+          </div>
+          <video id="media-player-video" controls preload="metadata"></video>
         </div>
         <div id="media-library" class="media-library"></div>
       </section>
