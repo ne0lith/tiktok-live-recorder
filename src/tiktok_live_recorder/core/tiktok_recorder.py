@@ -2,7 +2,7 @@ import signal
 import time
 from http.client import HTTPException
 from pathlib import Path
-from threading import Event, Thread
+from threading import Event, Lock, Thread
 
 from requests import HTTPError, RequestException
 
@@ -52,6 +52,11 @@ class TikTokRecorder:
         self._stop = Event()
         self._poll_wake = Event()
         self._active_recordings: dict = {}
+        self._user_stop_events: dict[str, Event] = {}
+        self._state_lock = Lock()
+        self._last_poll_at: float | None = None
+        self._last_poll_snapshot: dict | None = None
+        self._poll_label: str | None = None
 
     def request_stop(self):
         """Signal all loops/threads to finish and finalize open recordings."""
@@ -76,6 +81,93 @@ class TikTokRecorder:
 
     def _should_stop(self) -> bool:
         return self._stop.is_set()
+
+    def _should_stop_user(self, user: str) -> bool:
+        if self._should_stop():
+            return True
+        stop_event = self._user_stop_events.get(user)
+        return bool(stop_event and stop_event.is_set())
+
+    def force_poll(self) -> None:
+        """Interrupt the poll sleep so the watchlist is checked immediately."""
+        self._wake_poll_loop()
+
+    def stop_user(self, username: str) -> bool:
+        """Request graceful stop for one active recording."""
+        username = username.lstrip("@").strip()
+        entry = self._active_recordings.get(username)
+        if not entry:
+            return False
+        thread = entry.get("thread")
+        if thread is None or not thread.is_alive():
+            return False
+        stop_event = self._user_stop_events.setdefault(username, Event())
+        stop_event.set()
+        with self._state_lock:
+            entry["status"] = "stopping"
+        return True
+
+    def reload_cookies(self) -> None:
+        """Reload cookies from disk into the active TikTok API client."""
+        from tiktok_live_recorder.utils.utils import read_cookies
+
+        self._cookies = read_cookies()
+        self.tiktok = TikTokAPI(proxy=self._proxy, cookies=self._cookies)
+
+    def get_status(self) -> dict:
+        from tiktok_live_recorder.utils.utils import read_paused_users
+
+        paused = sorted(read_paused_users())
+        users = list(self.users or [])
+        recordings = []
+        now = time.time()
+
+        with self._state_lock:
+            for username, entry in self._active_recordings.items():
+                thread = entry.get("thread")
+                started_at = entry.get("started_at")
+                elapsed = (now - started_at) if started_at else None
+                output_path = entry.get("output_path")
+                file_size = entry.get("bytes_written", 0)
+                if output_path:
+                    try:
+                        file_size = max(file_size, Path(output_path).stat().st_size)
+                    except OSError:
+                        pass
+                recordings.append(
+                    {
+                        "username": username,
+                        "room_id": entry.get("room_id"),
+                        "status": entry.get("status", "recording"),
+                        "started_at": started_at,
+                        "elapsed_seconds": round(elapsed, 1)
+                        if elapsed is not None
+                        else None,
+                        "bytes_written": file_size,
+                        "output_path": output_path,
+                        "is_alive": bool(thread and thread.is_alive()),
+                    }
+                )
+
+            snapshot = dict(self._last_poll_snapshot or {})
+
+        return {
+            "mode": self.mode.name.lower(),
+            "users": users,
+            "paused": paused,
+            "users_file": self.users_file,
+            "automatic_interval_minutes": self.automatic_interval,
+            "last_poll_at": self._last_poll_at,
+            "poll_label": self._poll_label,
+            "poll": snapshot,
+            "recordings": recordings,
+        }
+
+    def _update_recording_entry(self, user: str, **fields) -> None:
+        with self._state_lock:
+            entry = self._active_recordings.get(user)
+            if entry is not None:
+                entry.update(fields)
 
     def _setup(self):
         """Resolve user/room data and validate prerequisites via network calls."""
@@ -217,6 +309,9 @@ class TikTokRecorder:
         )
 
     def _poll_users_once(self, users, active_recordings, label):
+        from tiktok_live_recorder.utils.utils import read_paused_users
+
+        paused_users = read_paused_users()
         counts = {"recording": 0, "offline": 0, "started": 0, "error": 0, "skipped": 0}
         groups = {
             "offline": [],
@@ -225,6 +320,7 @@ class TikTokRecorder:
             "errors": [],
             "skipped": [],
             "starting": [],
+            "paused": [],
         }
 
         users_set = set(users)
@@ -261,9 +357,14 @@ class TikTokRecorder:
                     groups["errors"].append(username)
                     counts["error"] += 1
                 del active_recordings[username]
+                self._user_stop_events.pop(username, None)
 
             if self._should_stop():
                 break
+
+            if username.lower() in paused_users:
+                groups["paused"].append(username)
+                continue
 
             try:
                 room_id = self.tiktok.get_room_id_from_user(username)
@@ -315,8 +416,25 @@ class TikTokRecorder:
             )
         if groups["skipped"]:
             logger.info(f"  skipped:   {', '.join(groups['skipped'])}")
+        if groups["paused"]:
+            logger.info(f"  paused:    {', '.join(f'@{u}' for u in groups['paused'])}")
         if groups["errors"]:
             logger.info(f"  error:     {', '.join(groups['errors'])}")
+
+        self._last_poll_at = time.time()
+        self._poll_label = label
+        self._last_poll_snapshot = {
+            "offline": list(groups["offline"]),
+            "recording": list(groups["recording"]),
+            "finished": list(groups["finished"]),
+            "errors": list(groups["errors"]),
+            "skipped": list(groups["skipped"]),
+            "paused": list(groups["paused"]),
+            "starting": [
+                {"username": username, "room_id": room_id}
+                for username, room_id in groups["starting"]
+            ],
+        }
 
         for username, room_id in groups["starting"]:
             if self._should_stop():
@@ -328,7 +446,17 @@ class TikTokRecorder:
                 name=f"record-{username}",
             )
             thread.start()
-            active_recordings[username] = {"thread": thread, "room_id": room_id}
+            stop_event = Event()
+            self._user_stop_events[username] = stop_event
+            active_recordings[username] = {
+                "thread": thread,
+                "room_id": room_id,
+                "started_at": time.time(),
+                "output_path": None,
+                "bytes_written": 0,
+                "status": "recording",
+                "stop_event": stop_event,
+            }
             time.sleep(2.5)
 
         return active_recordings
@@ -436,6 +564,13 @@ class TikTokRecorder:
             raise LiveNotFound(TikTokError.RETRIEVE_LIVE_URL)
 
         output = self._build_output_path(user)
+        self._update_recording_entry(
+            user,
+            output_path=output,
+            status="recording",
+            bytes_written=0,
+            started_at=time.time(),
+        )
         min_stream_bytes = 4096
         buffer_size = 64 * 1024
         failed_urls: set[str] = set()
@@ -453,7 +588,7 @@ class TikTokRecorder:
         try:
             with open(output, "wb") as out_file:
                 stop_recording = False
-                while not stop_recording and not self._should_stop():
+                while not stop_recording and not self._should_stop_user(user):
                     stream_ended = False
                     alive_check_interval = 30
                     last_alive_check = time.time()
@@ -469,15 +604,19 @@ class TikTokRecorder:
                         last_alive_check = time.time()
                         start_time = time.time()
                         for chunk in self.tiktok.download_live_stream(live_url):
-                            if self._should_stop():
+                            if self._should_stop_user(user):
                                 self._log_recording(
                                     user, "Stop requested — finalizing recording."
                                 )
                                 stop_recording = True
+                                self._update_recording_entry(user, status="stopping")
                                 break
 
                             buffer.extend(chunk)
                             bytes_written += len(chunk)
+                            self._update_recording_entry(
+                                user, bytes_written=bytes_written
+                            )
                             if (
                                 not connected_logged
                                 and bytes_written >= min_stream_bytes
@@ -511,7 +650,7 @@ class TikTokRecorder:
                         else:
                             stream_ended = True
 
-                        if stop_recording or self._should_stop():
+                        if stop_recording or self._should_stop_user(user):
                             break
 
                         if stream_ended:
@@ -652,7 +791,9 @@ class TikTokRecorder:
             raise LiveNotFound(TikTokError.RETRIEVE_LIVE_URL)
 
         self._log_recording(user, f"Recording finished: {Path(output).resolve()}\n")
+        self._update_recording_entry(user, status="converting")
         VideoManagement.convert_flv_to_mp4(output, self.bitrate, self.ffmpeg_path)
+        self._update_recording_entry(user, status="finished")
 
     def check_country_blacklisted(self):
         is_blacklisted = self.tiktok.is_country_blacklisted()

@@ -160,6 +160,125 @@ def read_cookies():
         return {}
 
 
+def watchlist_state_path() -> str:
+    return str(config_dir() / "watchlist_state.json")
+
+
+def read_paused_users(file_path: str | None = None) -> set[str]:
+    """Load paused usernames from the auto-managed watchlist state file."""
+    from tiktok_live_recorder.utils.logger_manager import logger
+
+    path = file_path or watchlist_state_path()
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        return set()
+    except json.JSONDecodeError as exc:
+        logger.error(f"watchlist state at {path} is invalid JSON: {exc}")
+        return set()
+
+    if not isinstance(data, dict):
+        logger.error(f"watchlist state at {path} must be a JSON object")
+        return set()
+
+    raw = data.get("paused", [])
+    if not isinstance(raw, list):
+        return set()
+    return {u.lstrip("@").strip().lower() for u in raw if u and str(u).strip()}
+
+
+def write_paused_users(paused: set[str], file_path: str | None = None) -> None:
+    path = file_path or watchlist_state_path()
+    config_dir().mkdir(parents=True, exist_ok=True)
+    normalized = sorted({u.lstrip("@").strip() for u in paused if u and str(u).strip()})
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump({"paused": normalized}, f, indent=2)
+        f.write("\n")
+
+
+def _normalize_username(username: str) -> str:
+    return username.lstrip("@").strip()
+
+
+def _load_users_document(file_path: str) -> tuple[list[str], list | dict]:
+    """Return usernames and the raw JSON document for format-preserving writes."""
+    from tiktok_live_recorder.utils.logger_manager import logger
+
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        return [], {"users": []}
+    except json.JSONDecodeError as exc:
+        logger.error(f"users file at {file_path} is invalid JSON: {exc}")
+        return [], {"users": []}
+
+    if isinstance(data, list):
+        users = [_normalize_username(u) for u in data if u and str(u).strip()]
+        return users, data
+    if isinstance(data, dict):
+        raw = data.get("users", [])
+        if not isinstance(raw, list):
+            raw = []
+        users = [_normalize_username(u) for u in raw if u and str(u).strip()]
+        return users, data
+
+    logger.error(
+        f"users file at {file_path} must be a list or an object with a 'users' key"
+    )
+    return [], {"users": []}
+
+
+def write_users_document(
+    file_path: str, users: list[str], document: list | dict
+) -> None:
+    """Write usernames back while preserving the original JSON shape."""
+    normalized = [_normalize_username(u) for u in users if u and str(u).strip()]
+    config_dir().mkdir(parents=True, exist_ok=True)
+    with open(file_path, "w", encoding="utf-8") as f:
+        if isinstance(document, list):
+            json.dump(normalized, f, indent=2)
+        else:
+            payload = dict(document)
+            payload["users"] = normalized
+            json.dump(payload, f, indent=2)
+        f.write("\n")
+
+
+def add_user_to_file(file_path: str, username: str) -> list[str]:
+    users, document = _load_users_document(file_path)
+    normalized = _normalize_username(username)
+    if normalized and normalized not in users:
+        users.append(normalized)
+        write_users_document(file_path, users, document)
+    return users
+
+
+def remove_user_from_file(file_path: str, username: str) -> list[str]:
+    users, document = _load_users_document(file_path)
+    normalized = _normalize_username(username)
+    users = [u for u in users if u != normalized]
+    write_users_document(file_path, users, document)
+    return users
+
+
+def write_cookies(cookies: dict) -> None:
+    path = cookies_file_path()
+    config_dir().mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(cookies, f, indent=2)
+        f.write("\n")
+
+
+def write_telegram_config(config: dict) -> None:
+    path = telegram_file_path()
+    config_dir().mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(config, f, indent=2)
+        f.write("\n")
+
+
 def read_users(file_path: str | None = None) -> list[str]:
     """
     Load usernames from a JSON file (list or {"users": [...]}).

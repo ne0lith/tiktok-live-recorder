@@ -4,12 +4,22 @@ import sys
 
 def record_user(config):
     from tiktok_live_recorder.core.tiktok_recorder import TikTokRecorder
+    from tiktok_live_recorder.utils.enums import Mode
     from tiktok_live_recorder.utils.logger_manager import logger
 
+    web_server = None
     try:
-        TikTokRecorder(config).run()
+        recorder = TikTokRecorder(config)
+        if config.mode in (Mode.WATCHLIST, Mode.FOLLOWERS) and not config.no_web:
+            from tiktok_live_recorder.web.server import start_web_server
+
+            web_server = start_web_server(recorder, config)
+        recorder.run()
     except Exception as e:
         logger.error(f"{e}", exc_info=True)
+    finally:
+        if web_server is not None:
+            web_server.stop()
 
 
 def _build_config(args, mode, cookies, user=None, users=None):
@@ -30,6 +40,9 @@ def _build_config(args, mode, cookies, user=None, users=None):
         use_telegram=args.telegram,
         bitrate=args.bitrate,
         ffmpeg_path=args.ffmpeg_path,
+        web_host=args.web_host,
+        web_port=args.web_port,
+        no_web=args.no_web,
     )
 
 

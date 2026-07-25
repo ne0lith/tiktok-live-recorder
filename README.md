@@ -52,10 +52,13 @@ uv run tiktok-live-recorder -mode watchlist
 
 Recordings are saved to `output/<username>/` by default.
 
+Open the web dashboard at **http://localhost:8787** while watchlist or followers mode is running.
+
 ## What's Different in This Fork
 
 This fork adds reliability and workflow improvements on top of the upstream project:
 
+- **Web dashboard** - live status, media library, watchlist controls, and settings UI (watchlist/followers modes; default port `8787`)
 - **Watchlist mode** - poll many users in one process; each live user records in a background thread
 - **`config/` directory** - secrets and watchlists live outside `src/` with committed `.example` templates
 - **WAF / restricted-live fallback** - when the API returns `4003110`, stream URLs are scraped from the live page HTML
@@ -142,6 +145,7 @@ Run with mounted output and config directories:
 
 ```bash
 docker run \
+  -p 8787:8787 \
   -v ./output:/output \
   -v ./config:/app/config \
   tiktok-live-recorder \
@@ -149,7 +153,7 @@ docker run \
   -mode watchlist
 ```
 
-The image ships only `config/*.example` templates. Mount `./config` so your real `cookies.json`, `users.json`, and `telegram.json` persist on the host.
+The image ships only `config/*.example` templates. Mount `./config` so your real `cookies.json`, `users.json`, and `telegram.json` persist on the host. The dashboard listens on port **8787** (no authentication - firewall it yourself).
 
 </details>
 
@@ -178,6 +182,9 @@ uv run python -m tiktok_live_recorder [options]
 | `-ffmpeg-path <PATH>` | Path to a custom FFmpeg binary (default: `ffmpeg` on `PATH`). |
 | `-telegram` | Upload the recording to Telegram when done. Requires `config/telegram.json`. |
 | `-no-update-check` | Skip the automatic update check on startup. |
+| `-web-host <HOST>` | Dashboard bind address for watchlist/followers (default: `0.0.0.0`). |
+| `-web-port <PORT>` | Dashboard port for watchlist/followers (default: `8787`). |
+| `-no-web` | Disable the built-in web dashboard. |
 | `--version`, `-V` | Print the installed version and exit. |
 
 ### Recording Modes
@@ -251,6 +258,19 @@ uv run tiktok-live-recorder -mode watchlist -automatic_interval 3
 Each poll cycle logs every user's status (`offline`, `recording`, `live -> starting`). When multiple streams run at once, log lines are prefixed with `[@username]`.
 
 When using `config/users.json` or `-users-file`, edits to the watchlist are picked up on the next poll cycle - no restart needed. Users removed from the file stop being polled; any active recording for them finishes first. A CLI `-user` list is fixed for that run and is not reloaded.
+
+### Web dashboard
+
+In **watchlist** and **followers** mode, a built-in dashboard starts automatically at `http://0.0.0.0:8787` (open `http://localhost:8787` on the same machine). There is **no authentication** - restrict access with your firewall or reverse proxy.
+
+From the dashboard you can:
+
+- See who is recording, offline, paused, or errored (elapsed time, file size, room ID)
+- Browse and play finished recordings grouped by username
+- Add/remove watchlist users, pause/resume users, force an immediate poll, and stop a recording gracefully
+- Edit `cookies.json` and `telegram.json`
+
+Paused users are stored in auto-managed `config/watchlist_state.json` - your existing `users.json` format is not changed. Disable the dashboard with `-no-web` or change the bind address with `-web-host` / `-web-port`.
 
 ## Configuration
 

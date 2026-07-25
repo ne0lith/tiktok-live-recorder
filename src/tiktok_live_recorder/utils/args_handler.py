@@ -144,6 +144,28 @@ def parse_args():
         ),
     )
 
+    parser.add_argument(
+        "-web-host",
+        dest="web_host",
+        default="0.0.0.0",
+        help="Host for the web dashboard in watchlist/followers mode. [Default: 0.0.0.0]",
+    )
+
+    parser.add_argument(
+        "-web-port",
+        dest="web_port",
+        type=int,
+        default=8787,
+        help="Port for the web dashboard in watchlist/followers mode. [Default: 8787]",
+    )
+
+    parser.add_argument(
+        "-no-web",
+        dest="no_web",
+        action="store_true",
+        help="Disable the built-in web dashboard in watchlist/followers mode.",
+    )
+
     args = parser.parse_args()
 
     return args
@@ -235,6 +257,9 @@ def validate_and_parse_args():
         raise ArgsParseError(
             "Incorrect automatic_interval value. Must be one minute or more."
         )
+
+    if args.web_port < 1 or args.web_port > 65535:
+        raise ArgsParseError("Incorrect web_port value. Must be between 1 and 65535.")
 
     if args.mode == "manual":
         mode = Mode.MANUAL

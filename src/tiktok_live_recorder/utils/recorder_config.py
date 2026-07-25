@@ -19,3 +19,6 @@ class RecorderConfig:
     bitrate: str | None = None
     ffmpeg_path: str | None = None
     users_file: str | None = None
+    web_host: str = "0.0.0.0"
+    web_port: int = 8787
+    no_web: bool = False

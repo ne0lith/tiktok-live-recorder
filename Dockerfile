@@ -47,4 +47,6 @@ RUN chmod +x /app/entrypoint.sh && \
 
 USER recorder
 
+EXPOSE 8787
+
 ENTRYPOINT ["/app/entrypoint.sh"]

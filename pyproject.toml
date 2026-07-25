@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tiktok-live-recorder"
-version = "8.2.0"
+version = "8.3.0"
 description = "A tool for recording TikTok live streams"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -15,6 +15,8 @@ dependencies = [
     "distro>=1.9.0",
     "curl_cffi>=0.12.0",
     "requests>=2.32.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
 ]
 
 [project.optional-dependencies]
@@ -23,6 +25,7 @@ dev = [
     "pre-commit>=4.3.0",
     "pytest",
     "pytest-cov",
+    "httpx>=0.28.0",
 ]
 
 [project.urls]
@@ -35,6 +38,9 @@ tiktok-live-recorder = "tiktok_live_recorder.cli:run"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"tiktok_live_recorder.web" = ["static/*"]
 
 [tool.ruff]
 line-length = 88

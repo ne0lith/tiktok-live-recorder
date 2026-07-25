@@ -132,6 +132,7 @@ All user-specific settings live in `config/` at the project root:
 |------|----------|---------|
 | `cookies.json` | `cookies.json.example` | TikTok session cookies |
 | `users.json` | `users.json.example` | Watchlist usernames |
+| `watchlist_state.json` | `watchlist_state.json.example` | Paused users (auto-managed by the dashboard) |
 | `telegram.json` | `telegram.json.example` | Telegram API credentials |
 
 Real config files are gitignored. Only the `*.example` templates are committed.
@@ -139,6 +140,16 @@ Real config files are gitignored. Only the `*.example` templates are committed.
 On first use, the recorder copies the matching `.example` file if the real file does not exist yet.
 
 Override the config location with the `TIKTOK_RECORDER_CONFIG_DIR` environment variable.
+
+## Web Dashboard
+
+In **watchlist** and **followers** mode, the recorder starts a web dashboard on port **8787** by default (`http://localhost:8787`). There is no login - protect it with your firewall if the host is reachable from other machines.
+
+The dashboard shows live recording status, lets you add/remove users, pause/resume recording, force an immediate poll, stop a recording gracefully, play back saved MP4s by username, and edit cookies/telegram settings.
+
+Paused users are stored in `config/watchlist_state.json` (created automatically). You do not need to change the format of `users.json`.
+
+Disable the dashboard with `-no-web`, or change bind/port with `-web-host` and `-web-port`.
 
 ## Restricted Countries
 
