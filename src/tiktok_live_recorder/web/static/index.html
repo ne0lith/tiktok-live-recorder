@@ -31,72 +31,168 @@
             <button type="submit" class="btn btn-primary">Add user</button>
           </form>
           <button id="force-poll-btn" class="btn btn-ghost">Force check</button>
+          <button id="logs-toggle" class="btn btn-ghost">Logs</button>
           <button id="settings-toggle" class="btn btn-ghost">Settings</button>
         </div>
       </header>
 
       <section id="settings-panel" class="panel settings-panel hidden">
-        <div class="panel-head">
-          <h2>Settings</h2>
-          <p class="meta">Writes directly to config files on save.</p>
+        <div class="panel-head settings-panel-head">
+          <div>
+            <h2>Settings</h2>
+            <p class="meta">Changes save directly to config files on disk.</p>
+          </div>
+          <button id="settings-close" type="button" class="btn btn-ghost btn-small">
+            Close
+          </button>
         </div>
-        <div class="settings-grid">
-          <div class="settings-card">
-            <h3>Runtime</h3>
-            <label class="field-label" for="interval-input">Poll interval (minutes)</label>
-            <input
-              id="interval-input"
-              type="number"
-              min="1"
-              step="1"
-              value="5"
-            />
-            <label class="field-checkbox">
-              <input id="telegram-enabled" type="checkbox" />
-              Upload finished recordings to Telegram
-            </label>
-            <button id="save-runtime-btn" class="btn btn-primary" type="button">
-              Save runtime
-            </button>
-            <div id="telegram-uploads" class="telegram-uploads hidden">
-              <p class="eyebrow">Recent Telegram uploads</p>
-              <ul id="telegram-uploads-list"></ul>
+
+        <div class="settings-layout">
+          <section class="settings-group">
+            <h3 class="settings-group-title">Operations</h3>
+            <div class="settings-row settings-row--2">
+              <div class="settings-block">
+                <div class="settings-block-head">
+                  <h4>Runtime</h4>
+                  <p class="meta">Poll interval and Telegram uploads.</p>
+                </div>
+                <div class="settings-field">
+                  <label class="field-label" for="interval-input">Poll interval</label>
+                  <div class="input-with-suffix">
+                    <input
+                      id="interval-input"
+                      type="number"
+                      min="1"
+                      step="1"
+                      value="5"
+                    />
+                    <span class="input-suffix">minutes</span>
+                  </div>
+                </div>
+                <label class="toggle-row" for="telegram-enabled">
+                  <span class="toggle-copy">
+                    <span class="toggle-title">Telegram uploads</span>
+                    <span class="toggle-hint">Send finished recordings automatically</span>
+                  </span>
+                  <span class="toggle">
+                    <input id="telegram-enabled" type="checkbox" />
+                    <span class="toggle-slider" aria-hidden="true"></span>
+                  </span>
+                </label>
+                <div class="settings-block-footer">
+                  <button id="save-runtime-btn" class="btn btn-primary btn-small" type="button">
+                    Save runtime
+                  </button>
+                </div>
+                <div id="telegram-uploads" class="telegram-uploads hidden">
+                  <p class="eyebrow">Recent uploads</p>
+                  <ul id="telegram-uploads-list"></ul>
+                </div>
+              </div>
+
+              <div class="settings-block">
+                <div class="settings-block-head">
+                  <h4>Record now</h4>
+                  <p class="meta">Capture a live user immediately.</p>
+                </div>
+                <div class="settings-field">
+                  <label class="field-label" for="record-username-input">Username</label>
+                  <input
+                    id="record-username-input"
+                    type="text"
+                    placeholder="@username"
+                    autocomplete="off"
+                    spellcheck="false"
+                  />
+                </div>
+                <div class="settings-field">
+                  <label class="field-label" for="record-room-input">Room ID (optional)</label>
+                  <input
+                    id="record-room-input"
+                    type="text"
+                    placeholder="Room ID"
+                    autocomplete="off"
+                    spellcheck="false"
+                  />
+                </div>
+                <div class="settings-block-footer">
+                  <button id="record-now-btn" class="btn btn-primary btn-small" type="button">
+                    Start recording
+                  </button>
+                </div>
+              </div>
             </div>
+          </section>
+
+          <section class="settings-group">
+            <h3 class="settings-group-title">Configuration files</h3>
+            <div class="settings-row settings-row--2">
+              <div class="settings-block settings-block--editor">
+                <div class="settings-block-head">
+                  <h4>Cookies</h4>
+                  <p class="meta">Session cookies for TikTok API access.</p>
+                </div>
+                <textarea id="cookies-editor" rows="10" spellcheck="false"></textarea>
+                <div class="settings-block-footer">
+                  <button id="save-cookies-btn" class="btn btn-primary btn-small" type="button">
+                    Save cookies
+                  </button>
+                </div>
+              </div>
+
+              <div class="settings-block settings-block--editor">
+                <div class="settings-block-head">
+                  <h4>Telegram</h4>
+                  <p class="meta">Bot token and destination chat.</p>
+                </div>
+                <textarea id="telegram-editor" rows="10" spellcheck="false"></textarea>
+                <div class="settings-block-footer">
+                  <button id="save-telegram-btn" class="btn btn-primary btn-small" type="button">
+                    Save telegram
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section id="logs-panel" class="panel logs-panel hidden">
+        <div class="panel-head logs-panel-head">
+          <div>
+            <h2>Recorder log</h2>
+            <p id="logs-meta" class="meta">Loading…</p>
           </div>
-          <div class="settings-card">
-            <h3>Record now</h3>
-            <p class="meta">Start a one-off recording when the user is live.</p>
-            <label class="field-label" for="record-username-input">Username</label>
-            <input
-              id="record-username-input"
-              type="text"
-              placeholder="@username"
-              autocomplete="off"
-              spellcheck="false"
-            />
-            <label class="field-label" for="record-room-input">Room ID (optional)</label>
-            <input
-              id="record-room-input"
-              type="text"
-              placeholder="Room ID"
-              autocomplete="off"
-              spellcheck="false"
-            />
-            <button id="record-now-btn" class="btn btn-primary" type="button">
-              Start recording
+          <div class="logs-toolbar">
+            <label class="logs-control">
+              <span class="logs-control-label">Lines</span>
+              <select id="logs-lines">
+                <option value="100">100</option>
+                <option value="300" selected>300</option>
+                <option value="500">500</option>
+                <option value="1000">1000</option>
+              </select>
+            </label>
+            <label class="logs-control">
+              <span class="logs-control-label">Level</span>
+              <select id="logs-level">
+                <option value="">All</option>
+                <option value="DEBUG">Debug+</option>
+                <option value="INFO" selected>Info+</option>
+                <option value="WARNING">Warning+</option>
+                <option value="ERROR">Error+</option>
+              </select>
+            </label>
+            <label class="field-checkbox logs-autorefresh">
+              <input id="logs-autorefresh" type="checkbox" checked />
+              Auto-refresh
+            </label>
+            <button id="logs-refresh-btn" class="btn btn-ghost btn-small" type="button">
+              Refresh
             </button>
           </div>
-          <div class="settings-card">
-            <h3>Cookies</h3>
-            <textarea id="cookies-editor" rows="8" spellcheck="false"></textarea>
-            <button id="save-cookies-btn" class="btn btn-primary">Save cookies</button>
-          </div>
-          <div class="settings-card">
-            <h3>Telegram</h3>
-            <textarea id="telegram-editor" rows="8" spellcheck="false"></textarea>
-            <button id="save-telegram-btn" class="btn btn-primary">Save telegram</button>
-          </div>
         </div>
+        <div id="log-output" class="log-output" tabindex="0"></div>
       </section>
 
       <section id="profile-banner" class="panel profile-banner hidden">

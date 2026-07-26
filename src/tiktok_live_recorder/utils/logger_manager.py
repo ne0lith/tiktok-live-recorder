@@ -1,5 +1,9 @@
 import logging
+import os
 from logging.handlers import RotatingFileHandler
+from pathlib import Path
+
+DEFAULT_LOG_FILE = "tiktok-recorder.log"
 
 
 class MaxLevelFilter(logging.Filter):
@@ -13,6 +17,20 @@ class MaxLevelFilter(logging.Filter):
 
     def filter(self, record):
         return record.levelno <= self.max_level
+
+
+def resolve_log_file_path() -> Path:
+    env_path = os.environ.get("TIKTOK_RECORDER_LOG_FILE")
+    if env_path:
+        return Path(env_path)
+    return Path(DEFAULT_LOG_FILE)
+
+
+def get_log_file_path() -> Path:
+    for handler in LoggerManager().logger.handlers:
+        if isinstance(handler, RotatingFileHandler):
+            return Path(handler.baseFilename)
+    return resolve_log_file_path()
 
 
 class LoggerManager:
@@ -51,8 +69,10 @@ class LoggerManager:
 
             # 3) File handler — DEBUG level, includes full stack traces
             #    Rotates at 5 MB, keeps 3 backups
+            log_path = resolve_log_file_path()
+            log_path.parent.mkdir(parents=True, exist_ok=True)
             file_handler = RotatingFileHandler(
-                "tiktok-recorder.log",
+                log_path,
                 maxBytes=5 * 1024 * 1024,
                 backupCount=3,
                 encoding="utf-8",

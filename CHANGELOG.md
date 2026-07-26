@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.6.0] - 2026-07-26
+
+### Added
+
+- Web dashboard **Logs** panel: tail `tiktok-recorder.log` with line/level filters and auto-refresh (`GET /api/logs`)
+- Optional `TIKTOK_RECORDER_LOG_FILE` env var to point the recorder (and log viewer) at a custom log path
+
+### Changed
+
+- Settings panel reworked: Operations vs Configuration sections, aligned cards, compact poll interval row, Telegram switch toggle, and Close button
+
 ## [8.5.0] - 2026-07-26
 
 ### Added

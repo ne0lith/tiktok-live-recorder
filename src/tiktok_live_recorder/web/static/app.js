@@ -14,6 +14,10 @@ const profileBadge = document.getElementById("profile-badge");
 const profileTiktokLink = document.getElementById("profile-tiktok-link");
 const settingsPanel = document.getElementById("settings-panel");
 const settingsToggle = document.getElementById("settings-toggle");
+const logsPanel = document.getElementById("logs-panel");
+const logsToggle = document.getElementById("logs-toggle");
+const logsMeta = document.getElementById("logs-meta");
+const logOutput = document.getElementById("log-output");
 const pollSummary = document.getElementById("poll-summary");
 const addUserForm = document.getElementById("add-user-form");
 const toast = document.getElementById("toast");
@@ -33,6 +37,12 @@ const libraryState = {
 const INITIAL_VISIBLE = 8;
 const LOAD_MORE_STEP = 20;
 const API_TIMEOUT_MS = 12000;
+const LOG_REFRESH_MS = 3000;
+
+const logState = {
+  timer: null,
+  stickToBottom: true,
+};
 
 function showToast(message) {
   toast.textContent = message;
@@ -848,6 +858,116 @@ async function refreshMedia({ force = false } = {}) {
   renderMedia(media);
 }
 
+function parseLogLineLevel(line) {
+  const match = line.match(/ \[(DEBUG|INFO|WARNING|ERROR|CRITICAL)\] /);
+  return match ? match[1] : null;
+}
+
+function formatLogSize(bytes) {
+  if (!bytes) return "0 B";
+  return formatBytes(bytes);
+}
+
+function renderLogs(payload) {
+  const lines = payload.lines || [];
+  const truncatedNote = payload.truncated ? " · truncated" : "";
+  logsMeta.textContent = `${payload.path || "log file"} · ${lines.length} line${
+    lines.length === 1 ? "" : "s"
+  } · ${formatLogSize(payload.size)}${truncatedNote}`;
+
+  const atBottom =
+    logOutput.scrollHeight - logOutput.scrollTop - logOutput.clientHeight < 24;
+  if (atBottom) {
+    logState.stickToBottom = true;
+  }
+
+  logOutput.replaceChildren();
+  if (!lines.length) {
+    const empty = document.createElement("div");
+    empty.className = "log-line empty";
+    empty.textContent = "No log lines yet.";
+    logOutput.append(empty);
+    return;
+  }
+
+  for (const line of lines) {
+    const row = document.createElement("div");
+    const level = parseLogLineLevel(line);
+    row.className = `log-line${level ? ` level-${level}` : ""}`;
+    row.textContent = line;
+    logOutput.append(row);
+  }
+
+  if (logState.stickToBottom) {
+    logOutput.scrollTop = logOutput.scrollHeight;
+  }
+}
+
+async function refreshLogs() {
+  const lines = document.getElementById("logs-lines")?.value || "300";
+  const level = document.getElementById("logs-level")?.value || "";
+  const params = new URLSearchParams({ lines: String(lines) });
+  if (level) params.set("level", level);
+  const payload = await api(`/api/logs?${params.toString()}`);
+  renderLogs(payload);
+}
+
+function stopLogRefresh() {
+  if (logState.timer) {
+    clearInterval(logState.timer);
+    logState.timer = null;
+  }
+}
+
+function startLogRefresh() {
+  stopLogRefresh();
+  if (!document.getElementById("logs-autorefresh")?.checked) return;
+  logState.timer = setInterval(() => {
+    refreshLogs().catch((error) => showToast(error.message));
+  }, LOG_REFRESH_MS);
+}
+
+function isLogsPanelOpen() {
+  return logsPanel && !logsPanel.classList.contains("hidden");
+}
+
+function closeLogsPanel() {
+  logsPanel.classList.add("hidden");
+  logsToggle.classList.remove("is-active");
+  stopLogRefresh();
+}
+
+function closeSettingsPanel() {
+  settingsPanel.classList.add("hidden");
+  settingsToggle.classList.remove("is-active");
+}
+
+async function openSettingsPanel() {
+  closeLogsPanel();
+  settingsPanel.classList.remove("hidden");
+  settingsToggle.classList.add("is-active");
+  try {
+    await loadSettings();
+  } catch (error) {
+    showToast(error.message);
+  }
+  settingsPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function openLogsPanel() {
+  closeSettingsPanel();
+  logsPanel.classList.remove("hidden");
+  logsToggle.classList.add("is-active");
+  logState.stickToBottom = true;
+  try {
+    await refreshLogs();
+    startLogRefresh();
+  } catch (error) {
+    showToast(error.message);
+  }
+  logsPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 statusBody.addEventListener("click", async (event) => {
   const profileButton = event.target.closest("button[data-profile]");
   if (profileButton) {
@@ -954,17 +1074,67 @@ window.addEventListener("hashchange", () => {
 });
 
 document.getElementById("settings-toggle").addEventListener("click", async () => {
-  const opening = settingsPanel.classList.contains("hidden");
-  settingsPanel.classList.toggle("hidden");
-  settingsToggle.classList.toggle("is-active", opening);
-  if (opening) {
-    try {
-      await loadSettings();
-    } catch (error) {
-      showToast(error.message);
-    }
-    settingsPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+  if (!settingsPanel.classList.contains("hidden")) {
+    closeSettingsPanel();
+    return;
   }
+  await openSettingsPanel();
+});
+
+document.getElementById("settings-close").addEventListener("click", () => {
+  closeSettingsPanel();
+});
+
+document.getElementById("logs-toggle").addEventListener("click", async () => {
+  if (isLogsPanelOpen()) {
+    closeLogsPanel();
+    return;
+  }
+  await openLogsPanel();
+});
+
+document.getElementById("logs-refresh-btn").addEventListener("click", async () => {
+  try {
+    logState.stickToBottom = true;
+    await refreshLogs();
+  } catch (error) {
+    showToast(error.message);
+  }
+});
+
+document.getElementById("logs-lines").addEventListener("change", async () => {
+  if (!isLogsPanelOpen()) return;
+  try {
+    logState.stickToBottom = true;
+    await refreshLogs();
+  } catch (error) {
+    showToast(error.message);
+  }
+});
+
+document.getElementById("logs-level").addEventListener("change", async () => {
+  if (!isLogsPanelOpen()) return;
+  try {
+    logState.stickToBottom = true;
+    await refreshLogs();
+  } catch (error) {
+    showToast(error.message);
+  }
+});
+
+document.getElementById("logs-autorefresh").addEventListener("change", () => {
+  if (!isLogsPanelOpen()) return;
+  if (document.getElementById("logs-autorefresh").checked) {
+    startLogRefresh();
+  } else {
+    stopLogRefresh();
+  }
+});
+
+logOutput?.addEventListener("scroll", () => {
+  const atBottom =
+    logOutput.scrollHeight - logOutput.scrollTop - logOutput.clientHeight < 24;
+  logState.stickToBottom = atBottom;
 });
 
 function syncRuntimeControls(status) {

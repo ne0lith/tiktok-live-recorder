@@ -24,6 +24,8 @@ from tiktok_live_recorder.utils.utils import (
     write_paused_users,
     write_telegram_config,
 )
+from tiktok_live_recorder.utils.logger_manager import get_log_file_path
+from tiktok_live_recorder.web.logs import read_log_tail
 from tiktok_live_recorder.web.media import resolve_media_path, scan_media_library
 
 if TYPE_CHECKING:
@@ -97,6 +99,26 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
     @app.get("/api/media")
     def api_media() -> dict[str, list[dict]]:
         return scan_media_library(output_base, custom_output)
+
+    @app.get("/api/logs")
+    def api_logs(lines: int = 300, level: str | None = None) -> dict[str, Any]:
+        if lines < 1 or lines > 2000:
+            raise HTTPException(
+                status_code=400,
+                detail="lines must be between 1 and 2000",
+            )
+        if level is not None:
+            level = level.upper()
+            try:
+                payload = read_log_tail(
+                    get_log_file_path(),
+                    max_lines=lines,
+                    min_level=level,
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            return payload
+        return read_log_tail(get_log_file_path(), max_lines=lines)
 
     @app.get("/media/{username}/{filename}")
     def serve_media(username: str, filename: str):
