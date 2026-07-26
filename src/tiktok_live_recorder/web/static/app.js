@@ -72,7 +72,7 @@ async function api(path, options = {}) {
     return response.json();
   } catch (error) {
     if (error.name === "AbortError") {
-      throw new Error("Request timed out — recorder may be busy or network is down");
+      throw new Error("Request timed out - recorder may be busy or network is down");
     }
     throw error;
   } finally {
