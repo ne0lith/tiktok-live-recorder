@@ -1,6 +1,8 @@
 import re
 from pathlib import Path
 
+from tiktok_live_recorder.web.thumbnails import thumbnail_url
+
 MEDIA_PATTERN = re.compile(r"^TK_(?P<username>[^_]+)_.*\.mp4$", re.IGNORECASE)
 LEGACY_SUBDIR = "legacy"
 
@@ -39,7 +41,7 @@ def _media_entry(
         resolved = str(path)
     is_flv = path.name.endswith("_flv.mp4")
     is_active = resolved in (active_paths or set())
-    return {
+    entry = {
         "filename": path.name,
         "username": username,
         "size": stat.st_size,
@@ -50,6 +52,9 @@ def _media_entry(
         "url": url,
         "path": resolved,
     }
+    if not entry["in_progress"]:
+        entry["thumb_url"] = thumbnail_url(username, path.name, subdir=subdir)
+    return entry
 
 
 def _collect_user_media(

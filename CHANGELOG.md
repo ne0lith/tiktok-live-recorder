@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.15.0] - 2026-07-26
+
+### Added
+
+- **Media library thumbnails**: server-generated JPEG previews cached on disk next to each recording (`*.thumb.jpg`); shared across browsers and sessions via `/media/.../thumb` endpoints
+
 ## [8.14.5] - 2026-07-26
 
 ### Fixed
@@ -469,7 +475,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.14.5...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.15.0...HEAD
+[8.15.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.14.5...v8.15.0
 [8.14.5]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.14.4...v8.14.5
 [8.14.4]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.14.3...v8.14.4
 [8.12.6]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.12.5...v8.12.6

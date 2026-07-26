@@ -35,6 +35,10 @@ from tiktok_live_recorder.web.media import (
     resolve_media_path,
     scan_media_library,
 )
+from tiktok_live_recorder.web.thumbnails import (
+    delete_thumbnail,
+    ensure_thumbnail,
+)
 
 if TYPE_CHECKING:
     from tiktok_live_recorder.core.tiktok_recorder import TikTokRecorder
@@ -104,6 +108,7 @@ def _delete_media_file(
             detail="Cannot delete an in-progress recording",
         )
     path.unlink()
+    delete_thumbnail(path)
 
 
 def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
@@ -216,6 +221,42 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
                 status_code=409,
                 detail=f"Could not clear log file (it may be locked): {exc}",
             ) from exc
+
+    @app.get("/media/{username}/{filename}/thumb")
+    def serve_media_thumb(username: str, filename: str):
+        path = resolve_media_path(output_base, custom_output, username, filename)
+        if path is None:
+            raise HTTPException(status_code=404, detail="Media not found")
+        thumb_path = ensure_thumbnail(path, ffmpeg_path=config.ffmpeg_path)
+        if thumb_path is None:
+            raise HTTPException(status_code=404, detail="Thumbnail not available")
+        return FileResponse(
+            thumb_path,
+            media_type="image/jpeg",
+            filename=thumb_path.name,
+            headers={"Cache-Control": "public, max-age=31536000, immutable"},
+        )
+
+    @app.get("/media/{username}/legacy/{filename}/thumb")
+    def serve_legacy_media_thumb(username: str, filename: str):
+        path = resolve_media_path(
+            output_base,
+            custom_output,
+            username,
+            filename,
+            subdir="legacy",
+        )
+        if path is None:
+            raise HTTPException(status_code=404, detail="Media not found")
+        thumb_path = ensure_thumbnail(path, ffmpeg_path=config.ffmpeg_path)
+        if thumb_path is None:
+            raise HTTPException(status_code=404, detail="Thumbnail not available")
+        return FileResponse(
+            thumb_path,
+            media_type="image/jpeg",
+            filename=thumb_path.name,
+            headers={"Cache-Control": "public, max-age=31536000, immutable"},
+        )
 
     @app.get("/media/{username}/{filename}")
     def serve_media(username: str, filename: str):

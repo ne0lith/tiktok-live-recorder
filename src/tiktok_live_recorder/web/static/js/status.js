@@ -322,9 +322,9 @@ function renderStatusLine(row, status) {
   if (isActive) {
     if (row.room_id) details.push(`Room ${row.room_id}`);
     const elapsed = formatDuration(row.elapsed_seconds);
-    if (elapsed && elapsed !== "—") details.push(elapsed);
+    if (elapsed && elapsed !== "-") details.push(elapsed);
     const size = formatBytes(row.bytes_written);
-    if (size && size !== "—") details.push(size);
+    if (size && size !== "-") details.push(size);
   }
   const detailMarkup = details.length
     ? `<p class="status-line-detail">${details.join(" · ")}</p>`

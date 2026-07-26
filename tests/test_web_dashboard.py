@@ -150,6 +150,7 @@ def test_scan_media_library_groups_by_username(tmp_path):
     assert list(media.keys()) == ["alpha"]
     assert len(media["alpha"]) == 2
     assert media["alpha"][0]["filename"].endswith("13-00-00.mp4")
+    assert media["alpha"][0]["thumb_url"].endswith("/thumb")
 
 
 def test_scan_media_library_includes_legacy_files(tmp_path):
@@ -169,6 +170,9 @@ def test_scan_media_library_includes_legacy_files(tmp_path):
     assert media["cri3_x"][0]["source"] == "legacy"
     assert media["cri3_x"][0]["url"] == (
         "/media/cri3_x/legacy/2026-07-13_22-50-16_IMG_7691.mp4"
+    )
+    assert media["cri3_x"][0]["thumb_url"] == (
+        "/media/cri3_x/legacy/2026-07-13_22-50-16_IMG_7691.mp4/thumb"
     )
 
 
@@ -376,6 +380,33 @@ def test_api_pause_poll_and_stop(api_client, monkeypatch):
 
     response = client.post("/api/recordings/alpha/stop")
     assert response.status_code == 200
+
+
+def test_media_thumb_endpoint(tmp_path, monkeypatch):
+    file_path = tmp_path / "TK_alpha_2026.01.01_12-00-00.mp4"
+    thumb_path = tmp_path / "TK_alpha_2026.01.01_12-00-00.thumb.jpg"
+    file_path.write_bytes(b"video-data")
+    thumb_path.write_bytes(b"jpeg-data")
+
+    recorder = StubRecorder()
+    config = RecorderConfig(
+        mode=Mode.WATCHLIST,
+        users=["alpha"],
+        cookies={},
+        output=str(tmp_path),
+    )
+    client = TestClient(create_app(recorder, config))
+
+    with monkeypatch.context() as patcher:
+        patcher.setattr(
+            "tiktok_live_recorder.web.app.ensure_thumbnail",
+            lambda path, ffmpeg_path=None: thumb_path if path == file_path else None,
+        )
+        response = client.get("/media/alpha/TK_alpha_2026.01.01_12-00-00.mp4/thumb")
+
+    assert response.status_code == 200
+    assert response.content == b"jpeg-data"
+    assert response.headers["content-type"].startswith("image/jpeg")
 
 
 def test_media_range_response(tmp_path):
