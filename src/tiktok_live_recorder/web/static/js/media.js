@@ -16,7 +16,8 @@ const librarySummary = document.getElementById("library-summary");
 const mediaSearch = document.getElementById("media-search");
 const mediaPlayer = document.getElementById("media-player");
 const mediaPlayerVideo = document.getElementById("media-player-video");
-const playerTitle = document.getElementById("player-title");
+const playerUsername = document.getElementById("player-username");
+const playerFilename = document.getElementById("player-filename");
 const playerMeta = document.getElementById("player-meta");
 
 export function loadLibraryPreferences() {
@@ -129,7 +130,8 @@ function setPlayerOpen(open) {
 
 export function playMedia(item, username) {
   libraryState.playingUrl = item.url;
-  if (playerTitle) playerTitle.textContent = `@${username} · ${item.filename}`;
+  if (playerUsername) playerUsername.textContent = `@${username}`;
+  if (playerFilename) playerFilename.textContent = item.filename;
   if (playerMeta) playerMeta.textContent = mediaItemMeta(item);
   setPlayerOpen(true);
   const targetUrl = new URL(item.url, window.location.origin).href;

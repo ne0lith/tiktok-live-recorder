@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.14.2] - 2026-07-26
+
+### Fixed
+
+- **Now playing header**: show `@username` prominent with filename as smaller secondary text
+- **Player close control**: float outside the card instead of crowding the header
+- **Media library scroll**: clip list scrolling to rounded container corners
+
 ## [8.14.1] - 2026-07-26
 
 ### Fixed

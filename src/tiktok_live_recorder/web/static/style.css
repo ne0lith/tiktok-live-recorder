@@ -625,6 +625,10 @@ body.modal-open {
   background: rgba(255, 255, 255, 0.04);
 }
 
+.library-panel {
+  overflow: hidden;
+}
+
 .library-body {
   display: block;
 }
@@ -633,13 +637,45 @@ body.modal-open {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  padding-top: 0.75rem;
+  padding-right: 0.75rem;
 }
 
 .library-list-wrap {
+  display: flex;
+  flex-direction: column;
   min-height: 0;
   max-height: min(58vh, 620px);
-  overflow: auto;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.library-list-wrap .media-library {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   overscroll-behavior: contain;
+  padding: 0.2rem 0.35rem 0.2rem 0.15rem;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+}
+
+.library-list-wrap .media-library::-webkit-scrollbar {
+  width: 9px;
+}
+
+.library-list-wrap .media-library::-webkit-scrollbar-track {
+  background: transparent;
+  margin-block: 6px;
+}
+
+.library-list-wrap .media-library::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
 }
 
 .library-empty {
@@ -1020,6 +1056,7 @@ td.col-room {
 }
 
 .media-player {
+  position: relative;
   padding: 1rem;
   border: 1px solid rgba(63, 208, 201, 0.22);
   border-radius: 16px;
@@ -1031,19 +1068,39 @@ td.col-room {
   overscroll-behavior: contain;
 }
 
-.media-player-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: start;
-  gap: 1rem;
-  margin-bottom: 0.85rem;
+.media-player-close {
+  position: absolute;
+  top: -0.65rem;
+  right: -0.65rem;
+  z-index: 2;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
 }
 
-.player-title {
+.media-player-head {
+  margin-bottom: 0.85rem;
+  padding-right: 0.25rem;
+}
+
+.player-username {
   margin: 0.15rem 0 0;
   font-family: var(--font-serif);
   font-size: 1.2rem;
   font-weight: 600;
+}
+
+.player-filename {
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.35;
+  word-break: break-all;
+}
+
+.media-player-head .meta {
+  margin-top: 0.35rem;
 }
 
 .media-player video {
@@ -1468,6 +1525,10 @@ td.col-room {
 
   .library-list-wrap {
     max-height: min(52vh, 520px);
+  }
+
+  .library-list-wrap .media-library {
+    max-height: none;
   }
 
   .settings-row--2 {
