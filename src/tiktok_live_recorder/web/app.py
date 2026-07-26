@@ -116,7 +116,12 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
     @app.get("/index.html", include_in_schema=False)
     def dashboard_index() -> HTMLResponse:
         version = get_version()
-        html = INDEX_HTML.read_text(encoding="utf-8").replace("__VERSION__", version)
+        ffmpeg_json = json.dumps(recorder.get_ffmpeg_info())
+        html = (
+            INDEX_HTML.read_text(encoding="utf-8")
+            .replace("__VERSION__", version)
+            .replace("__FFMPEG_JSON__", ffmpeg_json)
+        )
         return HTMLResponse(
             html,
             headers={"Cache-Control": "no-cache"},

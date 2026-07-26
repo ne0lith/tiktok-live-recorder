@@ -1,6 +1,6 @@
 import { api, showToast } from "./api.js";
 import { closeModal, isModalOpen, openModal, registerModalCloseHandler } from "./modal.js";
-import { syncFfmpegInfo } from "./runtime-ui.js";
+import { syncFfmpegInfo, syncStartupFfmpegFromDom } from "./runtime-ui.js";
 import { latestStatus } from "./state.js";
 import { refreshStatus } from "./status.js";
 
@@ -63,15 +63,13 @@ export async function openSettingsPanel() {
   document.getElementById("logs-toggle")?.classList.remove("is-active");
   openModal(settingsModalId);
   settingsToggle?.classList.add("is-active");
+  syncStartupFfmpegFromDom();
   try {
     await Promise.allSettled([loadSettings(), refreshStatus()]);
-    if (latestStatus?.ffmpeg?.path) {
-      syncFfmpegInfo(latestStatus.ffmpeg);
-    } else {
-      await loadFfmpegInfo();
-    }
   } catch (error) {
     showToast(error.message);
+  } finally {
+    await loadFfmpegInfo();
   }
 }
 

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.13.2] - 2026-07-26
+
+### Fixed
+
+- **Settings FFmpeg panel**: embed resolved FFmpeg info in the dashboard HTML at request time (inline sync before ES modules load); fix invalid `<dl>` markup that could drop `#ffmpeg-source` nodes in some browsers; scope panel updates to `#ffmpeg-info`
+
 ## [8.13.1] - 2026-07-26
 
 ### Fixed

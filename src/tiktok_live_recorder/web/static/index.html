@@ -275,23 +275,54 @@
                   <p class="meta">Binary used for MP4 conversion (resolved at startup).</p>
                 </div>
                 <dl class="ffmpeg-info" id="ffmpeg-info">
-                  <div class="ffmpeg-info-row">
-                    <dt>Source</dt>
-                    <dd id="ffmpeg-source">-</dd>
-                  </div>
-                  <div class="ffmpeg-info-row">
-                    <dt>Path</dt>
-                    <dd id="ffmpeg-path" class="ffmpeg-path">-</dd>
-                  </div>
-                  <div class="ffmpeg-info-row">
-                    <dt>Version</dt>
-                    <dd id="ffmpeg-version">-</dd>
-                  </div>
-                  <div class="ffmpeg-info-row">
-                    <dt>HEVC FLV</dt>
-                    <dd id="ffmpeg-hevc">-</dd>
-                  </div>
+                  <dt>Source</dt>
+                  <dd id="ffmpeg-source">-</dd>
+                  <dt>Path</dt>
+                  <dd id="ffmpeg-path" class="ffmpeg-path">-</dd>
+                  <dt>Version</dt>
+                  <dd id="ffmpeg-version">-</dd>
+                  <dt>HEVC FLV</dt>
+                  <dd id="ffmpeg-hevc">-</dd>
                 </dl>
+                <script id="startup-ffmpeg-data" type="application/json">__FFMPEG_JSON__</script>
+                <script>
+                  (function () {
+                    var dataEl = document.getElementById("startup-ffmpeg-data");
+                    if (!dataEl) return;
+                    var ffmpeg;
+                    try {
+                      ffmpeg = JSON.parse(dataEl.textContent);
+                    } catch (e) {
+                      return;
+                    }
+                    if (!ffmpeg || !ffmpeg.path) return;
+                    var labels = {
+                      vendor: "Vendor (BtbN n8.1 auto-install)",
+                      system: "System PATH",
+                      custom: "Custom path",
+                      missing: "Missing",
+                    };
+                    var source = document.getElementById("ffmpeg-source");
+                    var path = document.getElementById("ffmpeg-path");
+                    var version = document.getElementById("ffmpeg-version");
+                    var hevc = document.getElementById("ffmpeg-hevc");
+                    if (!source || !path || !version || !hevc) return;
+                    source.textContent = labels[ffmpeg.source] || ffmpeg.source;
+                    path.textContent = ffmpeg.path;
+                    path.title = ffmpeg.path;
+                    version.textContent = ffmpeg.version || "-";
+                    if (ffmpeg.source === "vendor") {
+                      hevc.textContent = "Pinned BtbN n8.1";
+                      hevc.title = "Trusted vendor build (no runtime probe)";
+                      hevc.className = "ffmpeg-hevc ffmpeg-hevc--ok";
+                    } else {
+                      hevc.textContent = ffmpeg.hevc_capable ? "Capable" : "Not capable";
+                      hevc.className = ffmpeg.hevc_capable
+                        ? "ffmpeg-hevc ffmpeg-hevc--ok"
+                        : "ffmpeg-hevc ffmpeg-hevc--bad";
+                    }
+                  })();
+                </script>
               </div>
             </section>
           </div>

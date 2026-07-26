@@ -320,6 +320,9 @@ def test_dashboard_index_cache_busts_assets(api_client):
     assert 'id="activity-feed"' in response.text
     assert 'id="connection-banner"' in response.text
     assert 'id="status-filter"' not in response.text
+    assert 'id="startup-ffmpeg-data"' in response.text
+    assert '"path":"/usr/bin/ffmpeg"' in response.text.replace(" ", "")
+    assert "__FFMPEG_JSON__" not in response.text
     assert response.headers.get("cache-control") == "no-cache"
 
 

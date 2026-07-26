@@ -12,6 +12,7 @@ import {
 import { initModals } from "./modal.js";
 import { initSegmentedControls } from "./segmented.js";
 import { initSettingsInteractions, loadSettings } from "./settings.js";
+import { syncStartupFfmpegFromDom } from "./runtime-ui.js";
 import {
   connectEventStream,
   startMediaFallback,
@@ -30,6 +31,7 @@ import {
 } from "./state.js";
 
 async function boot() {
+  syncStartupFfmpegFromDom();
   readProfileFromHash();
   loadLibraryPreferences();
   syncLibraryViewButtons();

@@ -1,9 +1,34 @@
+function ffmpegPanelElements() {
+  const root = document.getElementById("ffmpeg-info");
+  if (!root) {
+    return null;
+  }
+  const sourceEl = root.querySelector("#ffmpeg-source");
+  const pathEl = root.querySelector("#ffmpeg-path");
+  const versionEl = root.querySelector("#ffmpeg-version");
+  const hevcEl = root.querySelector("#ffmpeg-hevc");
+  if (!sourceEl || !pathEl || !versionEl || !hevcEl) {
+    return null;
+  }
+  return { sourceEl, pathEl, versionEl, hevcEl };
+}
+
+export function readStartupFfmpegFromDom() {
+  const dataEl = document.getElementById("startup-ffmpeg-data");
+  if (!dataEl?.textContent?.trim()) {
+    return null;
+  }
+  try {
+    return JSON.parse(dataEl.textContent);
+  } catch {
+    return null;
+  }
+}
+
 export function syncFfmpegInfo(ffmpeg) {
-  const sourceEl = document.getElementById("ffmpeg-source");
-  const pathEl = document.getElementById("ffmpeg-path");
-  const versionEl = document.getElementById("ffmpeg-version");
-  const hevcEl = document.getElementById("ffmpeg-hevc");
-  if (!sourceEl || !pathEl || !versionEl || !hevcEl) return;
+  const elements = ffmpegPanelElements();
+  if (!elements) return;
+  const { sourceEl, pathEl, versionEl, hevcEl } = elements;
 
   if (!ffmpeg?.path) {
     sourceEl.textContent = "Not configured";
@@ -52,6 +77,13 @@ export function syncFfmpegInfo(ffmpeg) {
     : "ffmpeg-hevc ffmpeg-hevc--bad";
 }
 
+export function syncStartupFfmpegFromDom() {
+  const ffmpeg = readStartupFfmpegFromDom();
+  if (ffmpeg?.path) {
+    syncFfmpegInfo(ffmpeg);
+  }
+}
+
 export function syncRuntimeControls(status) {
   const intervalInput = document.getElementById("interval-input");
   const telegramEnabled = document.getElementById("telegram-enabled");
@@ -61,7 +93,9 @@ export function syncRuntimeControls(status) {
   if (telegramEnabled && document.activeElement !== telegramEnabled) {
     telegramEnabled.checked = Boolean(status.use_telegram);
   }
-  syncFfmpegInfo(status.ffmpeg);
+  if (status?.ffmpeg?.path) {
+    syncFfmpegInfo(status.ffmpeg);
+  }
 }
 
 export function renderTelegramUploads(uploads) {
