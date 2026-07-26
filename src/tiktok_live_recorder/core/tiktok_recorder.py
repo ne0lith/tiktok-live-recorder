@@ -10,7 +10,10 @@ from requests import HTTPError, RequestException
 from tiktok_live_recorder.core.tiktok_api import TikTokAPI
 from tiktok_live_recorder.utils.logger_manager import logger
 from tiktok_live_recorder.utils.recorder_config import RecorderConfig
-from tiktok_live_recorder.utils.ffmpeg_setup import normalize_cdn_url
+from tiktok_live_recorder.utils.ffmpeg_setup import (
+    describe_ffmpeg_binary,
+    normalize_cdn_url,
+)
 from tiktok_live_recorder.utils.video_management import VideoManagement
 from tiktok_live_recorder.utils.utils import output_dir_for_user
 from tiktok_live_recorder.utils.custom_exceptions import (
@@ -47,6 +50,7 @@ class TikTokRecorder:
         self.output = config.output
         self.bitrate = config.bitrate
         self.ffmpeg_path = config.ffmpeg_path
+        self._ffmpeg_info = describe_ffmpeg_binary(config.ffmpeg_path)
         self.use_telegram = config.use_telegram
         self._proxy = config.proxy
         self._cookies = config.cookies
@@ -208,6 +212,7 @@ class TikTokRecorder:
             "poll_in_progress": poll_in_progress,
             "activity": activity,
             "convert_job": self.get_convert_job(),
+            "ffmpeg": self._ffmpeg_info,
         }
 
     def update_runtime_settings(

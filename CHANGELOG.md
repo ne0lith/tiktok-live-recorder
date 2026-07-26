@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.12.0] - 2026-07-26
+
+### Added
+
+- Dashboard **FFmpeg** panel in Settings and summary chip: resolved binary path, source (vendor/system/custom), version, and HEVC FLV capability (`GET /api/status` → `ffmpeg`)
+
+### Fixed
+
+- Recent activity feed: time, kind, and message columns now align across all entries (shared grid layout)
+
 ## [8.11.0] - 2026-07-26
 
 ### Added
@@ -317,7 +327,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.11.0...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.12.0...HEAD
+[8.12.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.11.0...v8.12.0
 [8.11.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.10.1...v8.11.0
 [8.10.1]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.10.0...v8.10.1
 [8.10.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.9.0...v8.10.0

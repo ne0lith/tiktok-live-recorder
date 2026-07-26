@@ -107,6 +107,8 @@ def test_get_status_includes_recordings():
     assert status["telegram_uploads"] == []
     assert status["poll_in_progress"] is False
     assert status["activity"] == []
+    assert "ffmpeg" in status
+    assert status["ffmpeg"]["source"] in {"vendor", "system", "custom", "missing"}
 
 
 def test_get_status_omits_dead_finished_threads():

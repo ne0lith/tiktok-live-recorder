@@ -10,6 +10,7 @@ import subprocess
 import tarfile
 import tempfile
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 import requests
@@ -361,10 +362,53 @@ def resolve_ffmpeg_path(ffmpeg_path: str | None = None) -> str:
 
 
 def log_ffmpeg_status(ffmpeg_path: str) -> None:
-    capable = ffmpeg_supports_legacy_hevc_flv(ffmpeg_path)
+    info = describe_ffmpeg_binary(ffmpeg_path)
     status = (
-        "capable for TikTok HEVC FLV" if capable else "NOT capable for TikTok HEVC FLV"
+        "capable for TikTok HEVC FLV"
+        if info["hevc_capable"]
+        else "NOT capable for TikTok HEVC FLV"
     )
-    logger.info(
-        f"FFmpeg: {ffmpeg_path} ({ffmpeg_version_line(ffmpeg_path)}) — {status}"
-    )
+    logger.info(f"FFmpeg: {info['path']} ({info['version']}) — {status}")
+
+
+def describe_ffmpeg_binary(ffmpeg_path: str | None) -> dict[str, Any]:
+    """Return resolved FFmpeg path, install source, version, and HEVC capability."""
+    if not ffmpeg_path:
+        return {
+            "path": None,
+            "source": "missing",
+            "version": None,
+            "hevc_capable": False,
+        }
+
+    path = Path(ffmpeg_path)
+    try:
+        resolved = str(path.resolve()) if path.is_file() else ffmpeg_path
+    except OSError:
+        resolved = ffmpeg_path
+
+    source = "custom"
+    try:
+        resolved_path = Path(resolved)
+        parts = resolved_path.parts
+        if ".vendor" in parts and "ffmpeg" in parts:
+            source = "vendor"
+        else:
+            system_ffmpeg = shutil.which("ffmpeg")
+            if (
+                system_ffmpeg
+                and resolved_path.resolve() == Path(system_ffmpeg).resolve()
+            ):
+                source = "system"
+    except OSError:
+        pass
+
+    exists = path.is_file() or bool(shutil.which(ffmpeg_path))
+    capable = ffmpeg_supports_legacy_hevc_flv(ffmpeg_path) if exists else False
+
+    return {
+        "path": resolved,
+        "source": source,
+        "version": ffmpeg_version_line(ffmpeg_path) if exists else None,
+        "hevc_capable": capable,
+    }

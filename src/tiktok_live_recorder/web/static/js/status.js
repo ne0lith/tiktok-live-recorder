@@ -202,6 +202,19 @@ export function renderSummaryChips(status) {
   metaChips.push(`<span class="summary-chip summary-chip--meta">Last poll ${formatTimestamp(status.last_poll_at)}</span>`);
   metaChips.push(`<span class="summary-chip summary-chip--meta">Next ${formatNextPoll(status)}</span>`);
   if (version) metaChips.push(`<span class="summary-chip summary-chip--meta">v${version}</span>`);
+  if (status.ffmpeg?.path) {
+    const sourceShort =
+      status.ffmpeg.source === "vendor"
+        ? "FFmpeg vendor"
+        : status.ffmpeg.source === "system"
+          ? "FFmpeg system"
+          : "FFmpeg custom";
+    const hevcShort = status.ffmpeg.hevc_capable ? "HEVC OK" : "HEVC !";
+    const title = `${status.ffmpeg.path}\n${status.ffmpeg.version || ""}`;
+    metaChips.push(
+      `<span class="summary-chip summary-chip--meta summary-chip--ffmpeg" title="${title.replace(/"/g, "&quot;")}">${sourceShort} · ${hevcShort}</span>`,
+    );
+  }
 
   const focusChip = selectedProfile
     ? `<button type="button" class="summary-chip summary-chip--focus" data-clear-focus="1" title="Clear focus">@${selectedProfile} <span aria-hidden="true">x</span></button>`

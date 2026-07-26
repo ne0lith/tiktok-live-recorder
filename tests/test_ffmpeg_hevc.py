@@ -192,6 +192,35 @@ def test_parse_ffmpeg_progress_line_reads_out_time_us():
     }
 
 
+def test_describe_ffmpeg_binary_detects_vendor_path():
+    from tiktok_live_recorder.utils.ffmpeg_setup import describe_ffmpeg_binary
+
+    info = describe_ffmpeg_binary("/repo/.vendor/ffmpeg/n8.1-linux64/bin/ffmpeg")
+    assert info["source"] == "vendor"
+    assert ".vendor" in info["path"]
+
+
+@patch(
+    "tiktok_live_recorder.utils.ffmpeg_setup.ffmpeg_supports_legacy_hevc_flv",
+    return_value=True,
+)
+@patch(
+    "tiktok_live_recorder.utils.ffmpeg_setup.ffmpeg_version_line",
+    return_value="ffmpeg version 8.1",
+)
+def test_describe_ffmpeg_binary_reports_capability(
+    _mock_version, _mock_capable, tmp_path
+):
+    from tiktok_live_recorder.utils.ffmpeg_setup import describe_ffmpeg_binary
+
+    ffmpeg_bin = tmp_path / "ffmpeg"
+    ffmpeg_bin.write_text("", encoding="utf-8")
+    info = describe_ffmpeg_binary(str(ffmpeg_bin))
+    assert info["hevc_capable"] is True
+    assert info["version"] == "ffmpeg version 8.1"
+    assert info["source"] == "custom"
+
+
 def test_progress_percent_clamps_to_ninety_nine_until_done():
     from tiktok_live_recorder.utils.video_management import VideoManagement
 

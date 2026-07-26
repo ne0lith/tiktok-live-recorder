@@ -29,6 +29,38 @@ export async function loadSettings() {
   }
 }
 
+export function syncFfmpegInfo(ffmpeg) {
+  const sourceEl = document.getElementById("ffmpeg-source");
+  const pathEl = document.getElementById("ffmpeg-path");
+  const versionEl = document.getElementById("ffmpeg-version");
+  const hevcEl = document.getElementById("ffmpeg-hevc");
+  if (!sourceEl || !pathEl || !versionEl || !hevcEl) return;
+
+  if (!ffmpeg?.path) {
+    sourceEl.textContent = "Not configured";
+    pathEl.textContent = "-";
+    versionEl.textContent = "-";
+    hevcEl.textContent = "-";
+    hevcEl.className = "ffmpeg-hevc ffmpeg-hevc--unknown";
+    return;
+  }
+
+  const sourceLabels = {
+    vendor: "Vendor (BtbN n8.1 auto-install)",
+    system: "System PATH",
+    custom: "Custom path",
+    missing: "Missing",
+  };
+  sourceEl.textContent = sourceLabels[ffmpeg.source] || ffmpeg.source;
+  pathEl.textContent = ffmpeg.path;
+  pathEl.title = ffmpeg.path;
+  versionEl.textContent = ffmpeg.version || "-";
+  hevcEl.textContent = ffmpeg.hevc_capable ? "Capable" : "Not capable";
+  hevcEl.className = ffmpeg.hevc_capable
+    ? "ffmpeg-hevc ffmpeg-hevc--ok"
+    : "ffmpeg-hevc ffmpeg-hevc--bad";
+}
+
 export function syncRuntimeControls(status) {
   const intervalInput = document.getElementById("interval-input");
   const telegramEnabled = document.getElementById("telegram-enabled");
@@ -38,6 +70,7 @@ export function syncRuntimeControls(status) {
   if (telegramEnabled && document.activeElement !== telegramEnabled) {
     telegramEnabled.checked = Boolean(status.use_telegram);
   }
+  syncFfmpegInfo(status.ffmpeg);
 }
 
 export function renderTelegramUploads(uploads) {
