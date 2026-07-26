@@ -131,7 +131,34 @@ def test_btbN_asset_names_are_n81_gpl():
     assert "n7.1" not in ARCH_ASSETS["linux64"]
 
 
-def test_vendor_ffmpeg_dir_under_repo():
+def test_ffprobe_for_resolves_sibling_next_to_vendor_ffmpeg(tmp_path):
+    from tiktok_live_recorder.utils.ffmpeg_setup import ffprobe_for
+
+    bin_dir = tmp_path / ".vendor" / "ffmpeg" / "n8.1-linux64" / "bin"
+    bin_dir.mkdir(parents=True)
+    ffmpeg_bin = bin_dir / "ffmpeg"
+    ffprobe_bin = bin_dir / "ffprobe"
+    ffmpeg_bin.write_text("", encoding="utf-8")
+    ffprobe_bin.write_text("", encoding="utf-8")
+
+    assert ffprobe_for(str(ffmpeg_bin)) == str(ffprobe_bin)
+
+
+def test_ffprobe_for_does_not_rewrite_vendor_directory_segment(tmp_path):
+    from tiktok_live_recorder.utils.ffmpeg_setup import ffprobe_for
+
+    bin_dir = tmp_path / ".vendor" / "ffmpeg" / "n8.1-linux64" / "bin"
+    bin_dir.mkdir(parents=True)
+    ffmpeg_bin = bin_dir / "ffmpeg.exe"
+    ffprobe_bin = bin_dir / "ffprobe.exe"
+    ffmpeg_bin.write_text("", encoding="utf-8")
+    ffprobe_bin.write_text("", encoding="utf-8")
+
+    resolved = ffprobe_for(str(ffmpeg_bin))
+    assert "ffprobe.exe" in resolved
+    assert "/ffmpeg/" in resolved.replace("\\", "/") or "\\ffmpeg\\" in resolved
+
+
     path = vendor_ffmpeg_dir("linux64")
     assert path.parts[-3:] == (".vendor", "ffmpeg", "n8.1-linux64")
 

@@ -44,12 +44,18 @@ def vendor_ffmpeg_dir(arch_key: str) -> Path:
 
 
 def ffprobe_for(ffmpeg_path: str) -> str:
+    """Resolve ffprobe next to ffmpeg (basename only — never replace path segments)."""
     path = Path(ffmpeg_path)
-    if path.name == "ffmpeg":
-        candidate = path.with_name("ffprobe")
+    name = path.name
+    if name.startswith("ffmpeg"):
+        probe_name = f"ffprobe{name[len('ffmpeg'):]}"
+        candidate = path.with_name(probe_name)
         if candidate.is_file():
             return str(candidate)
-    return str(ffmpeg_path).replace("ffmpeg", "ffprobe")
+    which_probe = shutil.which("ffprobe")
+    if which_probe:
+        return which_probe
+    return "ffprobe"
 
 
 def _linux_arch_key() -> str | None:
@@ -177,6 +183,7 @@ def _ffprobe_legacy_hevc(flv_path: str, probe_cmd: str) -> bool:
     result = subprocess.run(
         [
             probe_cmd,
+            "-nostdin",
             "-v",
             "error",
             "-select_streams",
@@ -208,6 +215,7 @@ def _ffmpeg_inspect_legacy_hevc(flv_path: str, ffmpeg_cmd: str) -> bool:
         [
             ffmpeg_cmd,
             "-hide_banner",
+            "-nostdin",
             "-nostats",
             "-i",
             flv_path,

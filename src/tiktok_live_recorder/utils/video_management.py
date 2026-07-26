@@ -8,6 +8,7 @@ from typing import Any
 
 import ffmpeg
 
+from tiktok_live_recorder.utils.ffmpeg_setup import ffprobe_for
 from tiktok_live_recorder.utils.flv_hevc_rewrite import (
     file_needs_legacy_hevc_rewrite,
     rewrite_legacy_hevc_flv,
@@ -40,12 +41,7 @@ class VideoManagement:
     def _ffprobe_cmd(ffmpeg_path: str | None) -> str:
         if not ffmpeg_path:
             return "ffprobe"
-        path = Path(ffmpeg_path)
-        if path.name == "ffmpeg":
-            candidate = path.with_name("ffprobe")
-            if candidate.is_file():
-                return str(candidate)
-        return str(ffmpeg_path).replace("ffmpeg", "ffprobe")
+        return ffprobe_for(ffmpeg_path)
 
     @staticmethod
     def _is_hevc_demux_error(stderr: str) -> bool:
