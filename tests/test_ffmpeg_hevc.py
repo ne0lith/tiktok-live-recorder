@@ -134,6 +134,57 @@ def test_vendor_ffmpeg_dir_under_repo():
     assert path.parts[-3:] == (".vendor", "ffmpeg", "n8.1-linux64")
 
 
+@patch(
+    "tiktok_live_recorder.utils.ffmpeg_setup.ffmpeg_version_line",
+    return_value="ffmpeg version 8.1 Copyright",
+)
+def test_vendor_ffmpeg_trusted_accepts_pinned_n81_build(_mock_version, tmp_path):
+    from tiktok_live_recorder.utils.ffmpeg_setup import vendor_ffmpeg_trusted
+
+    vendor_root = tmp_path / ".vendor" / "ffmpeg" / "n8.1-linux64" / "bin"
+    vendor_root.mkdir(parents=True)
+    ffmpeg_bin = vendor_root / "ffmpeg"
+    ffmpeg_bin.write_text("", encoding="utf-8")
+
+    assert vendor_ffmpeg_trusted(str(ffmpeg_bin)) is True
+
+
+@patch(
+    "tiktok_live_recorder.utils.ffmpeg_setup.ffmpeg_supports_legacy_hevc_flv",
+    return_value=False,
+)
+@patch(
+    "tiktok_live_recorder.utils.ffmpeg_setup.ffmpeg_version_line",
+    return_value="ffmpeg version 8.1 Copyright",
+)
+def test_ffmpeg_hevc_capable_trusts_vendor_without_probe(
+    _mock_version, _mock_probe, tmp_path
+):
+    from tiktok_live_recorder.utils.ffmpeg_setup import ffmpeg_hevc_capable
+
+    vendor_root = tmp_path / ".vendor" / "ffmpeg" / "n8.1-linux64" / "bin"
+    vendor_root.mkdir(parents=True)
+    ffmpeg_bin = vendor_root / "ffmpeg"
+    ffmpeg_bin.write_text("", encoding="utf-8")
+
+    assert ffmpeg_hevc_capable(str(ffmpeg_bin)) is True
+
+
+@patch(
+    "tiktok_live_recorder.utils.ffmpeg_setup.ffmpeg_version_line",
+    return_value="ffmpeg version 7.1.5",
+)
+def test_vendor_ffmpeg_trusted_rejects_ffmpeg_7(_mock_version, tmp_path):
+    from tiktok_live_recorder.utils.ffmpeg_setup import vendor_ffmpeg_trusted
+
+    vendor_root = tmp_path / ".vendor" / "ffmpeg" / "n8.1-linux64" / "bin"
+    vendor_root.mkdir(parents=True)
+    ffmpeg_bin = vendor_root / "ffmpeg"
+    ffmpeg_bin.write_text("", encoding="utf-8")
+
+    assert vendor_ffmpeg_trusted(str(ffmpeg_bin)) is False
+
+
 def test_pick_next_stream_url_uses_normalized_identity():
     from tiktok_live_recorder.core.tiktok_recorder import TikTokRecorder
     from tiktok_live_recorder.utils.recorder_config import RecorderConfig
@@ -229,7 +280,7 @@ def test_describe_ffmpeg_binary_detects_vendor_path():
 
 
 @patch(
-    "tiktok_live_recorder.utils.ffmpeg_setup.ffmpeg_supports_legacy_hevc_flv",
+    "tiktok_live_recorder.utils.ffmpeg_setup.ffmpeg_hevc_capable",
     return_value=True,
 )
 @patch(

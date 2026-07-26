@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import platform
+import re
 import shutil
 import struct
 import subprocess
@@ -254,6 +255,46 @@ def ffmpeg_version_line(ffmpeg_path: str) -> str:
         return "unknown"
 
 
+def ffmpeg_major_version(ffmpeg_path: str) -> int | None:
+    line = ffmpeg_version_line(ffmpeg_path)
+    if line == "unknown":
+        return None
+    match = re.search(r"ffmpeg version (\d+)", line)
+    if match:
+        return int(match.group(1))
+    match = re.search(r"version n(\d+)", line, re.IGNORECASE)
+    if match:
+        return int(match.group(1))
+    return None
+
+
+def is_vendor_ffmpeg_path(ffmpeg_path: str) -> bool:
+    try:
+        parts = Path(ffmpeg_path).resolve().parts
+    except OSError:
+        parts = Path(ffmpeg_path).parts
+    if ".vendor" not in parts or "ffmpeg" not in parts:
+        return False
+    return any(part.startswith(f"{FFMPEG_PIN}-") for part in parts)
+
+
+def vendor_ffmpeg_trusted(ffmpeg_path: str) -> bool:
+    """Pinned BtbN vendor builds are trusted when FFmpeg 8+ and the binary runs."""
+    if not is_vendor_ffmpeg_path(ffmpeg_path):
+        return False
+    if not Path(ffmpeg_path).is_file():
+        return False
+    major = ffmpeg_major_version(ffmpeg_path)
+    return major is not None and major >= 8
+
+
+def ffmpeg_hevc_capable(ffmpeg_path: str) -> bool:
+    """Return True when ffmpeg can handle TikTok legacy HEVC-in-FLV."""
+    if vendor_ffmpeg_trusted(ffmpeg_path):
+        return True
+    return ffmpeg_supports_legacy_hevc_flv(ffmpeg_path)
+
+
 def _parse_checksums(text: str) -> dict[str, str]:
     sums: dict[str, str] = {}
     for line in text.splitlines():
@@ -308,7 +349,7 @@ def install_linux_vendor_ffmpeg(arch_key: str) -> str:
     asset = ARCH_ASSETS[arch_key]
     install_dir = vendor_ffmpeg_dir(arch_key)
     target_ffmpeg = install_dir / "bin" / "ffmpeg"
-    if target_ffmpeg.is_file() and ffmpeg_supports_legacy_hevc_flv(str(target_ffmpeg)):
+    if target_ffmpeg.is_file() and ffmpeg_hevc_capable(str(target_ffmpeg)):
         return str(target_ffmpeg)
 
     if install_dir.exists():
@@ -335,7 +376,7 @@ def install_linux_vendor_ffmpeg(arch_key: str) -> str:
             logger.warning(f"No checksum entry for {asset}; skipping SHA-256 verify")
 
         ffmpeg_bin, _ffprobe_bin = _extract_ffmpeg_tree(archive_path, install_dir)
-        if not ffmpeg_supports_legacy_hevc_flv(str(ffmpeg_bin)):
+        if not ffmpeg_hevc_capable(str(ffmpeg_bin)):
             raise RuntimeError(
                 f"Installed FFmpeg at {ffmpeg_bin} still cannot demux legacy HEVC FLV"
             )
@@ -366,7 +407,7 @@ def resolve_ffmpeg_path(ffmpeg_path: str | None = None) -> str:
             candidates.append(path_ffmpeg)
 
     for candidate in candidates:
-        if ffmpeg_supports_legacy_hevc_flv(candidate):
+        if ffmpeg_hevc_capable(candidate):
             return candidate
 
     if platform.system().lower() == "linux":
@@ -437,7 +478,7 @@ def describe_ffmpeg_binary(ffmpeg_path: str | None) -> dict[str, Any]:
         pass
 
     exists = path.is_file() or bool(shutil.which(ffmpeg_path))
-    capable = ffmpeg_supports_legacy_hevc_flv(ffmpeg_path) if exists else False
+    capable = ffmpeg_hevc_capable(ffmpeg_path) if exists else False
 
     return {
         "path": resolved,

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.12.3] - 2026-07-26
+
+### Fixed
+
+- Linux vendor FFmpeg (BtbN n8.1 under `.vendor/ffmpeg/`) is now accepted when it runs FFmpeg 8+, even if the synthetic HEVC FLV probe fails on the host (fixes false reject and fallback to Debian 7.1)
+
 ## [8.12.2] - 2026-07-26
 
 ### Fixed
@@ -342,7 +348,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.12.2...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.12.3...HEAD
+[8.12.3]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.12.2...v8.12.3
 [8.12.2]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.12.1...v8.12.2
 [8.12.1]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.12.0...v8.12.1
 [8.12.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.11.0...v8.12.0
