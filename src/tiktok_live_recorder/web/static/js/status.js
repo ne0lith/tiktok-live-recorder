@@ -1,7 +1,6 @@
 import { api } from "./api.js";
 import { renderActivityFeed } from "./activity.js";
 import {
-  basename,
   formatBytes,
   formatDuration,
   formatNextPoll,
@@ -305,13 +304,6 @@ function renderConvertProgress(row) {
   </div>`;
 }
 
-function renderStateCell(row) {
-  return `<div class="state-cell">
-    <span class="badge ${row.state}">${formatStateLabel(row)}</span>
-    ${renderConvertProgress(row)}
-  </div>`;
-}
-
 function partitionStatusRows(rows) {
   const active = [];
   const idle = [];
@@ -322,45 +314,35 @@ function partitionStatusRows(rows) {
   return { active, idle };
 }
 
-function statusItemClasses(row) {
+function renderStatusLine(row, status) {
   const focused = usernamesMatch(row.username, selectedProfile);
-  const highlight =
-    row.state === "recording" || row.state === "live" ? " status-item--active" : "";
-  const focusClass = focused ? " status-item--focused" : "";
-  return `${highlight}${focusClass}`.trim();
-}
+  const isActive = ACTIVE_STATES.has(row.state);
+  const details = [];
+  if (isActive) {
+    if (row.room_id) details.push(`Room ${row.room_id}`);
+    const elapsed = formatDuration(row.elapsed_seconds);
+    if (elapsed && elapsed !== "—") details.push(elapsed);
+    const size = formatBytes(row.bytes_written);
+    if (size && size !== "—") details.push(size);
+  }
+  const detailMarkup = details.length
+    ? `<p class="status-line-detail">${details.join(" · ")}</p>`
+    : "";
+  const progressMarkup =
+    isActive && row.state === "converting" ? renderConvertProgress(row) : "";
 
-function renderActiveCard(row, status) {
-  const sizeCell = row.output_path
-    ? `<span class="output-cell" title="${row.output_path}"><span class="output-size">${formatBytes(row.bytes_written)}</span><span class="output-hint">${basename(row.output_path)}</span></span>`
-    : formatBytes(row.bytes_written);
-  const focused = usernamesMatch(row.username, selectedProfile);
   return `
-    <article class="status-card ${statusItemClasses(row)}" data-username="${row.username}">
-      <div class="status-card-head">
-        ${profileLinkMarkup(row.username, { active: focused })}
-        ${renderStateCell(row)}
+    <div class="status-line${isActive ? " status-line--active" : ""}${focused ? " status-line--focused" : ""}" data-username="${row.username}">
+      <div class="status-line-body">
+        <div class="status-line-main">
+          ${profileLinkMarkup(row.username, { active: focused })}
+          <span class="badge ${row.state}">${formatStateLabel(row)}</span>
+        </div>
+        ${detailMarkup}
+        ${progressMarkup}
       </div>
-      <dl class="status-card-stats">
-        <div><dt>Room</dt><dd>${row.room_id || "-"}</dd></div>
-        <div><dt>Elapsed</dt><dd>${formatDuration(row.elapsed_seconds)}</dd></div>
-        <div><dt>Size</dt><dd>${sizeCell}</dd></div>
-      </dl>
-      <div class="status-card-actions">${renderStatusActions(row, status)}</div>
-    </article>
-  `;
-}
-
-function renderIdleTile(row, status) {
-  const focused = usernamesMatch(row.username, selectedProfile);
-  return `
-    <article class="status-tile ${statusItemClasses(row)}" data-username="${row.username}">
-      <div class="status-tile-main">
-        ${profileLinkMarkup(row.username, { active: focused })}
-        <span class="badge ${row.state}">${formatStateLabel(row)}</span>
-      </div>
-      <div class="status-tile-actions">${renderStatusActions(row, status)}</div>
-    </article>
+      <div class="status-line-actions">${renderStatusActions(row, status)}</div>
+    </div>
   `;
 }
 
@@ -368,35 +350,26 @@ function renderStatusBoard(rows, status) {
   if (!statusBoard) return;
   if (!rows.length) {
     statusBoard.innerHTML = `<p class="empty">${emptyUsersMessage(status)}</p>`;
+    statusBoard.className = "status-list";
     return;
   }
 
   const { active, idle } = partitionStatusRows(rows);
-  const sections = [];
+  const parts = [];
 
   if (active.length) {
-    sections.push(`
-      <section class="status-zone">
-        <h3 class="status-zone-title">Active · ${active.length}</h3>
-        <div class="status-active-grid">
-          ${active.map((row) => renderActiveCard(row, status)).join("")}
-        </div>
-      </section>
-    `);
+    parts.push('<p class="status-section-label">Active</p>');
+    parts.push(...active.map((row) => renderStatusLine(row, status)));
   }
-
   if (idle.length) {
-    sections.push(`
-      <section class="status-zone">
-        <h3 class="status-zone-title">${active.length ? "Watchlist" : "Users"} · ${idle.length}</h3>
-        <div class="status-idle-grid">
-          ${idle.map((row) => renderIdleTile(row, status)).join("")}
-        </div>
-      </section>
-    `);
+    if (active.length) {
+      parts.push('<p class="status-section-label">Watchlist</p>');
+    }
+    parts.push(...idle.map((row) => renderStatusLine(row, status)));
   }
 
-  statusBoard.innerHTML = sections.join("");
+  statusBoard.className = "status-list";
+  statusBoard.innerHTML = parts.join("");
 }
 
 export function scrollToFocusedUser() {

@@ -1,5 +1,6 @@
 import { api, showToast } from "./api.js";
 import { formatBytes, formatTimestamp } from "./format.js";
+import { createMediaThumb, observeMediaThumbs } from "./media-thumbs.js";
 import {
   STORAGE_SORT_KEY,
   latestMedia,
@@ -150,54 +151,51 @@ export function closePlayer() {
 }
 
 function highlightActiveRow() {
-  mediaLibrary?.querySelectorAll(".media-table-row").forEach((row) => {
+  mediaLibrary?.querySelectorAll(".media-row").forEach((row) => {
     row.classList.toggle("is-active", row.dataset.url === libraryState.playingUrl);
   });
 }
 
-function createMediaTableRow(item, username, { showUser = true } = {}) {
-  const row = document.createElement("div");
-  row.className = "media-table-row";
+function createMediaRow(item, username) {
+  const row = document.createElement("article");
+  row.className = "media-row";
   row.dataset.url = item.url;
   row.dataset.username = username;
-  row.setAttribute("role", "button");
-  row.tabIndex = 0;
 
-  const nameCell = document.createElement("span");
-  nameCell.className = "media-cell media-cell--name";
+  const main = document.createElement("button");
+  main.type = "button";
+  main.className = "media-row-main";
+
+  if (!item.in_progress) {
+    main.append(createMediaThumb(item));
+  } else {
+    const thumb = document.createElement("span");
+    thumb.className = "media-thumb media-thumb--live";
+    thumb.textContent = "●";
+    main.append(thumb);
+  }
+
+  const body = document.createElement("span");
+  body.className = "media-row-body";
   const name = document.createElement("span");
   name.className = "media-row-name";
   name.title = item.filename;
-  const badges = [];
-  if (item.in_progress) badges.push("recording");
-  if (item.needs_convert) badges.push("needs convert");
-  const badgeSuffix = badges.length ? ` [${badges.join(", ")}]` : "";
-  name.textContent = `${item.filename}${badgeSuffix}`;
-  nameCell.append(name);
+  name.textContent = item.filename;
 
-  const userCell = document.createElement("span");
-  userCell.className = "media-cell media-cell--user";
-  userCell.textContent = showUser ? `@${username}` : "";
+  const meta = document.createElement("span");
+  meta.className = "media-row-meta";
+  meta.textContent = `@${username} · ${mediaItemMeta(item)}`;
 
-  const sizeCell = document.createElement("span");
-  sizeCell.className = "media-cell media-cell--size";
-  sizeCell.textContent = formatBytes(item.size);
+  const play = document.createElement("span");
+  play.className = "media-row-play";
+  play.textContent = "Play";
 
-  const dateCell = document.createElement("span");
-  dateCell.className = "media-cell media-cell--date";
-  dateCell.textContent = formatTimestamp(item.modified_at);
+  body.append(name, meta);
+  main.append(body, play);
+  main.addEventListener("click", () => playMedia(item, username));
 
-  const actionsCell = document.createElement("span");
-  actionsCell.className = "media-cell media-cell--actions";
-
-  const playBtn = document.createElement("button");
-  playBtn.type = "button";
-  playBtn.className = "btn btn-ghost btn-small";
-  playBtn.textContent = "Play";
-  playBtn.addEventListener("click", (event) => {
-    event.stopPropagation();
-    playMedia(item, username);
-  });
+  const actions = document.createElement("div");
+  actions.className = "media-row-actions";
 
   const download = document.createElement("a");
   download.className = "btn btn-ghost btn-small";
@@ -223,23 +221,11 @@ function createMediaTableRow(item, username, { showUser = true } = {}) {
     }
   });
 
-  actionsCell.append(playBtn, download, deleteBtn);
-  row.append(nameCell, userCell, sizeCell, dateCell, actionsCell);
+  actions.append(download, deleteBtn);
+  row.append(main, actions);
 
-  const activate = () => playMedia(item, username);
-  row.addEventListener("click", (event) => {
-    if (event.target.closest("button, a")) return;
-    activate();
-  });
-  row.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      activate();
-    }
-  });
-
-  if (item.in_progress) row.classList.add("media-table-row--in-progress");
-  if (item.needs_convert) row.classList.add("media-table-row--needs-convert");
+  if (item.in_progress) row.classList.add("media-row--in-progress");
+  if (item.needs_convert) row.classList.add("media-row--needs-convert");
   if (item.url === libraryState.playingUrl) row.classList.add("is-active");
   return row;
 }
@@ -254,52 +240,35 @@ async function deleteMediaItem(username, item) {
   await api(path, { method: "DELETE" });
 }
 
-function renderMediaTable(rows) {
+function renderMediaList(rows) {
   if (!mediaLibrary) return;
 
-  const table = document.createElement("div");
-  table.className = "media-table";
+  const list = document.createElement("div");
+  list.className = "media-list";
 
-  const head = document.createElement("div");
-  head.className = "media-table-head";
-  head.innerHTML = `
-    <span>Recording</span>
-    <span>User</span>
-    <span>Size</span>
-    <span>Date</span>
-    <span>Actions</span>
-  `;
-  table.append(head);
-
-  const body = document.createElement("div");
-  body.className = "media-table-body";
-
-  const groupByUser = libraryState.sortMode === "user";
-  let currentUser = null;
-
-  if (groupByUser) {
+  if (libraryState.sortMode === "user") {
     const groups = new Map();
     for (const entry of rows) {
       if (!groups.has(entry.username)) groups.set(entry.username, []);
       groups.get(entry.username).push(entry);
     }
     for (const [username, userRows] of groups) {
-      const label = document.createElement("div");
-      label.className = "media-group-label";
+      const label = document.createElement("p");
+      label.className = "media-section-label";
       label.textContent = `@${username} · ${userRows.length} recording${userRows.length === 1 ? "" : "s"} · ${formatBytes(sumMediaSize(userRows.map((entry) => entry.item)))}`;
-      body.append(label);
+      list.append(label);
       for (const { item } of userRows) {
-        body.append(createMediaTableRow(item, username, { showUser: false }));
+        list.append(createMediaRow(item, username));
       }
     }
   } else {
     for (const { item, username } of rows) {
-      body.append(createMediaTableRow(item, username, { showUser: true }));
+      list.append(createMediaRow(item, username));
     }
   }
 
-  table.append(body);
-  mediaLibrary.replaceChildren(table);
+  mediaLibrary.replaceChildren(list);
+  observeMediaThumbs(list);
 }
 
 export function renderMedia(media) {
@@ -320,7 +289,7 @@ export function renderMedia(media) {
   }
 
   const rows = flattenAndSortMedia(filtered);
-  renderMediaTable(rows);
+  renderMediaList(rows);
 }
 
 export function maybeApplyPendingMedia() {

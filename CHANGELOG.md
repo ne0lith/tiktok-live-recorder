@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.14.1] - 2026-07-26
+
+### Fixed
+
+- **Dashboard polish**: replace the card grid and spreadsheet-style media table with clean divider lists (thumbnails + row metadata); keep scroll containment and docked player without nested bordered boxes
+- **Media thumbnails**: restore preview images with lazy load, in-memory reuse, and IndexedDB cache keyed by file URL + modified time so library refreshes do not re-probe every recording
+
 ## [8.14.0] - 2026-07-26
 
 ### Changed
