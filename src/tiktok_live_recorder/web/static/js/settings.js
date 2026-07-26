@@ -61,7 +61,7 @@ export function syncFfmpegInfo(ffmpeg) {
   if (probe) {
     const modes = [];
     if (probe.legacy) modes.push("legacy");
-    if (probe.enhanced) modes.push("enhanced");
+    if (probe.roundtrip) modes.push("roundtrip");
     if (modes.length) {
       hevcText += ` (${modes.join(" + ")})`;
     } else if (ffmpeg.hevc_capable) {
@@ -70,7 +70,7 @@ export function syncFfmpegInfo(ffmpeg) {
   }
   hevcEl.textContent = hevcText;
   hevcEl.title = probe
-    ? `legacy codec-12 probe: ${probe.legacy ? "pass" : "fail"}; enhanced hvc1 probe: ${probe.enhanced ? "pass" : "fail"}`
+    ? `legacy codec-12: ${probe.legacy ? "pass" : "fail"}; enhanced hvc1: ${probe.enhanced ? "pass" : "fail"}; libx265 FLV roundtrip: ${probe.roundtrip ? "pass" : "fail"}`
     : "";
   hevcEl.className = ffmpeg.hevc_capable
     ? "ffmpeg-hevc ffmpeg-hevc--ok"

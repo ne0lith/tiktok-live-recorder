@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.12.5] - 2026-07-26
+
+### Fixed
+
+- Vendor FFmpeg verification now includes a real **libx265 → FLV → demux roundtrip** on the installed binary; synthetic codec-12 fixtures alone were failing on BtbN 8.1 while the build is otherwise capable
+- Capable when legacy, enhanced, or roundtrip probe passes; dashboard probe tooltip includes roundtrip status
+
 ## [8.12.4] - 2026-07-26
 
 ### Fixed
@@ -359,7 +366,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.12.4...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.12.5...HEAD
+[8.12.5]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.12.4...v8.12.5
 [8.12.4]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.12.3...v8.12.4
 [8.12.3]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.12.2...v8.12.3
 [8.12.2]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.12.1...v8.12.2

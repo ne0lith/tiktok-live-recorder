@@ -258,16 +258,86 @@ def _ffmpeg_install_sane(ffmpeg_path: str) -> bool:
     return _binary_runs(ffprobe_for(ffmpeg_path))
 
 
+def _demux_flv_file_detects_hevc(flv_path: str, ffmpeg_path: str) -> bool:
+    probe = ffprobe_for(ffmpeg_path)
+    if _ffprobe_legacy_hevc(flv_path, probe):
+        return True
+    return _ffmpeg_inspect_legacy_hevc(flv_path, ffmpeg_path)
+
+
+def _verify_ffmpeg_hevc_roundtrip(ffmpeg_path: str) -> bool:
+    """
+    Encode a 1-frame HEVC FLV with the binary under test, then demux it.
+
+    This is a functional check that the installed build can read/write HEVC in FLV
+    (the salvage conversion path), unlike static synthetic codec-12 fixtures.
+    """
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        flv_path = Path(tmp_dir) / "hevc_roundtrip.flv"
+        encode = subprocess.run(
+            [
+                ffmpeg_path,
+                "-y",
+                "-hide_banner",
+                "-nostdin",
+                "-loglevel",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=black:s=64x64:d=0.1:r=1",
+                "-frames:v",
+                "1",
+                "-c:v",
+                "libx265",
+                "-preset",
+                "ultrafast",
+                "-pix_fmt",
+                "yuv420p",
+                "-f",
+                "flv",
+                str(flv_path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=90,
+            check=False,
+        )
+        if encode.returncode != 0:
+            logger.debug(
+                "HEVC FLV roundtrip encode failed for %s: %s",
+                ffmpeg_path,
+                (encode.stderr or encode.stdout or "").strip(),
+            )
+            return False
+        if not flv_path.is_file() or flv_path.stat().st_size == 0:
+            return False
+        return _demux_flv_file_detects_hevc(str(flv_path), ffmpeg_path)
+
+
+def _empty_hevc_probe() -> dict[str, bool]:
+    return {"legacy": False, "enhanced": False, "roundtrip": False}
+
+
+def verify_installed_ffmpeg(ffmpeg_path: str) -> tuple[bool, dict[str, bool]]:
+    """Verify ffmpeg/ffprobe run and can handle HEVC-in-FLV (synthetic or roundtrip)."""
+    probes = _empty_hevc_probe()
+    if not _ffmpeg_install_sane(ffmpeg_path):
+        return False, probes
+    probes["legacy"] = _probe_flv_bytes(ffmpeg_path, build_legacy_hevc_probe_flv())
+    probes["enhanced"] = _probe_flv_bytes(ffmpeg_path, build_enhanced_hevc_probe_flv())
+    probes["roundtrip"] = _verify_ffmpeg_hevc_roundtrip(ffmpeg_path)
+    capable = probes["legacy"] or probes["enhanced"] or probes["roundtrip"]
+    return capable, probes
+
+
 def _probe_flv_bytes(ffmpeg_path: str, flv_bytes: bytes) -> bool:
     with tempfile.NamedTemporaryFile(suffix=".flv", delete=False) as tmp:
         tmp.write(flv_bytes)
         tmp_path = tmp.name
 
     try:
-        probe = ffprobe_for(ffmpeg_path)
-        if _ffprobe_legacy_hevc(tmp_path, probe):
-            return True
-        return _ffmpeg_inspect_legacy_hevc(tmp_path, ffmpeg_path)
+        return _demux_flv_file_detects_hevc(tmp_path, ffmpeg_path)
     except (OSError, subprocess.TimeoutExpired):
         return False
     finally:
@@ -275,18 +345,9 @@ def _probe_flv_bytes(ffmpeg_path: str, flv_bytes: bytes) -> bool:
 
 
 def probe_ffmpeg_hevc_flv(ffmpeg_path: str) -> dict[str, bool]:
-    """
-    Run real demux probes against synthetic legacy and Enhanced hvc1 FLV fixtures.
-
-    Capable for TikTok salvage when either probe detects HEVC without an
-    unsupported-codec error.
-    """
-    if not _ffmpeg_install_sane(ffmpeg_path):
-        return {"legacy": False, "enhanced": False}
-    return {
-        "legacy": _probe_flv_bytes(ffmpeg_path, build_legacy_hevc_probe_flv()),
-        "enhanced": _probe_flv_bytes(ffmpeg_path, build_enhanced_hevc_probe_flv()),
-    }
+    """Run HEVC-in-FLV verification probes (synthetic fixtures + encode roundtrip)."""
+    _, probes = verify_installed_ffmpeg(ffmpeg_path)
+    return probes
 
 
 def ffmpeg_supports_legacy_hevc_flv(ffmpeg_path: str) -> bool:
@@ -299,9 +360,11 @@ def ffmpeg_supports_legacy_hevc_flv(ffmpeg_path: str) -> bool:
 
 
 def ffmpeg_hevc_capable(ffmpeg_path: str) -> bool:
-    """Return True when ffmpeg can demux legacy or Enhanced hvc1 HEVC-in-FLV."""
-    probes = probe_ffmpeg_hevc_flv(ffmpeg_path)
-    return probes["legacy"] or probes["enhanced"]
+    """Return True when ffmpeg can handle HEVC-in-FLV (probe or roundtrip)."""
+    if not shutil.which(ffmpeg_path) and not Path(ffmpeg_path).is_file():
+        return False
+    capable, _ = verify_installed_ffmpeg(ffmpeg_path)
+    return capable
 
 
 def ffmpeg_version_line(ffmpeg_path: str) -> str:
@@ -410,16 +473,17 @@ def install_linux_vendor_ffmpeg(arch_key: str) -> str:
             logger.warning(f"No checksum entry for {asset}; skipping SHA-256 verify")
 
         ffmpeg_bin, ffprobe_bin = _extract_ffmpeg_tree(archive_path, install_dir)
-        probes = probe_ffmpeg_hevc_flv(str(ffmpeg_bin))
-        if not (probes["legacy"] or probes["enhanced"]):
+        capable, probes = verify_installed_ffmpeg(str(ffmpeg_bin))
+        if not capable:
             raise RuntimeError(
                 f"Installed FFmpeg at {ffmpeg_bin} failed HEVC FLV verification "
                 f"(legacy={probes['legacy']}, enhanced={probes['enhanced']}, "
-                f"ffprobe={ffprobe_bin.is_file()})"
+                f"roundtrip={probes['roundtrip']}, ffprobe={ffprobe_bin.is_file()})"
             )
         logger.info(
             f"Installed capable FFmpeg: {ffmpeg_bin} "
-            f"(HEVC probe legacy={probes['legacy']} enhanced={probes['enhanced']})"
+            f"(HEVC probe legacy={probes['legacy']} enhanced={probes['enhanced']} "
+            f"roundtrip={probes['roundtrip']})"
         )
         return str(ffmpeg_bin)
 
@@ -485,7 +549,8 @@ def log_ffmpeg_status(ffmpeg_path: str) -> None:
     )
     logger.info(
         f"FFmpeg: {info['path']} ({info['version']}) — {status} "
-        f"[probe legacy={probes.get('legacy')} enhanced={probes.get('enhanced')}]"
+        f"[probe legacy={probes.get('legacy')} enhanced={probes.get('enhanced')} "
+        f"roundtrip={probes.get('roundtrip')}]"
     )
 
 
@@ -497,7 +562,7 @@ def describe_ffmpeg_binary(ffmpeg_path: str | None) -> dict[str, Any]:
             "source": "missing",
             "version": None,
             "hevc_capable": False,
-            "hevc_probe": {"legacy": False, "enhanced": False},
+            "hevc_probe": _empty_hevc_probe(),
         }
 
     path = Path(ffmpeg_path)
@@ -523,15 +588,10 @@ def describe_ffmpeg_binary(ffmpeg_path: str | None) -> dict[str, Any]:
         pass
 
     exists = path.is_file() or bool(shutil.which(ffmpeg_path))
-    probes = (
-        probe_ffmpeg_hevc_flv(ffmpeg_path)
-        if exists
-        else {
-            "legacy": False,
-            "enhanced": False,
-        }
+    _, probes = (
+        verify_installed_ffmpeg(ffmpeg_path) if exists else (False, _empty_hevc_probe())
     )
-    capable = probes["legacy"] or probes["enhanced"]
+    capable = probes["legacy"] or probes["enhanced"] or probes["roundtrip"]
 
     return {
         "path": resolved,

@@ -144,41 +144,80 @@ def test_build_enhanced_hevc_probe_flv_uses_hvc1_fourcc():
     assert b"hvc1" not in legacy
 
 
+@patch("tiktok_live_recorder.utils.ffmpeg_setup.shutil.which", return_value="/usr/bin/ffmpeg")
+@patch(
+    "tiktok_live_recorder.utils.ffmpeg_setup._verify_ffmpeg_hevc_roundtrip",
+    return_value=False,
+)
 @patch(
     "tiktok_live_recorder.utils.ffmpeg_setup._ffmpeg_install_sane",
     return_value=True,
 )
 @patch("tiktok_live_recorder.utils.ffmpeg_setup._probe_flv_bytes")
-def test_ffmpeg_hevc_capable_accepts_enhanced_probe_only(mock_probe, _mock_sane):
+def test_ffmpeg_hevc_capable_accepts_enhanced_probe_only(
+    mock_probe, _mock_sane, _mock_roundtrip, _mock_which
+):
     from tiktok_live_recorder.utils.ffmpeg_setup import ffmpeg_hevc_capable
 
     mock_probe.side_effect = lambda _ffmpeg, flv: flv == build_enhanced_hevc_probe_flv()
     assert ffmpeg_hevc_capable("/usr/bin/ffmpeg") is True
 
 
+@patch("tiktok_live_recorder.utils.ffmpeg_setup.shutil.which", return_value="/usr/bin/ffmpeg")
+@patch(
+    "tiktok_live_recorder.utils.ffmpeg_setup._verify_ffmpeg_hevc_roundtrip",
+    return_value=True,
+)
 @patch(
     "tiktok_live_recorder.utils.ffmpeg_setup._ffmpeg_install_sane",
     return_value=True,
 )
 @patch("tiktok_live_recorder.utils.ffmpeg_setup._probe_flv_bytes", return_value=False)
-def test_ffmpeg_hevc_capable_rejects_when_both_probes_fail(_mock_probe, _mock_sane):
+def test_ffmpeg_hevc_capable_accepts_roundtrip_only(
+    _mock_probe, _mock_sane, _mock_roundtrip, _mock_which
+):
+    from tiktok_live_recorder.utils.ffmpeg_setup import ffmpeg_hevc_capable
+
+    assert ffmpeg_hevc_capable("/usr/bin/ffmpeg") is True
+
+
+@patch("tiktok_live_recorder.utils.ffmpeg_setup.shutil.which", return_value="/usr/bin/ffmpeg")
+@patch(
+    "tiktok_live_recorder.utils.ffmpeg_setup._verify_ffmpeg_hevc_roundtrip",
+    return_value=False,
+)
+@patch(
+    "tiktok_live_recorder.utils.ffmpeg_setup._ffmpeg_install_sane",
+    return_value=True,
+)
+@patch("tiktok_live_recorder.utils.ffmpeg_setup._probe_flv_bytes", return_value=False)
+def test_ffmpeg_hevc_capable_rejects_when_all_probes_fail(
+    _mock_probe, _mock_sane, _mock_roundtrip, _mock_which
+):
     from tiktok_live_recorder.utils.ffmpeg_setup import ffmpeg_hevc_capable
 
     assert ffmpeg_hevc_capable("/usr/bin/ffmpeg") is False
 
 
 @patch(
-    "tiktok_live_recorder.utils.ffmpeg_setup._binary_runs",
+    "tiktok_live_recorder.utils.ffmpeg_setup._verify_ffmpeg_hevc_roundtrip",
+    return_value=False,
+)
+@patch(
+    "tiktok_live_recorder.utils.ffmpeg_setup._ffmpeg_install_sane",
     return_value=True,
 )
 @patch("tiktok_live_recorder.utils.ffmpeg_setup._probe_flv_bytes")
-def test_probe_ffmpeg_hevc_flv_reports_legacy_and_enhanced(mock_probe, _mock_runs):
+def test_probe_ffmpeg_hevc_flv_reports_legacy_and_enhanced(
+    mock_probe, _mock_sane, _mock_roundtrip
+):
     from tiktok_live_recorder.utils.ffmpeg_setup import probe_ffmpeg_hevc_flv
 
     mock_probe.side_effect = lambda _ffmpeg, flv: flv == build_legacy_hevc_probe_flv()
     assert probe_ffmpeg_hevc_flv("/repo/.vendor/ffmpeg/n8.1-linux64/bin/ffmpeg") == {
         "legacy": True,
         "enhanced": False,
+        "roundtrip": False,
     }
 
 
@@ -277,8 +316,8 @@ def test_describe_ffmpeg_binary_detects_vendor_path():
 
 
 @patch(
-    "tiktok_live_recorder.utils.ffmpeg_setup.probe_ffmpeg_hevc_flv",
-    return_value={"legacy": True, "enhanced": True},
+    "tiktok_live_recorder.utils.ffmpeg_setup.verify_installed_ffmpeg",
+    return_value=(True, {"legacy": True, "enhanced": True, "roundtrip": True}),
 )
 @patch(
     "tiktok_live_recorder.utils.ffmpeg_setup.ffmpeg_version_line",
@@ -293,7 +332,11 @@ def test_describe_ffmpeg_binary_reports_capability(
     ffmpeg_bin.write_text("", encoding="utf-8")
     info = describe_ffmpeg_binary(str(ffmpeg_bin))
     assert info["hevc_capable"] is True
-    assert info["hevc_probe"] == {"legacy": True, "enhanced": True}
+    assert info["hevc_probe"] == {
+        "legacy": True,
+        "enhanced": True,
+        "roundtrip": True,
+    }
     assert info["version"] == "ffmpeg version 8.1"
     assert info["source"] == "custom"
 
