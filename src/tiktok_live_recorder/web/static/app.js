@@ -44,82 +44,6 @@ const logState = {
   stickToBottom: true,
 };
 
-let openMenu = null;
-
-function closeMenu(menu) {
-  if (!menu) return;
-  menu.classList.remove("is-open");
-  menu.querySelector(".menu-trigger")?.setAttribute("aria-expanded", "false");
-  menu.querySelector(".menu-popover")?.setAttribute("hidden", "");
-  if (openMenu === menu) {
-    openMenu = null;
-  }
-}
-
-function closeAllMenus() {
-  closeMenu(openMenu);
-}
-
-function getMenuValue(menuId) {
-  return document.getElementById(menuId)?.dataset.value ?? "";
-}
-
-function initMenu(menuId, { onChange } = {}) {
-  const menu = document.getElementById(menuId);
-  if (!menu) return;
-
-  const trigger = menu.querySelector(".menu-trigger");
-  const popover = menu.querySelector(".menu-popover");
-  const label = menu.querySelector(".menu-trigger-label");
-  const options = [...menu.querySelectorAll(".menu-option")];
-
-  function setValue(value, { silent = false } = {}) {
-    const option = options.find((entry) => entry.dataset.value === value);
-    if (!option) return;
-
-    menu.dataset.value = value;
-    label.textContent = option.textContent.trim();
-    for (const entry of options) {
-      const selected = entry === option;
-      entry.classList.toggle("is-selected", selected);
-      entry.setAttribute("aria-selected", selected ? "true" : "false");
-    }
-    if (!silent && typeof onChange === "function") {
-      onChange(value);
-    }
-  }
-
-  trigger.addEventListener("click", (event) => {
-    event.stopPropagation();
-    if (menu.classList.contains("is-open")) {
-      closeMenu(menu);
-      return;
-    }
-    closeAllMenus();
-    menu.classList.add("is-open");
-    trigger.setAttribute("aria-expanded", "true");
-    popover.removeAttribute("hidden");
-    openMenu = menu;
-    options.find((entry) => entry.classList.contains("is-selected"))?.focus();
-  });
-
-  for (const option of options) {
-    option.addEventListener("click", (event) => {
-      event.stopPropagation();
-      const value = option.dataset.value ?? "";
-      const changed = value !== menu.dataset.value;
-      setValue(value, { silent: true });
-      closeMenu(menu);
-      trigger.focus();
-      if (changed && typeof onChange === "function") {
-        onChange(value);
-      }
-    });
-  }
-
-  menu.setValue = setValue;
-}
-
 function showToast(message) {
   toast.textContent = message;
   toast.classList.remove("hidden");
@@ -980,8 +904,8 @@ function renderLogs(payload) {
 }
 
 async function refreshLogs() {
-  const lines = getMenuValue("logs-lines-menu") || "300";
-  const level = getMenuValue("logs-level-menu") || "";
+  const lines = document.getElementById("logs-lines")?.value || "300";
+  const level = document.getElementById("logs-level")?.value || "";
   const params = new URLSearchParams({ lines: String(lines) });
   if (level) params.set("level", level);
   const payload = await api(`/api/logs?${params.toString()}`);
@@ -1043,6 +967,64 @@ async function openLogsPanel() {
   }
   logsPanel.scrollIntoView({ behavior: "smooth", block: "start" });
 }
+
+async function loadSettings() {
+  const [cookies, telegram, runtime] = await Promise.all([
+    api("/api/settings/cookies"),
+    api("/api/settings/telegram"),
+    api("/api/settings/runtime"),
+  ]);
+  document.getElementById("cookies-editor").value = JSON.stringify(
+    cookies.cookies || {},
+    null,
+    2,
+  );
+  document.getElementById("telegram-editor").value = JSON.stringify(
+    telegram.telegram || {},
+    null,
+    2,
+  );
+  document.getElementById("interval-input").value = String(
+    runtime.automatic_interval_minutes ?? 5,
+  );
+  document.getElementById("telegram-enabled").checked = Boolean(runtime.use_telegram);
+}
+
+async function boot() {
+  readProfileFromHash();
+  syncLibraryViewButtons();
+
+  const [statusResult, mediaResult] = await Promise.allSettled([
+    refreshStatus(),
+    refreshMedia(),
+  ]);
+
+  if (statusResult.status === "rejected") {
+    const message =
+      statusResult.reason instanceof Error
+        ? statusResult.reason.message
+        : String(statusResult.reason);
+    showToast(`Live status: ${message}`);
+  }
+  if (mediaResult.status === "rejected") {
+    const message =
+      mediaResult.reason instanceof Error
+        ? mediaResult.reason.message
+        : String(mediaResult.reason);
+    showToast(`Media library: ${message}`);
+  }
+
+  loadSettings().catch((error) => {
+    console.warn("Settings preload failed", error);
+  });
+
+  setInterval(refreshStatus, 2500);
+  setInterval(() => refreshMedia(), 60000);
+}
+
+// Start dashboard before optional panel bindings so a later UI error cannot
+// leave status/media stuck on "Loading…".
+boot();
 
 statusBody.addEventListener("click", async (event) => {
   const profileButton = event.target.closest("button[data-profile]");
@@ -1169,7 +1151,7 @@ document.getElementById("logs-toggle").addEventListener("click", async () => {
   await openLogsPanel();
 });
 
-document.getElementById("logs-refresh-btn").addEventListener("click", async () => {
+document.getElementById("logs-refresh-btn")?.addEventListener("click", async () => {
   try {
     logState.stickToBottom = true;
     await refreshLogs();
@@ -1188,20 +1170,10 @@ async function handleLogFilterChange() {
   }
 }
 
-initMenu("logs-lines-menu", { onChange: handleLogFilterChange });
-initMenu("logs-level-menu", { onChange: handleLogFilterChange });
+document.getElementById("logs-lines")?.addEventListener("change", handleLogFilterChange);
+document.getElementById("logs-level")?.addEventListener("change", handleLogFilterChange);
 
-document.addEventListener("click", () => {
-  closeAllMenus();
-});
-
-document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") {
-    closeAllMenus();
-  }
-});
-
-document.getElementById("logs-autorefresh").addEventListener("change", () => {
+document.getElementById("logs-autorefresh")?.addEventListener("change", () => {
   if (!isLogsPanelOpen()) return;
   if (document.getElementById("logs-autorefresh").checked) {
     startLogRefresh();
@@ -1243,28 +1215,6 @@ function renderTelegramUploads(uploads) {
         `<li><span class="upload-status ${entry.status}">${entry.status}</span> @${entry.username} · ${entry.file} · ${entry.message}</li>`,
     )
     .join("");
-}
-
-async function loadSettings() {
-  const [cookies, telegram, runtime] = await Promise.all([
-    api("/api/settings/cookies"),
-    api("/api/settings/telegram"),
-    api("/api/settings/runtime"),
-  ]);
-  document.getElementById("cookies-editor").value = JSON.stringify(
-    cookies.cookies || {},
-    null,
-    2,
-  );
-  document.getElementById("telegram-editor").value = JSON.stringify(
-    telegram.telegram || {},
-    null,
-    2,
-  );
-  document.getElementById("interval-input").value = String(
-    runtime.automatic_interval_minutes ?? 5,
-  );
-  document.getElementById("telegram-enabled").checked = Boolean(runtime.use_telegram);
 }
 
 document.getElementById("save-runtime-btn").addEventListener("click", async () => {
@@ -1332,17 +1282,3 @@ document.getElementById("save-telegram-btn").addEventListener("click", async () 
     showToast(error.message);
   }
 });
-
-async function boot() {
-  readProfileFromHash();
-  syncLibraryViewButtons();
-  try {
-    await Promise.all([refreshStatus(), refreshMedia(), loadSettings()]);
-  } catch (error) {
-    showToast(error.message);
-  }
-  setInterval(refreshStatus, 2500);
-  setInterval(() => refreshMedia(), 60000);
-}
-
-boot();

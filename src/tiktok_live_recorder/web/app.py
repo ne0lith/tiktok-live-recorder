@@ -4,12 +4,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from tiktok_live_recorder.utils.custom_exceptions import UserLiveError
 from tiktok_live_recorder.utils.enums import Mode
+from tiktok_live_recorder.utils.version import get_version
 from tiktok_live_recorder.utils.utils import (
     add_user_to_file,
     cookies_file_path,
@@ -33,6 +34,7 @@ if TYPE_CHECKING:
     from tiktok_live_recorder.utils.recorder_config import RecorderConfig
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+INDEX_HTML = STATIC_DIR / "index.html"
 
 
 class UsernamePayload(BaseModel):
@@ -91,6 +93,16 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
     custom_output = config.output
 
     app = FastAPI(title="TikTok Live Recorder", docs_url=None, redoc_url=None)
+
+    @app.get("/", include_in_schema=False)
+    @app.get("/index.html", include_in_schema=False)
+    def dashboard_index() -> HTMLResponse:
+        version = get_version()
+        html = INDEX_HTML.read_text(encoding="utf-8").replace("__VERSION__", version)
+        return HTMLResponse(
+            html,
+            headers={"Cache-Control": "no-cache"},
+        )
 
     @app.get("/api/status")
     def api_status() -> dict[str, Any]:

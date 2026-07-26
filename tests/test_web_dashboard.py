@@ -281,6 +281,18 @@ def test_api_status(api_client):
     assert response.json()["users"] == ["alpha"]
 
 
+def test_dashboard_index_cache_busts_assets(api_client):
+    from tiktok_live_recorder.utils.version import get_version
+
+    client, _, _ = api_client
+    version = get_version()
+    response = client.get("/")
+    assert response.status_code == 200
+    assert f"/style.css?v={version}" in response.text
+    assert f"/app.js?v={version}" in response.text
+    assert response.headers.get("cache-control") == "no-cache"
+
+
 def test_api_add_remove_user(api_client):
     client, recorder, tmp_path = api_client
     response = client.post("/api/users", json={"username": "beta"})

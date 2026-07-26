@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.6.3] - 2026-07-26
+
+### Fixed
+
+- Dashboard assets are cache-busted by app version so HTML/JS mismatches after upgrades no longer leave the UI stuck on "Loading…" until Force check / Refresh
+- Dashboard boot runs before optional panel bindings so a later UI script error cannot block the initial status/media load
+- Log viewer Lines/Level controls restored to native dropdowns with dark-theme styling (custom menus were blocked by the log panel layout)
+- Log viewer toolbar keeps Refresh on the same row as Lines, Level, and Auto-refresh on typical desktop widths
+
 ## [8.6.2] - 2026-07-26
 
 ### Fixed

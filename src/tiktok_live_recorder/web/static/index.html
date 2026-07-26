@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=Newsreader:ital,opsz,wght@0,6..72,500;0,6..72,600;1,6..72,500&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/style.css?v=__VERSION__" />
   </head>
   <body>
     <div class="shell">
@@ -164,49 +164,25 @@
             <p id="logs-meta" class="meta">Loading…</p>
           </div>
           <div class="logs-toolbar">
-            <div class="logs-control">
-              <span class="logs-control-label" id="logs-lines-label">Lines</span>
-              <div class="menu" id="logs-lines-menu" data-value="300">
-                <button
-                  type="button"
-                  class="menu-trigger"
-                  aria-haspopup="listbox"
-                  aria-expanded="false"
-                  aria-labelledby="logs-lines-label logs-lines-value"
-                >
-                  <span class="menu-trigger-label" id="logs-lines-value">300</span>
-                  <span class="menu-chevron" aria-hidden="true"></span>
-                </button>
-                <div class="menu-popover" role="listbox" aria-labelledby="logs-lines-label" hidden>
-                  <button type="button" class="menu-option" role="option" data-value="100">100</button>
-                  <button type="button" class="menu-option is-selected" role="option" data-value="300" aria-selected="true">300</button>
-                  <button type="button" class="menu-option" role="option" data-value="500">500</button>
-                  <button type="button" class="menu-option" role="option" data-value="1000">1000</button>
-                </div>
-              </div>
-            </div>
-            <div class="logs-control">
-              <span class="logs-control-label" id="logs-level-label">Level</span>
-              <div class="menu" id="logs-level-menu" data-value="INFO">
-                <button
-                  type="button"
-                  class="menu-trigger"
-                  aria-haspopup="listbox"
-                  aria-expanded="false"
-                  aria-labelledby="logs-level-label logs-level-value"
-                >
-                  <span class="menu-trigger-label" id="logs-level-value">Info+</span>
-                  <span class="menu-chevron" aria-hidden="true"></span>
-                </button>
-                <div class="menu-popover" role="listbox" aria-labelledby="logs-level-label" hidden>
-                  <button type="button" class="menu-option" role="option" data-value="">All</button>
-                  <button type="button" class="menu-option" role="option" data-value="DEBUG">Debug+</button>
-                  <button type="button" class="menu-option is-selected" role="option" data-value="INFO" aria-selected="true">Info+</button>
-                  <button type="button" class="menu-option" role="option" data-value="WARNING">Warning+</button>
-                  <button type="button" class="menu-option" role="option" data-value="ERROR">Error+</button>
-                </div>
-              </div>
-            </div>
+            <label class="logs-control">
+              <span class="logs-control-label" for="logs-lines">Lines</span>
+              <select id="logs-lines" class="logs-select">
+                <option value="100">100</option>
+                <option value="300" selected>300</option>
+                <option value="500">500</option>
+                <option value="1000">1000</option>
+              </select>
+            </label>
+            <label class="logs-control">
+              <span class="logs-control-label" for="logs-level">Level</span>
+              <select id="logs-level" class="logs-select">
+                <option value="">All</option>
+                <option value="DEBUG">Debug+</option>
+                <option value="INFO" selected>Info+</option>
+                <option value="WARNING">Warning+</option>
+                <option value="ERROR">Error+</option>
+              </select>
+            </label>
             <label class="toggle-row toggle-row--compact logs-autorefresh" for="logs-autorefresh">
               <span class="toggle-copy">
                 <span class="toggle-title">Auto-refresh</span>
@@ -324,6 +300,6 @@
     </div>
 
     <div id="toast" class="toast hidden"></div>
-    <script src="/app.js"></script>
+    <script src="/app.js?v=__VERSION__"></script>
   </body>
 </html>
