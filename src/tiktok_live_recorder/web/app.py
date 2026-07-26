@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import asyncio
+import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -25,9 +27,14 @@ from tiktok_live_recorder.utils.utils import (
     write_paused_users,
     write_telegram_config,
 )
-from tiktok_live_recorder.utils.logger_manager import get_log_file_path
+from tiktok_live_recorder.utils.logger_manager import clear_log_file, get_log_file_path
 from tiktok_live_recorder.web.logs import read_log_tail
-from tiktok_live_recorder.web.media import resolve_media_path, scan_media_library
+from tiktok_live_recorder.web.media import (
+    find_orphan_flv_files,
+    is_active_recording_file,
+    resolve_media_path,
+    scan_media_library,
+)
 
 if TYPE_CHECKING:
     from tiktok_live_recorder.core.tiktok_recorder import TikTokRecorder
@@ -63,6 +70,14 @@ def _ensure_users_file(recorder: TikTokRecorder) -> str:
     return path
 
 
+def _scan_media(recorder: TikTokRecorder, output_base: Path, custom_output) -> dict:
+    return scan_media_library(
+        output_base,
+        custom_output,
+        recorder.active_recording_output_paths(),
+    )
+
+
 def _delete_media_file(
     output_base: Path,
     custom_output: str | Path | None,
@@ -70,6 +85,7 @@ def _delete_media_file(
     filename: str,
     *,
     subdir: str | None = None,
+    active_output_paths: set[str] | None = None,
 ) -> None:
     path = resolve_media_path(
         output_base,
@@ -80,7 +96,9 @@ def _delete_media_file(
     )
     if path is None:
         raise HTTPException(status_code=404, detail="Media not found")
-    if path.name.endswith("_flv.mp4"):
+    if path.name.endswith("_flv.mp4") and is_active_recording_file(
+        path, active_output_paths
+    ):
         raise HTTPException(
             status_code=400,
             detail="Cannot delete an in-progress recording",
@@ -108,9 +126,57 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
     def api_status() -> dict[str, Any]:
         return recorder.get_status()
 
+    @app.get("/api/version")
+    def api_version() -> dict[str, str]:
+        return {"version": get_version()}
+
     @app.get("/api/media")
     def api_media() -> dict[str, list[dict]]:
-        return scan_media_library(output_base, custom_output)
+        return _scan_media(recorder, output_base, custom_output)
+
+    @app.get("/api/media/pending-convert")
+    def api_pending_convert() -> dict[str, Any]:
+        pending = find_orphan_flv_files(
+            output_base,
+            custom_output,
+            recorder.active_recording_output_paths(),
+        )
+        return {
+            "count": len(pending),
+            "files": pending,
+            "job": recorder.get_convert_job(),
+        }
+
+    @app.post("/api/media/convert-pending")
+    def api_convert_pending() -> dict[str, Any]:
+        job = recorder.start_pending_flv_converts()
+        return {"job": job}
+
+    @app.get("/api/events")
+    async def api_events(request: Request):
+        async def event_stream():
+            media_tick = 0
+            while True:
+                if await request.is_disconnected():
+                    break
+                status = recorder.get_status()
+                yield f"data: {json.dumps({'type': 'status', 'data': status})}\n\n"
+                media_tick += 1
+                if media_tick >= 30:
+                    media_tick = 0
+                    media = _scan_media(recorder, output_base, custom_output)
+                    yield f"data: {json.dumps({'type': 'media', 'data': media})}\n\n"
+                await asyncio.sleep(1.0)
+
+        return StreamingResponse(
+            event_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     @app.get("/api/logs")
     def api_logs(lines: int = 300, level: str | None = None) -> dict[str, Any]:
@@ -131,6 +197,16 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
             return payload
         return read_log_tail(get_log_file_path(), max_lines=lines)
+
+    @app.post("/api/logs/clear")
+    def api_clear_logs() -> dict[str, Any]:
+        try:
+            return clear_log_file()
+        except OSError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Could not clear log file (it may be locked): {exc}",
+            ) from exc
 
     @app.get("/media/{username}/{filename}")
     def serve_media(username: str, filename: str):
@@ -162,7 +238,13 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
 
     @app.delete("/api/media/{username}/{filename}", status_code=204)
     def delete_media(username: str, filename: str):
-        _delete_media_file(output_base, custom_output, username, filename)
+        _delete_media_file(
+            output_base,
+            custom_output,
+            username,
+            filename,
+            active_output_paths=recorder.active_recording_output_paths(),
+        )
 
     @app.delete("/api/media/{username}/legacy/{filename}", status_code=204)
     def delete_legacy_media(username: str, filename: str):
@@ -172,6 +254,7 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
             username,
             filename,
             subdir="legacy",
+            active_output_paths=recorder.active_recording_output_paths(),
         )
 
     @app.post("/api/users")

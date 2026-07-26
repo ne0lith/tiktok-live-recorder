@@ -2,6 +2,7 @@ import logging
 import os
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+from typing import Any
 
 DEFAULT_LOG_FILE = "tiktok-recorder.log"
 
@@ -31,6 +32,55 @@ def get_log_file_path() -> Path:
         if isinstance(handler, RotatingFileHandler):
             return Path(handler.baseFilename)
     return resolve_log_file_path()
+
+
+def clear_log_file() -> dict[str, Any]:
+    """
+    Truncate the recorder log on demand.
+
+    Uses the open RotatingFileHandler stream so the file does not need to be
+    reopened (avoids lock issues while the process is logging). Rotation
+    backups (.1, .2, …) are removed so total log disk use actually drops.
+    """
+    manager = LoggerManager()
+    file_handler: RotatingFileHandler | None = None
+    for handler in manager.logger.handlers:
+        if isinstance(handler, RotatingFileHandler):
+            file_handler = handler
+            break
+
+    if file_handler is None:
+        log_path = resolve_log_file_path()
+        if log_path.is_file():
+            log_path.write_text("", encoding="utf-8")
+        return {
+            "path": str(log_path.resolve()),
+            "size": 0,
+            "removed_backups": [],
+        }
+
+    log_path = Path(file_handler.baseFilename)
+    removed_backups: list[str] = []
+
+    file_handler.acquire()
+    try:
+        if file_handler.stream:
+            file_handler.stream.seek(0)
+            file_handler.stream.truncate()
+            file_handler.stream.flush()
+        for index in range(1, file_handler.backupCount + 1):
+            backup = Path(f"{log_path}.{index}")
+            if backup.is_file():
+                backup.unlink()
+                removed_backups.append(str(backup.resolve()))
+    finally:
+        file_handler.release()
+
+    return {
+        "path": str(log_path.resolve()),
+        "size": 0,
+        "removed_backups": removed_backups,
+    }
 
 
 class LoggerManager:

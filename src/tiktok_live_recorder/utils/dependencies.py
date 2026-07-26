@@ -1,8 +1,10 @@
+import platform
 import shutil
 import subprocess
-import platform
+from pathlib import Path
 from subprocess import SubprocessError
 
+from .ffmpeg_setup import log_ffmpeg_status, resolve_ffmpeg_path
 from .logger_manager import logger
 
 
@@ -19,29 +21,18 @@ def check_ffmpeg_binary(ffmpeg_path="ffmpeg"):
         return False
 
 
-def _resolve_ffmpeg_path(ffmpeg_path="ffmpeg"):
-    """Return an absolute path when possible for clearer startup logging."""
-    resolved = shutil.which(ffmpeg_path)
-    return resolved or ffmpeg_path
-
-
 def install_ffmpeg_binary():
     try:
-        logger.error("Please, install FFmpeg with this command:")
+        logger.error("FFmpeg is required for recording conversion.")
         if platform.system().lower() == "linux":
-            import distro
-
-            linux_family = distro.like()
-            if linux_family == "debian":
-                logger.info("sudo apt install ffmpeg")
-            elif linux_family == "redhat":
-                logger.info("sudo dnf install ffmpeg / sudo yum install ffmpeg")
-            elif linux_family == "arch":
-                logger.info("sudo pacman -S ffmpeg")
-            elif linux_family == "":  # Termux
-                logger.info("pkg install ffmpeg")
-            else:
-                logger.info(f"Distro linux not supported (family: {linux_family})")
+            logger.info(
+                "On Linux, install FFmpeg manually or re-run the recorder so it can "
+                "fetch BtbN FFmpeg n8.1 into .vendor/ffmpeg/ automatically."
+            )
+            logger.info(
+                "Distro packages (apt/dnf/pacman) are optional; the vendor build is "
+                "used when missing or too old for TikTok HEVC FLV."
+            )
 
         elif platform.system().lower() == "windows":
             logger.info(
@@ -170,9 +161,43 @@ def check_and_install_dependencies():
         install_requirements()
 
 
-def check_ffmpeg(ffmpeg_path="ffmpeg"):
-    if not check_ffmpeg_binary(ffmpeg_path):
-        install_ffmpeg_binary()
-        return
+def _ffmpeg_binary_missing(ffmpeg_path: str | None) -> bool:
+    requested = ffmpeg_path or "ffmpeg"
+    if shutil.which(requested):
+        return False
+    explicit = Path(requested)
+    if explicit.is_file():
+        return False
+    try:
+        subprocess.run(
+            [requested],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+        return False
+    except FileNotFoundError:
+        return True
 
-    logger.info(f"FFmpeg found: {_resolve_ffmpeg_path(ffmpeg_path)}")
+
+def check_ffmpeg(ffmpeg_path: str | None = None) -> str | None:
+    """
+    Ensure ffmpeg exists and return the resolved binary path (vendor install on Linux).
+    """
+    if _ffmpeg_binary_missing(ffmpeg_path):
+        if platform.system().lower() != "linux":
+            logger.error("FFmpeg binary is not installed")
+            install_ffmpeg_binary()
+            return None
+        logger.info(
+            "FFmpeg not found on PATH; installing capable vendor build for Linux..."
+        )
+
+    try:
+        resolved = resolve_ffmpeg_path(ffmpeg_path)
+    except FileNotFoundError:
+        install_ffmpeg_binary()
+        return None
+
+    log_ffmpeg_status(resolved)
+    return resolved

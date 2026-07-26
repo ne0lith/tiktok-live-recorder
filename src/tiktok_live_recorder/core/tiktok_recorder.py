@@ -1,5 +1,6 @@
 import signal
 import time
+from collections import deque
 from http.client import HTTPException
 from pathlib import Path
 from threading import Event, Lock, Thread
@@ -9,6 +10,7 @@ from requests import HTTPError, RequestException
 from tiktok_live_recorder.core.tiktok_api import TikTokAPI
 from tiktok_live_recorder.utils.logger_manager import logger
 from tiktok_live_recorder.utils.recorder_config import RecorderConfig
+from tiktok_live_recorder.utils.ffmpeg_setup import normalize_cdn_url
 from tiktok_live_recorder.utils.video_management import VideoManagement
 from tiktok_live_recorder.utils.utils import output_dir_for_user
 from tiktok_live_recorder.utils.custom_exceptions import (
@@ -57,8 +59,12 @@ class TikTokRecorder:
         self._last_poll_at: float | None = None
         self._last_poll_snapshot: dict | None = None
         self._poll_label: str | None = None
+        self._convert_lock = Lock()
+        self._convert_job: dict | None = None
         self._telegram_uploads: list[dict] = []
         self._max_telegram_upload_history = 20
+        self._poll_in_progress = False
+        self._activity: deque[dict] = deque(maxlen=50)
 
     def request_stop(self):
         """Signal all loops/threads to finish and finalize open recordings."""
@@ -92,7 +98,29 @@ class TikTokRecorder:
 
     def force_poll(self) -> None:
         """Interrupt the poll sleep so the watchlist is checked immediately."""
+        self.record_activity("poll", "Manual poll requested")
         self._wake_poll_loop()
+
+    def record_activity(
+        self,
+        kind: str,
+        message: str,
+        *,
+        username: str | None = None,
+    ) -> None:
+        with self._state_lock:
+            self._activity.appendleft(
+                {
+                    "at": time.time(),
+                    "kind": kind,
+                    "message": message,
+                    "username": username,
+                }
+            )
+
+    def _set_poll_in_progress(self, value: bool) -> None:
+        with self._state_lock:
+            self._poll_in_progress = value
 
     def stop_user(self, username: str) -> bool:
         """Request graceful stop for one active recording."""
@@ -107,6 +135,7 @@ class TikTokRecorder:
         stop_event.set()
         with self._state_lock:
             entry["status"] = "stopping"
+        self.record_activity("recording", "Stop requested", username=username)
         return True
 
     def reload_cookies(self) -> None:
@@ -130,6 +159,8 @@ class TikTokRecorder:
             }
             snapshot = dict(self._last_poll_snapshot or {})
             telegram_uploads = list(self._telegram_uploads)
+            poll_in_progress = self._poll_in_progress
+            activity = list(self._activity)
 
         recordings = []
         for username, entry in active_entries.items():
@@ -173,6 +204,8 @@ class TikTokRecorder:
             "poll": snapshot,
             "recordings": recordings,
             "telegram_uploads": telegram_uploads,
+            "poll_in_progress": poll_in_progress,
+            "activity": activity,
         }
 
     def update_runtime_settings(
@@ -211,6 +244,11 @@ class TikTokRecorder:
                 },
             )
             del self._telegram_uploads[self._max_telegram_upload_history :]
+        self.record_activity(
+            "telegram",
+            f"{filename}: {message}",
+            username=username,
+        )
 
     def _maybe_upload_to_telegram(self, user: str, file_path: str) -> None:
         if not self.use_telegram:
@@ -263,6 +301,11 @@ class TikTokRecorder:
             "status": "recording",
             "stop_event": stop_event,
         }
+        self.record_activity(
+            "recording",
+            f"Started recording room {room_id}",
+            username=username,
+        )
 
     def start_recording_now(
         self,
@@ -588,9 +631,15 @@ class TikTokRecorder:
         while not self._should_stop():
             try:
                 users = get_users()
-                self._active_recordings = self._poll_users_once(
-                    users, self._active_recordings, label
-                )
+                self._set_poll_in_progress(True)
+                self.record_activity("poll", f"{label} poll started")
+                try:
+                    self._active_recordings = self._poll_users_once(
+                        users, self._active_recordings, label
+                    )
+                finally:
+                    self._set_poll_in_progress(False)
+                    self.record_activity("poll", f"{label} poll finished")
 
                 if self._should_stop():
                     break
@@ -660,7 +709,7 @@ class TikTokRecorder:
         self, candidates: list[str], failed_urls: set[str]
     ) -> str | None:
         for url in candidates:
-            if url not in failed_urls:
+            if normalize_cdn_url(url) not in failed_urls:
                 return url
         return None
 
@@ -699,6 +748,9 @@ class TikTokRecorder:
         max_empty_reconnects = 3
         empty_reconnects = 0
         last_reconnect_log = 0.0
+        cdn_gone_streak = 0
+        bytes_at_last_cdn_gone: int | None = None
+        max_cdn_gone_streak = 6
 
         buffer = bytearray()
         bytes_written = 0
@@ -788,7 +840,7 @@ class TikTokRecorder:
 
                             # Never got a usable stream from this URL — try another.
                             if bytes_written < min_stream_bytes:
-                                failed_urls.add(live_url)
+                                failed_urls.add(normalize_cdn_url(live_url))
                                 refreshed = self._refresh_live_urls(
                                     room_id, user, fallback=live_urls
                                 )
@@ -856,7 +908,19 @@ class TikTokRecorder:
 
                     except (RequestException, HTTPException) as ex:
                         if _is_stream_url_gone(ex):
-                            failed_urls.add(live_url)
+                            failed_urls.add(normalize_cdn_url(live_url))
+                            if bytes_at_last_cdn_gone == bytes_written:
+                                cdn_gone_streak += 1
+                            else:
+                                cdn_gone_streak = 1
+                            bytes_at_last_cdn_gone = bytes_written
+                            if cdn_gone_streak >= max_cdn_gone_streak:
+                                self._log_recording(
+                                    user,
+                                    "CDN URL gone repeatedly with no new data. "
+                                    "Stopping recording.",
+                                )
+                                break
                             if not self.tiktok.check_alive(
                                 room_id,
                                 assume_live_on_error=True,
@@ -936,11 +1000,115 @@ class TikTokRecorder:
 
         self._log_recording(user, f"Recording finished: {Path(output).resolve()}\n")
         self._update_recording_entry(user, status="converting")
-        VideoManagement.convert_flv_to_mp4(output, self.bitrate, self.ffmpeg_path)
-        self._update_recording_entry(user, status="finished")
+        converted = VideoManagement.convert_flv_to_mp4(
+            output, self.bitrate, self.ffmpeg_path
+        )
         mp4_output = output.replace("_flv.mp4", ".mp4")
-        if Path(mp4_output).is_file():
+        if converted and Path(mp4_output).is_file():
+            self._update_recording_entry(user, status="finished")
             self._maybe_upload_to_telegram(user, mp4_output)
+        else:
+            self._update_recording_entry(user, status="convert_failed")
+
+    def active_recording_output_paths(self) -> set[str]:
+        active: set[str] = set()
+        with self._state_lock:
+            for entry in self._active_recordings.values():
+                status = entry.get("status")
+                if status not in ("recording", "converting", "stopping"):
+                    continue
+                output_path = entry.get("output_path")
+                if output_path:
+                    try:
+                        active.add(str(Path(output_path).resolve()))
+                    except OSError:
+                        active.add(str(output_path))
+        return active
+
+    def get_convert_job(self) -> dict | None:
+        with self._convert_lock:
+            return dict(self._convert_job) if self._convert_job else None
+
+    def start_pending_flv_converts(self) -> dict:
+        from tiktok_live_recorder.web.media import find_orphan_flv_files
+
+        with self._convert_lock:
+            if self._convert_job and self._convert_job.get("running"):
+                return dict(self._convert_job)
+
+            pending = find_orphan_flv_files(
+                self._output_base(),
+                self.output,
+                self.active_recording_output_paths(),
+            )
+            self._convert_job = {
+                "running": True,
+                "total": len(pending),
+                "completed": 0,
+                "failed": 0,
+                "current": None,
+                "results": [],
+            }
+            job_snapshot = dict(self._convert_job)
+
+        if not pending:
+            with self._convert_lock:
+                self._convert_job = {
+                    "running": False,
+                    "total": 0,
+                    "completed": 0,
+                    "failed": 0,
+                    "current": None,
+                    "results": [],
+                }
+            return dict(self._convert_job)
+
+        def worker():
+            active_paths = self.active_recording_output_paths()
+            for item in pending:
+                path = Path(item["path"])
+                with self._convert_lock:
+                    if self._convert_job:
+                        self._convert_job["current"] = item["filename"]
+                if str(path.resolve()) in active_paths:
+                    result = {
+                        "filename": item["filename"],
+                        "username": item["username"],
+                        "ok": False,
+                        "error": "skipped (recording in progress)",
+                    }
+                else:
+                    ok = VideoManagement.convert_flv_to_mp4(
+                        str(path), self.bitrate, self.ffmpeg_path
+                    )
+                    mp4_path = str(path).replace("_flv.mp4", ".mp4")
+                    if ok and Path(mp4_path).is_file():
+                        self._maybe_upload_to_telegram(item["username"], mp4_path)
+                    result = {
+                        "filename": item["filename"],
+                        "username": item["username"],
+                        "ok": ok,
+                        "error": None if ok else "conversion failed",
+                    }
+                with self._convert_lock:
+                    if self._convert_job:
+                        self._convert_job["results"].append(result)
+                        if result["ok"]:
+                            self._convert_job["completed"] += 1
+                        else:
+                            self._convert_job["failed"] += 1
+            with self._convert_lock:
+                if self._convert_job:
+                    self._convert_job["running"] = False
+                    self._convert_job["current"] = None
+
+        Thread(target=worker, daemon=True, name="convert-pending-flv").start()
+        return job_snapshot
+
+    def _output_base(self) -> Path:
+        from tiktok_live_recorder.utils.utils import default_output_base
+
+        return default_output_base()
 
     def check_country_blacklisted(self):
         is_blacklisted = self.tiktok.is_country_blacklisted()

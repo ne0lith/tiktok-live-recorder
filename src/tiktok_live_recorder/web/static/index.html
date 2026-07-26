@@ -12,7 +12,13 @@
     />
     <link rel="stylesheet" href="/style.css?v=__VERSION__" />
   </head>
-  <body>
+  <body data-version="__VERSION__">
+    <div id="connection-banner" class="connection-banner hidden" role="alert">
+      <span id="connection-banner-text"></span>
+      <button id="connection-banner-retry" class="btn btn-ghost btn-small" type="button">
+        Retry now
+      </button>
+    </div>
     <div class="shell">
       <header class="topbar">
         <div class="brand">
@@ -36,193 +42,8 @@
         </div>
       </header>
 
-      <section id="settings-panel" class="panel settings-panel hidden">
-        <div class="panel-head settings-panel-head">
-          <div>
-            <h2>Settings</h2>
-            <p class="meta">Changes save directly to config files on disk.</p>
-          </div>
-          <button id="settings-close" type="button" class="btn btn-ghost btn-small">
-            Close
-          </button>
-        </div>
-
-        <div class="settings-layout">
-          <section class="settings-group">
-            <h3 class="settings-group-title">Operations</h3>
-            <div class="settings-row settings-row--2">
-              <div class="settings-block">
-                <div class="settings-block-head">
-                  <h4>Runtime</h4>
-                  <p class="meta">Poll interval and Telegram uploads.</p>
-                </div>
-                <div class="settings-field">
-                  <label class="field-label" for="interval-input">Poll interval</label>
-                  <div class="input-with-suffix">
-                    <input
-                      id="interval-input"
-                      type="number"
-                      min="1"
-                      step="1"
-                      value="5"
-                    />
-                    <span class="input-suffix">minutes</span>
-                  </div>
-                </div>
-                <label class="toggle-row" for="telegram-enabled">
-                  <span class="toggle-copy">
-                    <span class="toggle-title">Telegram uploads</span>
-                    <span class="toggle-hint">Send finished recordings automatically</span>
-                  </span>
-                  <span class="toggle">
-                    <input id="telegram-enabled" type="checkbox" />
-                    <span class="toggle-slider" aria-hidden="true"></span>
-                  </span>
-                </label>
-                <div class="settings-block-footer">
-                  <button id="save-runtime-btn" class="btn btn-primary btn-small" type="button">
-                    Save runtime
-                  </button>
-                </div>
-                <div id="telegram-uploads" class="telegram-uploads hidden">
-                  <p class="eyebrow">Recent uploads</p>
-                  <ul id="telegram-uploads-list"></ul>
-                </div>
-              </div>
-
-              <div class="settings-block">
-                <div class="settings-block-head">
-                  <h4>Record now</h4>
-                  <p class="meta">Capture a live user immediately.</p>
-                </div>
-                <div class="settings-field">
-                  <label class="field-label" for="record-username-input">Username</label>
-                  <input
-                    id="record-username-input"
-                    type="text"
-                    placeholder="@username"
-                    autocomplete="off"
-                    spellcheck="false"
-                  />
-                </div>
-                <div class="settings-field">
-                  <label class="field-label" for="record-room-input">Room ID (optional)</label>
-                  <input
-                    id="record-room-input"
-                    type="text"
-                    placeholder="Room ID"
-                    autocomplete="off"
-                    spellcheck="false"
-                  />
-                </div>
-                <div class="settings-block-footer">
-                  <button id="record-now-btn" class="btn btn-primary btn-small" type="button">
-                    Start recording
-                  </button>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section class="settings-group">
-            <h3 class="settings-group-title">Configuration files</h3>
-            <div class="settings-row settings-row--2">
-              <div class="settings-block settings-block--editor">
-                <div class="settings-block-head">
-                  <h4>Cookies</h4>
-                  <p class="meta">Session cookies for TikTok API access.</p>
-                </div>
-                <textarea id="cookies-editor" rows="10" spellcheck="false"></textarea>
-                <div class="settings-block-footer">
-                  <button id="save-cookies-btn" class="btn btn-primary btn-small" type="button">
-                    Save cookies
-                  </button>
-                </div>
-              </div>
-
-              <div class="settings-block settings-block--editor">
-                <div class="settings-block-head">
-                  <h4>Telegram</h4>
-                  <p class="meta">Bot token and destination chat.</p>
-                </div>
-                <textarea id="telegram-editor" rows="10" spellcheck="false"></textarea>
-                <div class="settings-block-footer">
-                  <button id="save-telegram-btn" class="btn btn-primary btn-small" type="button">
-                    Save telegram
-                  </button>
-                </div>
-              </div>
-            </div>
-          </section>
-        </div>
-      </section>
-
-      <section id="logs-panel" class="panel logs-panel hidden">
-        <div class="panel-head logs-panel-head">
-          <div>
-            <h2>Recorder log</h2>
-            <p id="logs-meta" class="meta">Loading…</p>
-          </div>
-          <div class="logs-toolbar">
-            <label class="logs-control">
-              <span class="logs-control-label" for="logs-lines">Lines</span>
-              <select id="logs-lines" class="logs-select">
-                <option value="100">100</option>
-                <option value="300" selected>300</option>
-                <option value="500">500</option>
-                <option value="1000">1000</option>
-              </select>
-            </label>
-            <label class="logs-control">
-              <span class="logs-control-label" for="logs-level">Level</span>
-              <select id="logs-level" class="logs-select">
-                <option value="">All</option>
-                <option value="DEBUG">Debug+</option>
-                <option value="INFO" selected>Info+</option>
-                <option value="WARNING">Warning+</option>
-                <option value="ERROR">Error+</option>
-              </select>
-            </label>
-            <label class="toggle-row toggle-row--compact logs-autorefresh" for="logs-autorefresh">
-              <span class="toggle-copy">
-                <span class="toggle-title">Auto-refresh</span>
-                <span class="toggle-hint">Update every 3 seconds</span>
-              </span>
-              <span class="toggle">
-                <input id="logs-autorefresh" type="checkbox" checked />
-                <span class="toggle-slider" aria-hidden="true"></span>
-              </span>
-            </label>
-            <button id="logs-refresh-btn" class="btn btn-ghost btn-small" type="button">
-              Refresh
-            </button>
-          </div>
-        </div>
-        <div id="log-output" class="log-output" tabindex="0"></div>
-      </section>
-
-      <section id="profile-banner" class="panel profile-banner hidden">
-        <div class="profile-banner-inner">
-          <button id="profile-back" class="btn btn-ghost btn-small" type="button">
-            &lt;- All users
-          </button>
-          <div class="profile-identity">
-            <div class="profile-title-row">
-              <h2 id="profile-title" class="profile-title"></h2>
-              <a
-                id="profile-tiktok-link"
-                class="profile-tiktok-link"
-                href="#"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                View on TikTok ↗
-              </a>
-            </div>
-            <p id="profile-meta" class="meta"></p>
-          </div>
-          <span id="profile-badge" class="badge offline">offline</span>
-        </div>
+      <section id="summary-strip" class="panel summary-strip sticky-chrome" aria-label="Operator summary">
+        <div id="summary-chips" class="summary-chips"></div>
       </section>
 
       <section class="panel status-panel">
@@ -231,7 +52,8 @@
           <p id="status-meta" class="meta">Loading…</p>
         </div>
         <div id="poll-summary" class="poll-summary hidden"></div>
-        <div class="table-wrap">
+        <div id="status-cards" class="status-cards"></div>
+        <div class="table-wrap status-table-wrap">
           <table>
             <thead>
               <tr>
@@ -246,6 +68,16 @@
             <tbody id="status-body"></tbody>
           </table>
         </div>
+        <button id="status-more" class="btn btn-ghost btn-small status-more hidden" type="button">
+          Show all users
+        </button>
+      </section>
+
+      <section class="panel activity-panel">
+        <div class="panel-head">
+          <h2>Recent activity</h2>
+        </div>
+        <ul id="activity-feed" class="activity-feed"></ul>
       </section>
 
       <section class="panel library-panel">
@@ -254,12 +86,24 @@
             <h2>Media library</h2>
             <p id="library-summary" class="meta">Loading…</p>
           </div>
-          <button id="refresh-media-btn" class="btn btn-ghost">Refresh</button>
+          <div class="panel-head-actions">
+            <button
+              id="convert-pending-btn"
+              class="btn btn-ghost"
+              type="button"
+              disabled
+              title="Convert leftover FLV recordings that failed to finalize"
+            >
+              Convert leftover FLV
+              <span id="convert-pending-count" class="badge badge-count hidden">0</span>
+            </button>
+            <button id="refresh-media-btn" class="btn btn-ghost">Refresh</button>
+          </div>
         </div>
-        <div class="library-toolbar">
+        <div class="library-toolbar sticky-chrome">
           <div
             id="library-view-toggle"
-            class="library-view-toggle"
+            class="segmented-control"
             role="group"
             aria-label="Library view"
           >
@@ -274,6 +118,15 @@
               Most recent
             </button>
           </div>
+          <label class="toolbar-field" for="library-sort">
+            <span class="toolbar-field-label">Sort</span>
+            <select id="library-sort" class="logs-select toolbar-select">
+              <option value="newest">Newest</option>
+              <option value="oldest">Oldest</option>
+              <option value="largest">Largest</option>
+              <option value="user">A-Z user</option>
+            </select>
+          </label>
           <input
             id="media-search"
             type="search"
@@ -299,7 +152,200 @@
       </section>
     </div>
 
+    <div id="settings-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settings-modal-title">
+      <div class="modal-backdrop" data-modal-close></div>
+      <div class="modal-dialog modal-dialog--wide">
+        <section class="panel settings-panel modal-panel">
+          <div class="panel-head settings-panel-head">
+            <div>
+              <h2 id="settings-modal-title">Settings</h2>
+              <p class="meta">Changes save directly to config files on disk.</p>
+            </div>
+            <button id="settings-close" type="button" class="btn btn-ghost btn-small" data-modal-close>
+              Close
+            </button>
+          </div>
+
+          <div class="settings-layout">
+            <section class="settings-group">
+              <h3 class="settings-group-title">Operations</h3>
+              <div class="settings-row settings-row--2">
+                <div class="settings-block">
+                  <div class="settings-block-head">
+                    <h4>Runtime</h4>
+                    <p class="meta">Poll interval and Telegram uploads.</p>
+                  </div>
+                  <div class="settings-field">
+                    <label class="field-label" for="interval-input">Poll interval</label>
+                    <div class="input-with-suffix">
+                      <input id="interval-input" type="number" min="1" step="1" value="5" />
+                      <span class="input-suffix">minutes</span>
+                    </div>
+                  </div>
+                  <label class="toggle-row" for="telegram-enabled">
+                    <span class="toggle-copy">
+                      <span class="toggle-title">Telegram uploads</span>
+                      <span class="toggle-hint">Send finished recordings automatically</span>
+                    </span>
+                    <span class="toggle">
+                      <input id="telegram-enabled" type="checkbox" />
+                      <span class="toggle-slider" aria-hidden="true"></span>
+                    </span>
+                  </label>
+                  <div class="settings-block-footer">
+                    <button id="save-runtime-btn" class="btn btn-primary btn-small" type="button">
+                      Save runtime
+                    </button>
+                  </div>
+                  <div id="telegram-uploads" class="telegram-uploads hidden">
+                    <p class="eyebrow">Recent uploads</p>
+                    <ul id="telegram-uploads-list"></ul>
+                  </div>
+                </div>
+
+                <div class="settings-block">
+                  <div class="settings-block-head">
+                    <h4>Record now</h4>
+                    <p class="meta">Capture a live user immediately.</p>
+                  </div>
+                  <div class="settings-field">
+                    <label class="field-label" for="record-username-input">Username</label>
+                    <input
+                      id="record-username-input"
+                      type="text"
+                      placeholder="@username"
+                      autocomplete="off"
+                      spellcheck="false"
+                    />
+                  </div>
+                  <div class="settings-field">
+                    <label class="field-label" for="record-room-input">Room ID (optional)</label>
+                    <input
+                      id="record-room-input"
+                      type="text"
+                      placeholder="Room ID"
+                      autocomplete="off"
+                      spellcheck="false"
+                    />
+                  </div>
+                  <div class="settings-block-footer">
+                    <button id="record-now-btn" class="btn btn-primary btn-small" type="button">
+                      Start recording
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="settings-group">
+              <h3 class="settings-group-title">Configuration files</h3>
+              <div class="settings-row settings-row--2">
+                <div class="settings-block settings-block--editor">
+                  <div class="settings-block-head">
+                    <h4>Cookies</h4>
+                    <p class="meta">Session cookies for TikTok API access.</p>
+                  </div>
+                  <textarea id="cookies-editor" rows="10" spellcheck="false"></textarea>
+                  <div class="settings-block-footer">
+                    <button id="save-cookies-btn" class="btn btn-primary btn-small" type="button">
+                      Save cookies
+                    </button>
+                  </div>
+                </div>
+
+                <div class="settings-block settings-block--editor">
+                  <div class="settings-block-head">
+                    <h4>Telegram</h4>
+                    <p class="meta">Bot token and destination chat.</p>
+                  </div>
+                  <textarea id="telegram-editor" rows="10" spellcheck="false"></textarea>
+                  <div class="settings-block-footer">
+                    <button id="save-telegram-btn" class="btn btn-primary btn-small" type="button">
+                      Save telegram
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <div id="logs-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="logs-modal-title">
+      <div class="modal-backdrop" data-modal-close></div>
+      <div class="modal-dialog modal-dialog--wide">
+        <section class="panel logs-panel modal-panel">
+          <div class="panel-head logs-panel-head">
+            <div>
+              <h2 id="logs-modal-title">Recorder log</h2>
+              <p id="logs-meta" class="meta">Loading…</p>
+            </div>
+            <div class="logs-toolbar">
+              <label class="logs-control">
+                <span class="logs-control-label" for="logs-lines">Lines</span>
+                <select id="logs-lines" class="logs-select">
+                  <option value="100">100</option>
+                  <option value="300" selected>300</option>
+                  <option value="500">500</option>
+                  <option value="1000">1000</option>
+                </select>
+              </label>
+              <label class="logs-control">
+                <span class="logs-control-label" for="logs-level">Level</span>
+                <select id="logs-level" class="logs-select">
+                  <option value="">All</option>
+                  <option value="DEBUG">Debug+</option>
+                  <option value="INFO" selected>Info+</option>
+                  <option value="WARNING">Warning+</option>
+                  <option value="ERROR">Error+</option>
+                </select>
+              </label>
+              <label class="toggle-row toggle-row--compact logs-autorefresh" for="logs-autorefresh">
+                <span class="toggle-copy">
+                  <span class="toggle-title">Auto-refresh</span>
+                  <span class="toggle-hint">Update every 3 seconds</span>
+                </span>
+                <span class="toggle">
+                  <input id="logs-autorefresh" type="checkbox" checked />
+                  <span class="toggle-slider" aria-hidden="true"></span>
+                </span>
+              </label>
+              <button id="logs-refresh-btn" class="btn btn-ghost btn-small" type="button">
+                Refresh
+              </button>
+              <button
+                id="logs-clear-btn"
+                class="btn btn-ghost btn-small"
+                type="button"
+                title="Truncate tiktok-recorder.log and remove rotation backups"
+              >
+                Clear log
+              </button>
+              <button id="logs-close" type="button" class="btn btn-ghost btn-small" data-modal-close>
+                Close
+              </button>
+            </div>
+          </div>
+          <div id="log-output" class="log-output" tabindex="0"></div>
+        </section>
+      </div>
+    </div>
+
+    <div id="shortcuts-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="shortcuts-modal-title">
+      <div class="modal-backdrop" data-modal-close></div>
+      <div class="modal-dialog">
+        <section class="panel modal-panel">
+          <div class="panel-head">
+            <h2 id="shortcuts-modal-title">Keyboard shortcuts</h2>
+            <button type="button" class="btn btn-ghost btn-small" data-modal-close>Close</button>
+          </div>
+          <ul id="shortcuts-list" class="shortcuts-list"></ul>
+        </section>
+      </div>
+    </div>
+
     <div id="toast" class="toast hidden"></div>
-    <script src="/app.js?v=__VERSION__"></script>
+    <script type="module" src="/js/boot.js?v=__VERSION__"></script>
   </body>
 </html>

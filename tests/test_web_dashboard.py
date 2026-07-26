@@ -105,6 +105,8 @@ def test_get_status_includes_recordings():
     assert status["recordings"][0]["bytes_written"] == 4096
     assert status["use_telegram"] is False
     assert status["telegram_uploads"] == []
+    assert status["poll_in_progress"] is False
+    assert status["activity"] == []
 
 
 def test_get_status_omits_dead_finished_threads():
@@ -225,7 +227,18 @@ class StubRecorder:
             "poll": {},
             "poll_label": None,
             "last_poll_at": None,
+            "poll_in_progress": getattr(self, "poll_in_progress", False),
+            "activity": list(getattr(self, "activity", [])),
         }
+
+    def active_recording_output_paths(self):
+        return set(getattr(self, "_active_paths", ()))
+
+    def get_convert_job(self):
+        return None
+
+    def start_pending_flv_converts(self):
+        return {"running": False, "total": 0, "completed": 0, "failed": 0}
 
     def force_poll(self):
         self.polls = getattr(self, "polls", 0) + 1
@@ -289,8 +302,29 @@ def test_dashboard_index_cache_busts_assets(api_client):
     response = client.get("/")
     assert response.status_code == 200
     assert f"/style.css?v={version}" in response.text
-    assert f"/app.js?v={version}" in response.text
+    assert f"/js/boot.js?v={version}" in response.text
+    assert 'data-version="' in response.text
+    assert 'id="settings-modal"' in response.text
+    assert 'id="logs-modal"' in response.text
+    assert 'id="activity-feed"' in response.text
+    assert 'id="connection-banner"' in response.text
+    assert 'id="status-filter"' not in response.text
     assert response.headers.get("cache-control") == "no-cache"
+
+
+def test_api_events_route_registered(api_client):
+    client, _, _ = api_client
+    paths = {getattr(route, "path", None) for route in client.app.routes}
+    assert "/api/events" in paths
+
+
+def test_api_version(api_client):
+    from tiktok_live_recorder.utils.version import get_version
+
+    client, _, _ = api_client
+    response = client.get("/api/version")
+    assert response.status_code == 200
+    assert response.json() == {"version": get_version()}
 
 
 def test_api_add_remove_user(api_client):
@@ -409,6 +443,7 @@ def test_api_delete_media(tmp_path):
     in_progress.write_bytes(b"partial")
 
     recorder = StubRecorder()
+    recorder._active_paths = {str(in_progress.resolve())}
     config = RecorderConfig(
         mode=Mode.WATCHLIST,
         users=["alpha"],

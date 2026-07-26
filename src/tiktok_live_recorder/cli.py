@@ -99,7 +99,9 @@ def main() -> int:
     try:
         args, mode = validate_and_parse_args()
 
-        check_ffmpeg(args.ffmpeg_path or "ffmpeg")
+        resolved_ffmpeg = check_ffmpeg(args.ffmpeg_path)
+        if resolved_ffmpeg:
+            args.ffmpeg_path = resolved_ffmpeg
 
         if args.update_check is True:
             logger.info("Checking for updates...\n")

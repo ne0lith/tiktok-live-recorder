@@ -7,6 +7,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.10.0] - 2026-07-26
+
+### Added
+
+- Dashboard **Clear log** button (`POST /api/logs/clear`) to truncate `tiktok-recorder.log` and remove rotation backups on demand
+
+### Changed
+
+- README and GUIDE updated for FFmpeg/HEVC auto-install, leftover FLV salvage, log viewer, and current dashboard features
+- Linux startup no longer requires any system `ffmpeg` on `PATH`; vendor BtbN n8.1 is fetched when missing or incapable
+
+## [8.9.0] - 2026-07-26
+
+### Added
+
+- Automatic Linux install of BtbN FFmpeg n8.1 (GPL static) into `.vendor/ffmpeg/` when the system binary cannot demux TikTok legacy HEVC-in-FLV (codec id 12)
+- FFmpeg capability probe at startup with clear capable / not-capable logging
+- Legacy FLV codec-12 -> Enhanced `hvc1` rewrite fallback before MP4 conversion
+- Dashboard **Convert leftover FLV** action with `GET /api/media/pending-convert` and `POST /api/media/convert-pending` for orphan `*_flv.mp4` files
+- Media library distinguishes active recordings from leftover FLVs (`needs_convert` vs `in_progress`)
+
+### Fixed
+
+- MP4 conversion failures on TikTok HEVC streams no longer mark recordings as finished; status becomes `convert_failed` when the final `.mp4` is missing
+- CDN URL retry thrashing when signed query parameters rotate (normalize URL identity before tracking failures)
+- Stop recording after repeated CDN URL gone events with no new bytes written
+
+## [8.8.0] - 2026-07-26
+
+### Added
+
+- Live dashboard updates via Server-Sent Events (`GET /api/events`) with polling fallback
+- Recent activity feed (polls, recordings, Telegram uploads) on the operator dashboard
+- Connection error banner with manual retry when the API is unreachable
+- Keyboard shortcuts (`/` search, `Esc` clear focus, `?` help, `l` logs, `s` settings)
+- Video thumbnail previews in the media library (metadata frame from finished recordings)
+- Per-user storage share bars in library sections
+- Focus chip in the summary strip (replaces separate profile panel)
+- Status table row limit with "Show all users" for large watchlists
+- Incremental status table DOM updates during live refresh
+- `poll_in_progress` and `activity` fields on `GET /api/status`
+
+### Changed
+
+- Summary strip is now the single filter surface (All / Live / Recording / …) - duplicate filter bar removed
+- Summary strip and media toolbar stick while scrolling
+- Force check shows loading state; "Poll running…" chip while a poll is active
+- User focus model keeps full dashboard visible (no profile view swap)
+
+## [8.7.0] - 2026-07-26
+
+### Added
+
+- Settings and Logs open in modal overlays so Live status and Media library stay in view
+- Operator summary strip with live/recording/offline counts, poll timing, version, and click-to-filter
+- Status filter bar (All / Live / Recording / Offline / Paused / Errors) with recording-first default sort
+- Media library sort (Newest, Oldest, Largest, A-Z user) with view mode remembered in `localStorage`
+- In-progress recordings pinned to the top of sorted lists with distinct styling
+- Sticky media player while scrolling the library
+- Mobile status cards (table hidden on narrow viewports)
+- `GET /api/version` endpoint
+- Dashboard frontend split into ES modules under `static/js/`
+
+### Changed
+
+- Profile view auto-expands the selected user's media section
+
 ## [8.6.3] - 2026-07-26
 
 ### Fixed
@@ -234,7 +301,10 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.4.2...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.10.0...HEAD
+[8.10.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.9.0...v8.10.0
+[8.9.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.8.0...v8.9.0
+[8.8.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.7.0...v8.8.0
 [8.4.2]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.4.1...v8.4.2
 [8.4.1]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.4.0...v8.4.1
 [8.4.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.3.2...v8.4.0

@@ -33,7 +33,7 @@ Forked from [Michele0303/tiktok-live-recorder](https://github.com/Michele0303/ti
 
 ## Quick Start
 
-**Prerequisites:** [Git](https://git-scm.com), [Python 3.11+](https://www.python.org/downloads/), [FFmpeg](https://ffmpeg.org/download.html), [uv](https://docs.astral.sh/uv/getting-started/installation/)
+**Prerequisites:** [Git](https://git-scm.com), [Python 3.11+](https://www.python.org/downloads/), [uv](https://docs.astral.sh/uv/getting-started/installation/), and **FFmpeg** on Windows/macOS/Termux (Linux: **optional** - a capable build is installed automatically on first run; see [FFmpeg and HEVC](docs/GUIDE.md#ffmpeg-and-hevc))
 
 ```powershell
 git clone https://github.com/ne0lith/tiktok-live-recorder
@@ -57,14 +57,16 @@ Recordings are saved to `output/<username>/` by default. The [web dashboard](doc
 
 This fork adds reliability and workflow improvements on top of the upstream project:
 
-- **Web dashboard** - operator UI on port `8787` ([details](docs/GUIDE.md#web-dashboard))
+- **Web dashboard** - live operator UI on port `8787` with SSE updates, activity feed, media library, logs, and settings ([details](docs/GUIDE.md#web-dashboard))
 - **Watchlist mode** - poll many users in one process; each live user records in a background thread
 - **`config/` directory** - secrets and watchlists live outside `src/` with committed `.example` templates
+- **TikTok HEVC FLV support** - startup FFmpeg capability probe; on Linux, automatic BtbN FFmpeg n8.1 install into `.vendor/ffmpeg/` when ffmpeg is missing or too old ([details](docs/GUIDE.md#ffmpeg-and-hevc))
+- **Salvage leftover FLVs** - dashboard action to convert orphan `*_flv.mp4` files that never finalized ([details](docs/GUIDE.md#salvaging-leftover-recordings))
 - **WAF / restricted-live fallback** - when the API returns `4003110`, stream URLs are scraped from the live page HTML
-- **Recording reliability** - stale ended rooms are rejected, CDN URLs are retried, and empty responses are skipped
+- **Recording reliability** - stale ended rooms are rejected, CDN URLs are retried (with signed-query normalization), and empty responses are skipped
 - **Instance lock** - prevents two recorder processes from writing to the same output directory
 - **Early watchlist re-poll** - when a recording ends, the watchlist is rechecked immediately instead of waiting for the full poll interval
-- **`-ffmpeg-path`** - point at a custom FFmpeg binary
+- **`-ffmpeg-path`** - point at a custom FFmpeg binary (resolved and probed at startup)
 
 ## Installation
 
@@ -87,13 +89,14 @@ uv run tiktok-live-recorder -h
 <summary>Linux</summary>
 
 ```bash
-sudo apt-get update && sudo apt-get install -y ffmpeg
 curl -LsSf https://astral.sh/uv/install.sh | sh
 git clone https://github.com/ne0lith/tiktok-live-recorder
 cd tiktok-live-recorder
 uv sync
 uv run tiktok-live-recorder -h
 ```
+
+**FFmpeg is not required before first run.** On startup the app probes for a capable binary; if none is found (or distro FFmpeg is too old for TikTok HEVC), it downloads BtbN FFmpeg n8.1 into `.vendor/ffmpeg/` (gitignored, ~100 MB one-time; requires outbound HTTPS). You can still `apt install ffmpeg` if you prefer a system package - the vendor build is used when the probe fails. See [FFmpeg and HEVC](docs/GUIDE.md#ffmpeg-and-hevc).
 
 </details>
 
@@ -154,6 +157,8 @@ docker run \
 
 The image ships only `config/*.example` templates. Mount `./config` so your real `cookies.json`, `users.json`, and `telegram.json` persist on the host. Expose port **8787** for the dashboard (see [Web dashboard](docs/GUIDE.md#web-dashboard)).
 
+The container image does not need a capable distro FFmpeg. On first start the same Linux vendor install runs into `/app/.vendor/ffmpeg/` when needed. Persist that directory with a volume if you want to avoid re-downloading after container recreation.
+
 </details>
 
 ## Command-Line Usage
@@ -178,7 +183,7 @@ uv run python -m tiktok_live_recorder [options]
 | `-duration <SECONDS>` | Stop recording after this many seconds. |
 | `-proxy <URL>` | HTTP proxy to bypass regional restrictions. |
 | `-bitrate <BITRATE>` | Output bitrate for post-processing (e.g. `1M`, `1000k`). |
-| `-ffmpeg-path <PATH>` | Path to a custom FFmpeg binary (default: `ffmpeg` on `PATH`). |
+| `-ffmpeg-path <PATH>` | Custom FFmpeg binary. Probed at startup; on Linux, vendor BtbN n8.1 is installed automatically when ffmpeg is missing or the chosen binary cannot demux TikTok HEVC FLV. Default: `ffmpeg` on `PATH`. |
 | `-telegram` | Upload finished recordings to Telegram. Requires `config/telegram.json`. Can also be toggled from the dashboard. |
 | `-no-update-check` | Skip the automatic update check on startup. |
 | `-web-host <HOST>` | Dashboard bind address (default: `0.0.0.0`). Available in watchlist, followers, and automatic modes. |
@@ -272,7 +277,7 @@ See [Watchlist file reload](#watchlist-file-reload) for live edits to `config/us
 
 Runs in **watchlist**, **followers**, and **automatic** mode at `http://localhost:8787` by default (`-web-host` / `-web-port` to change). **No authentication** - restrict access on shared networks.
 
-Use it to monitor live status, manage recordings, and adjust runtime settings without editing files by hand. Full feature list, mode comparison table, and workflow notes: **[Web dashboard guide](docs/GUIDE.md#web-dashboard)**.
+Use it to monitor live status, manage recordings, convert leftover FLVs, tail/clear logs, and adjust runtime settings without editing files by hand. Full feature list, keyboard shortcuts, FFmpeg notes, and workflow details: **[Web dashboard guide](docs/GUIDE.md#web-dashboard)**.
 
 Disable with `-no-web`.
 
@@ -287,7 +292,7 @@ User-specific files live in [`config/`](config/):
 | `watchlist_state.json` | Paused users - auto-managed by the dashboard (gitignored) |
 | `telegram.json` | Telegram upload credentials (gitignored) |
 
-Committed `*.example` templates are copied automatically on first use. Override the config directory with the `TIKTOK_RECORDER_CONFIG_DIR` environment variable.
+Committed `*.example` templates are copied automatically on first use. Override the config directory with the `TIKTOK_RECORDER_CONFIG_DIR` environment variable. Override the log file path with `TIKTOK_RECORDER_LOG_FILE` (see [Log viewer](docs/GUIDE.md#log-viewer)).
 
 Step-by-step setup: [docs/GUIDE.md](docs/GUIDE.md).
 
@@ -295,8 +300,11 @@ Step-by-step setup: [docs/GUIDE.md](docs/GUIDE.md).
 
 ### Output paths
 
-- **Default:** `output/<username>/TK_<username>_<timestamp>_flv.mp4` (converted to `.mp4` after recording)
+- **Default:** `output/<username>/TK_<username>_<timestamp>_flv.mp4` while recording, then converted to `TK_<username>_<timestamp>.mp4`
 - **Custom `-output`:** files are saved directly in that directory; the username is still included in the filename
+- **Legacy folder:** older recordings may live under `output/<username>/legacy/`
+
+If conversion fails, the intermediate `*_flv.mp4` is kept and the user shows **`convert_failed`** in the dashboard until you fix FFmpeg or use **Convert leftover FLV** ([salvage guide](docs/GUIDE.md#salvaging-leftover-recordings)).
 
 ### Watchlist threading
 
@@ -315,9 +323,11 @@ Only one recorder process can use a given output directory at a time. If you see
 ### Reliability features
 
 - Rejects ended TikTok rooms that still expose stale stream URLs
-- Tries alternate stream URLs when a CDN pull fails
+- Tries alternate stream URLs when a CDN pull fails; normalizes signed query params so URL rotation does not cause endless retries
+- Stops recording after repeated CDN failures with no new bytes written
 - Skips empty CDN responses
 - Falls back to page HTML parsing when the API is blocked by WAF (`4003110`)
+- Sets **`convert_failed`** when a recording ends but final `.mp4` conversion did not succeed
 
 ## Troubleshooting
 
@@ -346,11 +356,29 @@ Make sure `config/users.json` has at least one username, or pass `-user` / `-use
 
 ### FFmpeg not found
 
-Install FFmpeg and ensure it is on your `PATH`, or pass `-ffmpeg-path` with the full path to the binary.
+On **Linux**, FFmpeg is installed automatically at startup when missing or incapable ([FFmpeg and HEVC](docs/GUIDE.md#ffmpeg-and-hevc)). If the vendor download fails (network, unsupported architecture), startup exits with install hints.
+
+On **Windows, macOS, and Termux**, install FFmpeg and ensure it is on your `PATH`, or pass `-ffmpeg-path` with the full path to the binary.
+
+### HEVC / conversion failed (`convert_failed`)
+
+Many TikTok lives use **HEVC in legacy FLV** (codec id 12). Older distro FFmpeg builds cannot demux this format.
+
+1. Restart the recorder and check startup logs for `capable for TikTok HEVC FLV` vs `NOT capable`.
+2. On Linux, let the automatic BtbN install complete (first run may pause while downloading).
+3. For leftover `*_flv.mp4` files, use the dashboard **Convert leftover FLV** button ([guide](docs/GUIDE.md#salvaging-leftover-recordings)).
+4. Or pass `-ffmpeg-path` to FFmpeg 8.0+ that supports legacy HEVC FLV.
+
+### Log file growing large
+
+The recorder writes `tiktok-recorder.log` (rotates at 5 MB, keeps 3 backups). Override the path with `TIKTOK_RECORDER_LOG_FILE`. To reclaim disk space on demand, open **Logs** in the dashboard and click **Clear log** ([log viewer guide](docs/GUIDE.md#log-viewer)).
 
 ## Guide
 
 - [Web dashboard](docs/GUIDE.md#web-dashboard)
+- [FFmpeg and HEVC](docs/GUIDE.md#ffmpeg-and-hevc)
+- [Salvaging leftover recordings](docs/GUIDE.md#salvaging-leftover-recordings)
+- [Log viewer](docs/GUIDE.md#log-viewer)
 - [How to set cookies](docs/GUIDE.md#how-to-set-cookies)
 - [How to set up the watchlist](docs/GUIDE.md#how-to-set-up-the-watchlist)
 - [How to get room_id](docs/GUIDE.md#how-to-get-room_id)

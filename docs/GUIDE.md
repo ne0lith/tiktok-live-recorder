@@ -1,11 +1,14 @@
 # Guide
 
 - [Configuration directory](#configuration-directory)
+- [FFmpeg and HEVC](#ffmpeg-and-hevc)
 - [How to set cookies](#how-to-set-cookies)
 - [How to set up the watchlist](#how-to-set-up-the-watchlist)
 - [How to get room_id](#how-to-get-room_id)
 - [How to enable upload to Telegram](#how-to-enable-upload-to-telegram)
 - [Web dashboard](#web-dashboard)
+- [Salvaging leftover recordings](#salvaging-leftover-recordings)
+- [Log viewer](#log-viewer)
 - [Restricted countries](#restricted-countries)
 - [Unrestricted countries](#unrestricted-countries)
 
@@ -25,6 +28,47 @@ Real config files are gitignored. Only the `*.example` templates are committed.
 On first use, the recorder copies the matching `.example` file if the real file does not exist yet.
 
 Override the config location with the `TIKTOK_RECORDER_CONFIG_DIR` environment variable.
+
+## FFmpeg and HEVC
+
+TikTok often serves live video as **HEVC inside legacy FLV** (codec id 12). Many distro FFmpeg packages (e.g. Debian/Ubuntu 7.1) cannot demux this format, which breaks MP4 conversion after recording.
+
+### Startup probe (all platforms)
+
+Before any recording starts, the recorder resolves and probes FFmpeg:
+
+1. **Explicit path** - `-ffmpeg-path` if you passed one
+2. **`ffmpeg` on `PATH`** - default (skipped when not installed)
+3. **Linux vendor install** - when no capable candidate was found (missing ffmpeg, too old, or explicit path fails the probe)
+
+Startup logs show the resolved binary and whether it is **capable for TikTok HEVC FLV**. All conversions use this resolved path for the lifetime of the process. The probe uses a synthetic legacy HEVC FLV test file - not a live TikTok stream.
+
+### Linux automatic install
+
+When running on Linux and no capable binary is found - including when **no ffmpeg is installed at all** - the recorder downloads **BtbN FFmpeg n8.1** (GPL static) into:
+
+```text
+.vendor/ffmpeg/n8.1-<arch>/bin/ffmpeg
+```
+
+(`linux64` or `linuxarm64`; directory is gitignored.)
+
+- Happens **once at startup**, before watchlist polling or conversions - not mid-recording.
+- Requires outbound HTTPS to GitHub releases; first run may pause for the download (~100 MB).
+- Cached on disk: later starts reuse the vendor binary if it still passes the probe.
+- A distro `ffmpeg` package is **optional**; if present but too old (e.g. Debian 7.1), the vendor build is used instead.
+- Supported architectures: `linux64` and `linuxarm64` only. Other Linux arches must supply their own `-ffmpeg-path`.
+- If the vendor download fails (network, checksum, unsupported arch), startup exits with install hints when no other ffmpeg is available; if an old system ffmpeg exists, startup may continue with a **NOT capable** warning and conversions may fail until you fix FFmpeg.
+
+To use your own build instead: `uv run tiktok-live-recorder -ffmpeg-path /path/to/ffmpeg ...`
+
+### Fallback rewriter
+
+If demux still fails after install, the recorder attempts a legacy FLV tag rewrite (codec 12 -> Enhanced `hvc1`) before giving up. Check logs for conversion errors if a recording stays on **`convert_failed`**.
+
+### Windows and macOS
+
+Install FFmpeg manually ([ffmpeg.org](https://ffmpeg.org/download.html), Homebrew, Chocolatey, etc.). There is no automatic vendor download on these platforms - use FFmpeg **8.0+** for best HEVC FLV compatibility, or pass `-ffmpeg-path`.
 
 ## How To Set Cookies
 
@@ -157,32 +201,62 @@ There is no login. If the host is reachable from other machines, protect it with
 | `-web-host` | Bind address (default `0.0.0.0`) |
 | `-web-port` | Port (default `8787`) |
 
+The UI updates live via **Server-Sent Events** (`GET /api/events`) with polling fallback. If the API is unreachable, a **connection banner** appears with **Retry now**.
+
+### Summary strip and filters
+
+The sticky summary strip shows live/recording/offline/paused/error counts, poll timing, app version, and (when focused) the selected user. **Click a chip** to filter the status table (All / Live / Recording / Offline / Paused / Errors). The table sorts recording users first; large watchlists show a **Show all users** control.
+
 ### Live status
 
-- Per-user state (recording, offline, paused, error, …), room ID, elapsed time, file size, and active output path
+- Per-user state: `offline`, `recording`, `converting`, `stopping`, `paused`, `convert_failed`, errors, etc.
+- Room ID, elapsed time, file size, and active output path
 - Last-poll summary: finished, skipped, and errors from the most recent check
-- **Force check** - poll immediately
+- **Force check** - poll immediately (shows loading while a poll is in progress)
 - **Stop** - graceful shutdown for an active recording
-- **Watchlist only:** add/remove users; pause/resume (pause state in `config/watchlist_state.json`)
+- **Watchlist only:** add/remove users (top bar); pause/resume (pause state in `config/watchlist_state.json`)
+- **Mobile:** status cards replace the table on narrow viewports
 
-### User profiles
+### Recent activity
 
-Click a `@handle` to filter status and recordings to that user. Each profile includes a TikTok link and a shareable URL: `http://localhost:8787/#user/<username>`. Use **<- All users** to clear the filter.
+A feed of recent polls, recording starts/stops, and Telegram uploads (when enabled).
+
+### User focus
+
+Click a `@handle` to filter status and the media library to that user. Each profile includes a TikTok link and shareable URL: `http://localhost:8787/#user/<username>`. Press **Esc** or use **<- All users** to clear the filter.
 
 ### Media library
 
-- MP4s grouped by username (includes `output/<username>/legacy/`)
-- Search, collapsible sections, shared in-browser player
+- Finished **MP4** files grouped by username (includes `output/<username>/legacy/`)
+- **By user** vs **Most recent** view toggle
+- Sort: Newest, Oldest, Largest, A-Z user (preference saved in `localStorage`)
+- Search by username or filename (`/` focuses search)
+- Thumbnail previews for finished recordings
+- Per-user storage share bars in section headers
+- In-progress recordings and orphan `*_flv.mp4` files pinned and styled (`in progress`, `needs convert`)
+- Shared in-browser player (sticky while scrolling)
 - Download or delete files (delete requires confirmation)
+- **Convert leftover FLV** - convert orphan `*_flv.mp4` files that were never finalized (badge shows count). Skips files that belong to an active recording. See [Salvaging leftover recordings](#salvaging-leftover-recordings).
 
 ### Settings
 
-Opens under the top bar:
+Opens in a modal overlay (shortcut **`s`**):
 
 - **Runtime** - poll interval (minutes) and Telegram upload on/off (no restart)
 - **Record now** - start recording by username and/or room ID
 - **Cookies / Telegram** - edit `cookies.json` and `telegram.json` in the browser
 - **Recent Telegram uploads** - when uploads are enabled
+
+### Keyboard shortcuts
+
+Press **`?`** for the full list. Defaults:
+
+| Key | Action |
+|-----|--------|
+| `/` | Focus media search |
+| `Esc` | Close modal or clear user focus |
+| `l` | Open logs |
+| `s` | Open settings |
 
 ### Mode comparison
 
@@ -193,6 +267,42 @@ Opens under the top bar:
 | Pause/resume | Yes | Yes | Yes | - |
 | Force check | Yes | Yes | Yes | - |
 | Record now | Yes | Yes | Yes | - |
+| Convert leftover FLV | Yes | Yes | Yes | - |
+| Logs / Settings modals | Yes | Yes | Yes | - |
+
+## Salvaging Leftover Recordings
+
+During recording, output is written to `TK_<user>_<timestamp>_flv.mp4`. When the stream ends, FFmpeg converts it to `TK_<user>_<timestamp>.mp4` and removes the `*_flv.mp4` on success.
+
+If conversion fails (common with old FFmpeg on HEVC streams), the `*_flv.mp4` remains and the user may show **`convert_failed`** in live status.
+
+**Fix FFmpeg first** ([FFmpeg and HEVC](#ffmpeg-and-hevc)), then salvage:
+
+1. Open the dashboard **Media library**.
+2. Click **Convert leftover FLV** (badge shows how many orphan files were found).
+3. Confirm - conversion runs in the background; the badge updates when done.
+
+Orphan files are `*_flv.mp4` on disk that are **not** the active output of a current recording. Active recordings are never touched.
+
+## Log Viewer
+
+Open **Logs** from the top bar (shortcut **`l`**). The modal tails `tiktok-recorder.log` via `GET /api/logs`.
+
+| Control | Purpose |
+|---------|---------|
+| **Lines** | How many tail lines to load (100-1000) |
+| **Level** | Minimum log level filter |
+| **Auto-refresh** | Poll every 3 seconds |
+| **Refresh** | Reload now |
+| **Clear log** | Truncate the log file and delete rotation backups (`.1`, `.2`, `.3`) on demand |
+
+**Log file location:** `tiktok-recorder.log` in the process working directory by default. Override with:
+
+```bash
+export TIKTOK_RECORDER_LOG_FILE=/var/log/tiktok-recorder.log
+```
+
+The file handler rotates at **5 MB** and keeps **3** backups. Rotation is automatic; **Clear log** is manual when you need to reclaim disk space. Clearing uses the open log handle (no separate file lock) so it is safe while the recorder is running. If the file cannot be cleared (e.g. permission error), the API returns an error toast.
 
 ## Restricted Countries
 

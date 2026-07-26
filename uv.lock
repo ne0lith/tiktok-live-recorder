@@ -887,7 +887,7 @@ wheels = [
 
 [[package]]
 name = "tiktok-live-recorder"
-version = "8.6.3"
+version = "8.10.0"
 source = { editable = "." }
 dependencies = [
     { name = "curl-cffi" },
