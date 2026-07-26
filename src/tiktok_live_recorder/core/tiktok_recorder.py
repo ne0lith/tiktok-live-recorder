@@ -50,7 +50,8 @@ class TikTokRecorder:
         self.output = config.output
         self.bitrate = config.bitrate
         self.ffmpeg_path = config.ffmpeg_path
-        self._ffmpeg_info = describe_ffmpeg_binary(config.ffmpeg_path)
+        self._ffmpeg_info = describe_ffmpeg_binary(self.ffmpeg_path)
+        self._stopped_by_signal: int | None = None
         self.use_telegram = config.use_telegram
         self._proxy = config.proxy
         self._cookies = config.cookies
@@ -212,8 +213,14 @@ class TikTokRecorder:
             "poll_in_progress": poll_in_progress,
             "activity": activity,
             "convert_job": self.get_convert_job(),
-            "ffmpeg": self._ffmpeg_info,
+            "ffmpeg": self.get_ffmpeg_info(),
         }
+
+    def get_ffmpeg_info(self) -> dict:
+        """Return resolved FFmpeg metadata for the dashboard."""
+        if self.ffmpeg_path and not self._ffmpeg_info.get("path"):
+            self._ffmpeg_info = describe_ffmpeg_binary(self.ffmpeg_path)
+        return self._ffmpeg_info
 
     def update_runtime_settings(
         self,
@@ -417,11 +424,15 @@ class TikTokRecorder:
             self.request_stop()
             logger.info("Interrupted — finalizing open recordings...")
         finally:
+            if self._stopped_by_signal is not None:
+                logger.info(
+                    f"Signal {self._stopped_by_signal} received — stopping gracefully..."
+                )
             self._shutdown_recordings()
 
     def _install_signal_handlers(self):
         def _handler(signum, frame):
-            logger.info(f"Signal {signum} received — stopping gracefully...")
+            self._stopped_by_signal = signum
             self.request_stop()
 
         for sig in (signal.SIGINT, signal.SIGTERM):

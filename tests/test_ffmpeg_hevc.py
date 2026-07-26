@@ -85,14 +85,42 @@ def test_ffmpeg_supports_legacy_hevc_flv_true(mock_run, _mock_which):
 )
 @patch("tiktok_live_recorder.utils.ffmpeg_setup.subprocess.run")
 def test_ffmpeg_supports_legacy_hevc_flv_false(mock_run, _mock_which):
-    mock_run.return_value = MagicMock(
-        returncode=1,
-        stdout="",
-        stderr="Video codec (c) is not implemented",
-    )
+    mock_run.side_effect = [
+        MagicMock(
+            returncode=1,
+            stdout="",
+            stderr="Video codec (c) is not implemented",
+        ),
+        MagicMock(
+            returncode=1,
+            stdout="",
+            stderr="Video codec (c) is not implemented",
+        ),
+    ]
     from tiktok_live_recorder.utils.ffmpeg_setup import ffmpeg_supports_legacy_hevc_flv
 
     assert ffmpeg_supports_legacy_hevc_flv("/usr/bin/ffmpeg") is False
+    assert mock_run.call_count == 2
+
+
+@patch(
+    "tiktok_live_recorder.utils.ffmpeg_setup.shutil.which",
+    return_value="/usr/bin/ffmpeg",
+)
+@patch("tiktok_live_recorder.utils.ffmpeg_setup.subprocess.run")
+def test_ffmpeg_supports_legacy_hevc_flv_ffmpeg_inspect_fallback(mock_run, _mock_which):
+    mock_run.side_effect = [
+        MagicMock(returncode=1, stdout="", stderr=""),
+        MagicMock(
+            returncode=0,
+            stdout="",
+            stderr="Input #0, flv, from 'x':\n  Stream #0:0: Video: hevc (Main)",
+        ),
+    ]
+    from tiktok_live_recorder.utils.ffmpeg_setup import ffmpeg_supports_legacy_hevc_flv
+
+    assert ffmpeg_supports_legacy_hevc_flv("/usr/bin/ffmpeg") is True
+    assert mock_run.call_count == 2
 
 
 def test_btbN_asset_names_are_n81_gpl():

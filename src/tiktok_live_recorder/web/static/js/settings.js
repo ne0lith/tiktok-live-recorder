@@ -1,5 +1,6 @@
 import { api, showToast } from "./api.js";
 import { closeModal, isModalOpen, openModal, registerModalCloseHandler } from "./modal.js";
+import { latestStatus } from "./state.js";
 import { refreshStatus } from "./status.js";
 
 const settingsModalId = "settings-modal";
@@ -103,7 +104,8 @@ export async function openSettingsPanel() {
   openModal(settingsModalId);
   settingsToggle?.classList.add("is-active");
   try {
-    await loadSettings();
+    await Promise.all([loadSettings(), refreshStatus()]);
+    syncFfmpegInfo(latestStatus?.ffmpeg);
   } catch (error) {
     showToast(error.message);
   }

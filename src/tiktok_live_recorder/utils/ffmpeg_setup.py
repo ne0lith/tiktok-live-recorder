@@ -163,6 +163,62 @@ def _wrap_flv_video_tag(video_body: bytes) -> bytes:
     return header + prev_size + tag + tag_footer
 
 
+def _ffprobe_legacy_hevc(flv_path: str, probe_cmd: str) -> bool:
+    result = subprocess.run(
+        [
+            probe_cmd,
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=codec_name",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            flv_path,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    if result.returncode == 0 and result.stdout.strip().lower() == "hevc":
+        return True
+    combined = (result.stderr or "") + (result.stdout or "")
+    if "Video codec (c) is not implemented" in combined:
+        return False
+    if "unknown codec" in combined.lower():
+        return False
+    return False
+
+
+def _ffmpeg_inspect_legacy_hevc(flv_path: str, ffmpeg_cmd: str) -> bool:
+    """Fallback probe: ffmpeg -i often reports HEVC when ffprobe cannot."""
+    result = subprocess.run(
+        [
+            ffmpeg_cmd,
+            "-hide_banner",
+            "-nostats",
+            "-i",
+            flv_path,
+            "-f",
+            "null",
+            "-",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    combined = (result.stderr or "") + (result.stdout or "")
+    lower = combined.lower()
+    if "video codec (c) is not implemented" in lower:
+        return False
+    if "unknown codec" in lower:
+        return False
+    return "video: hevc" in lower
+
+
 def ffmpeg_supports_legacy_hevc_flv(ffmpeg_path: str) -> bool:
     """Return True when ffmpeg can demux TikTok legacy FLV HEVC (codec id 12)."""
     if not shutil.which(ffmpeg_path) and not Path(ffmpeg_path).is_file():
@@ -174,32 +230,9 @@ def ffmpeg_supports_legacy_hevc_flv(ffmpeg_path: str) -> bool:
         tmp_path = tmp.name
 
     try:
-        result = subprocess.run(
-            [
-                probe,
-                "-v",
-                "error",
-                "-select_streams",
-                "v:0",
-                "-show_entries",
-                "stream=codec_name",
-                "-of",
-                "default=noprint_wrappers=1:nokey=1",
-                tmp_path,
-            ],
-            capture_output=True,
-            text=True,
-            timeout=30,
-            check=False,
-        )
-        if result.returncode == 0 and result.stdout.strip().lower() == "hevc":
+        if _ffprobe_legacy_hevc(tmp_path, probe):
             return True
-        combined = (result.stderr or "") + (result.stdout or "")
-        if "Video codec (c) is not implemented" in combined:
-            return False
-        if "unknown codec" in combined.lower():
-            return False
-        return False
+        return _ffmpeg_inspect_legacy_hevc(tmp_path, ffmpeg_path)
     except (OSError, subprocess.TimeoutExpired):
         return False
     finally:

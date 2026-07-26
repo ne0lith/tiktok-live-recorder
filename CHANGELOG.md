@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.12.2] - 2026-07-26
+
+### Fixed
+
+- Settings **FFmpeg** panel now refreshes from live status when opened (no longer stuck at dashes)
+- Vendor FFmpeg capability check uses an `ffmpeg -i` fallback when `ffprobe` cannot detect legacy HEVC FLV (fixes false reject of BtbN n8.1 builds)
+- SIGTERM/SIGINT handler no longer logs inside the signal handler (avoids reentrant stderr errors on shutdown)
+
 ## [8.12.1] - 2026-07-26
 
 ### Fixed
@@ -334,7 +342,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.12.1...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.12.2...HEAD
+[8.12.2]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.12.1...v8.12.2
 [8.12.1]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.12.0...v8.12.1
 [8.12.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.11.0...v8.12.0
 [8.11.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.10.1...v8.11.0
