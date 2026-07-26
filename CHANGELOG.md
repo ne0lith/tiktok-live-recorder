@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.14.0] - 2026-07-26
+
+### Changed
+
+- **Media library UX overhaul**: flat scrollable table (no collapsible user accordions or per-section "show more"); player docks beside the list instead of sticky overlay; list scroll is contained so playback no longer scrolls content behind the video; profile focus no longer hijacks library view
+- **Live status board**: replace the tall single-column table with grouped active cards + compact idle tiles in a bounded scroll area
+
 ## [8.13.2] - 2026-07-26
 
 ### Fixed

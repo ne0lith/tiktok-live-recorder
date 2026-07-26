@@ -1,19 +1,15 @@
 import { api, showToast } from "./api.js";
-import { basename, formatBytes, formatTimestamp, usernamesMatch } from "./format.js";
-import { updateSegmentedControl } from "./segmented.js";
+import { formatBytes, formatTimestamp } from "./format.js";
 import {
-  INITIAL_VISIBLE,
-  LOAD_MORE_STEP,
   STORAGE_SORT_KEY,
-  STORAGE_VIEW_KEY,
   latestMedia,
   libraryState,
   pendingMedia,
-  selectedProfile,
   setLatestMedia,
   setPendingMedia,
 } from "./state.js";
 
+const libraryBody = document.getElementById("library-body");
 const mediaLibrary = document.getElementById("media-library");
 const librarySummary = document.getElementById("library-summary");
 const mediaSearch = document.getElementById("media-search");
@@ -23,19 +19,10 @@ const playerTitle = document.getElementById("player-title");
 const playerMeta = document.getElementById("player-meta");
 
 export function loadLibraryPreferences() {
-  const savedView = localStorage.getItem(STORAGE_VIEW_KEY);
-  if (savedView === "by-user" || savedView === "recent") {
-    libraryState.viewMode = savedView;
-  }
   const savedSort = localStorage.getItem(STORAGE_SORT_KEY);
   if (savedSort) libraryState.sortMode = savedSort;
   const sortSelect = document.getElementById("library-sort");
   if (sortSelect) sortSelect.value = libraryState.sortMode;
-}
-
-export function saveLibraryViewMode(mode) {
-  libraryState.viewMode = mode;
-  localStorage.setItem(STORAGE_VIEW_KEY, mode);
 }
 
 export function saveLibrarySortMode(mode) {
@@ -104,8 +91,7 @@ function updateLibrarySummary(media) {
     0,
   );
   if (!librarySummary) return;
-  const focusSuffix = selectedProfile ? ` · focused @${selectedProfile}` : "";
-  librarySummary.textContent = `${fileCount} recording${fileCount === 1 ? "" : "s"} · ${usernames.length} user${usernames.length === 1 ? "" : "s"} · ${formatBytes(totalSize)}${focusSuffix}`;
+  librarySummary.textContent = `${fileCount} recording${fileCount === 1 ? "" : "s"} · ${usernames.length} user${usernames.length === 1 ? "" : "s"} · ${formatBytes(totalSize)}`;
 }
 
 export function flattenAndSortMedia(media) {
@@ -135,65 +121,21 @@ export function flattenAndSortMedia(media) {
   return rows;
 }
 
-function getRecentVisibleCount(total) {
-  if (libraryState.recentVisibleCount == null) {
-    libraryState.recentVisibleCount = Math.min(INITIAL_VISIBLE, total);
-  }
-  return Math.min(libraryState.recentVisibleCount, total);
-}
-
-export function syncLibraryViewButtons() {
-  const byUser = document.getElementById("library-view-by-user");
-  const recent = document.getElementById("library-view-recent");
-  const toggle = document.getElementById("library-view-toggle");
-  if (!byUser || !recent) return;
-  byUser.classList.toggle("is-active", libraryState.viewMode === "by-user");
-  recent.classList.toggle("is-active", libraryState.viewMode === "recent");
-  updateSegmentedControl(toggle);
-}
-
-function applyLibraryViewToggle() {
-  document.getElementById("library-view-toggle")?.classList.remove("hidden");
-}
-
-export function setLibraryViewMode(mode) {
-  if (libraryState.viewMode === mode) return;
-  saveLibraryViewMode(mode);
-  libraryState.recentVisibleCount = null;
-  syncLibraryViewButtons();
-  renderMedia(latestMedia);
-}
-
-function getVisibleCount(username, total) {
-  if (!libraryState.visibleCounts.has(username)) {
-    libraryState.visibleCounts.set(username, Math.min(INITIAL_VISIBLE, total));
-  }
-  return Math.min(libraryState.visibleCounts.get(username), total);
-}
-
-function setExpanded(username, expanded) {
-  if (expanded) libraryState.expandedUsers.add(username);
-  else libraryState.expandedUsers.delete(username);
+function setPlayerOpen(open) {
+  libraryBody?.classList.toggle("library-body--playing", open);
+  mediaPlayer?.classList.toggle("hidden", !open);
 }
 
 export function playMedia(item, username) {
   libraryState.playingUrl = item.url;
-  setExpanded(username, true);
   if (playerTitle) playerTitle.textContent = `@${username} · ${item.filename}`;
   if (playerMeta) playerMeta.textContent = mediaItemMeta(item);
-  mediaPlayer?.classList.remove("hidden");
-  mediaPlayer?.classList.add("is-sticky");
+  setPlayerOpen(true);
   const targetUrl = new URL(item.url, window.location.origin).href;
   if (mediaPlayerVideo && mediaPlayerVideo.src !== targetUrl) {
     mediaPlayerVideo.src = item.url;
   }
   mediaPlayerVideo?.play().catch(() => {});
-  mediaLibrary
-    ?.querySelector(`.user-section[data-username="${CSS.escape(username)}"]`)
-    ?.classList.add("expanded");
-  mediaLibrary
-    ?.querySelector(`.media-row[data-url="${CSS.escape(item.url)}"]`)
-    ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   highlightActiveRow();
 }
 
@@ -202,81 +144,66 @@ export function closePlayer() {
   mediaPlayerVideo?.removeAttribute("src");
   mediaPlayerVideo?.load();
   libraryState.playingUrl = null;
-  mediaPlayer?.classList.add("hidden");
-  mediaPlayer?.classList.remove("is-sticky");
+  setPlayerOpen(false);
   highlightActiveRow();
   maybeApplyPendingMedia();
 }
 
 function highlightActiveRow() {
-  mediaLibrary?.querySelectorAll(".media-row").forEach((row) => {
+  mediaLibrary?.querySelectorAll(".media-table-row").forEach((row) => {
     row.classList.toggle("is-active", row.dataset.url === libraryState.playingUrl);
   });
 }
 
-function createMediaRow(item, username, { showUsername = false } = {}) {
+function createMediaTableRow(item, username, { showUser = true } = {}) {
   const row = document.createElement("div");
-  row.className = "media-row";
+  row.className = "media-table-row";
   row.dataset.url = item.url;
   row.dataset.username = username;
+  row.setAttribute("role", "button");
+  row.tabIndex = 0;
 
-  const main = document.createElement("button");
-  main.type = "button";
-  main.className = "media-row-main";
-
-  if (!item.in_progress) {
-    const thumb = document.createElement("video");
-    thumb.className = "media-thumb";
-    thumb.muted = true;
-    thumb.playsInline = true;
-    thumb.preload = "metadata";
-    thumb.src = item.url;
-    thumb.addEventListener("loadeddata", () => {
-      try {
-        thumb.currentTime = 0.1;
-      } catch {
-        // ignore seek errors on short files
-      }
-    });
-    main.append(thumb);
-  } else {
-    const thumb = document.createElement("span");
-    thumb.className = "media-thumb media-thumb--live";
-    thumb.textContent = "●";
-    main.append(thumb);
-  }
-
-  const body = document.createElement("span");
-  body.className = "media-row-body";
+  const nameCell = document.createElement("span");
+  nameCell.className = "media-cell media-cell--name";
   const name = document.createElement("span");
   name.className = "media-row-name";
   name.title = item.filename;
-  const inProgressBadge = item.in_progress ? " [recording]" : "";
-  const needsConvertBadge = item.needs_convert ? " [needs convert]" : "";
-  name.textContent = showUsername
-    ? `@${username} · ${item.filename}${inProgressBadge}${needsConvertBadge}`
-    : `${item.filename}${inProgressBadge}${needsConvertBadge}`;
+  const badges = [];
+  if (item.in_progress) badges.push("recording");
+  if (item.needs_convert) badges.push("needs convert");
+  const badgeSuffix = badges.length ? ` [${badges.join(", ")}]` : "";
+  name.textContent = `${item.filename}${badgeSuffix}`;
+  nameCell.append(name);
 
-  const meta = document.createElement("span");
-  meta.className = "media-row-meta";
-  meta.textContent = mediaItemMeta(item);
+  const userCell = document.createElement("span");
+  userCell.className = "media-cell media-cell--user";
+  userCell.textContent = showUser ? `@${username}` : "";
 
-  const play = document.createElement("span");
-  play.className = "media-row-play";
-  play.textContent = "Play";
+  const sizeCell = document.createElement("span");
+  sizeCell.className = "media-cell media-cell--size";
+  sizeCell.textContent = formatBytes(item.size);
 
-  body.append(name, meta);
-  main.append(body, play);
-  main.addEventListener("click", () => playMedia(item, username));
+  const dateCell = document.createElement("span");
+  dateCell.className = "media-cell media-cell--date";
+  dateCell.textContent = formatTimestamp(item.modified_at);
 
-  const actions = document.createElement("div");
-  actions.className = "media-row-actions";
+  const actionsCell = document.createElement("span");
+  actionsCell.className = "media-cell media-cell--actions";
+
+  const playBtn = document.createElement("button");
+  playBtn.type = "button";
+  playBtn.className = "btn btn-ghost btn-small";
+  playBtn.textContent = "Play";
+  playBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    playMedia(item, username);
+  });
 
   const download = document.createElement("a");
   download.className = "btn btn-ghost btn-small";
   download.href = item.url;
   download.download = item.filename;
-  download.textContent = "Download";
+  download.textContent = "Save";
   download.addEventListener("click", (event) => event.stopPropagation());
 
   const deleteBtn = document.createElement("button");
@@ -296,10 +223,24 @@ function createMediaRow(item, username, { showUsername = false } = {}) {
     }
   });
 
-  actions.append(download, deleteBtn);
-  row.append(main, actions);
-  if (item.in_progress) row.classList.add("media-row--in-progress");
-  if (item.needs_convert) row.classList.add("media-row--needs-convert");
+  actionsCell.append(playBtn, download, deleteBtn);
+  row.append(nameCell, userCell, sizeCell, dateCell, actionsCell);
+
+  const activate = () => playMedia(item, username);
+  row.addEventListener("click", (event) => {
+    if (event.target.closest("button, a")) return;
+    activate();
+  });
+  row.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      activate();
+    }
+  });
+
+  if (item.in_progress) row.classList.add("media-table-row--in-progress");
+  if (item.needs_convert) row.classList.add("media-table-row--needs-convert");
+  if (item.url === libraryState.playingUrl) row.classList.add("is-active");
   return row;
 }
 
@@ -313,206 +254,73 @@ async function deleteMediaItem(username, item) {
   await api(path, { method: "DELETE" });
 }
 
-function renderUserSection(username, items) {
-  let section = mediaLibrary?.querySelector(
-    `.user-section[data-username="${CSS.escape(username)}"]`,
-  );
-  if (!section && mediaLibrary) {
-    section = document.createElement("section");
-    section.className = "user-section";
-    section.dataset.username = username;
-    section.innerHTML = `
-      <button class="user-section-toggle" type="button">
-        <span class="user-section-title"></span>
-        <span class="user-section-count"></span>
-        <span class="user-section-chevron" aria-hidden="true">'</span>
-      </button>
-      <div class="user-section-storage hidden" aria-hidden="true">
-        <span class="user-section-storage-bar"></span>
-      </div>
-      <div class="user-section-body">
-        <div class="media-list"></div>
-        <div class="user-section-footer hidden">
-          <button class="btn btn-ghost btn-small show-more" type="button"></button>
-        </div>
-      </div>
-    `;
-    section.querySelector(".user-section-toggle").addEventListener("click", () => {
-      const expanded = section.classList.toggle("expanded");
-      setExpanded(username, expanded);
-    });
-    section.querySelector(".show-more").addEventListener("click", (event) => {
-      event.stopPropagation();
-      const current = getVisibleCount(username, items.length);
-      libraryState.visibleCounts.set(username, Math.min(current + LOAD_MORE_STEP, items.length));
-      renderMedia(latestMedia);
-    });
-    mediaLibrary.append(section);
-  }
+function renderMediaTable(rows) {
+  if (!mediaLibrary) return;
 
-  const expanded =
-    libraryState.expandedUsers.has(username) ||
-    (selectedProfile && usernamesMatch(username, selectedProfile));
-  section?.classList.toggle("expanded", expanded);
-  section?.classList.toggle(
-    "user-section--focused",
-    selectedProfile && usernamesMatch(username, selectedProfile),
-  );
-  const title = section?.querySelector(".user-section-title");
-  if (title) {
-    title.textContent = `@${username}`;
-    title.classList.add("profile-link");
-    title.dataset.profile = username;
-    title.classList.toggle("is-active", usernamesMatch(username, selectedProfile));
-    if (!title.dataset.profileBound) {
-      title.dataset.profileBound = "true";
-      title.addEventListener("click", (event) => {
-        event.stopPropagation();
-        import("./status.js").then((m) => m.setSelectedProfile(username));
-      });
+  const table = document.createElement("div");
+  table.className = "media-table";
+
+  const head = document.createElement("div");
+  head.className = "media-table-head";
+  head.innerHTML = `
+    <span>Recording</span>
+    <span>User</span>
+    <span>Size</span>
+    <span>Date</span>
+    <span>Actions</span>
+  `;
+  table.append(head);
+
+  const body = document.createElement("div");
+  body.className = "media-table-body";
+
+  const groupByUser = libraryState.sortMode === "user";
+  let currentUser = null;
+
+  if (groupByUser) {
+    const groups = new Map();
+    for (const entry of rows) {
+      if (!groups.has(entry.username)) groups.set(entry.username, []);
+      groups.get(entry.username).push(entry);
+    }
+    for (const [username, userRows] of groups) {
+      const label = document.createElement("div");
+      label.className = "media-group-label";
+      label.textContent = `@${username} · ${userRows.length} recording${userRows.length === 1 ? "" : "s"} · ${formatBytes(sumMediaSize(userRows.map((entry) => entry.item)))}`;
+      body.append(label);
+      for (const { item } of userRows) {
+        body.append(createMediaTableRow(item, username, { showUser: false }));
+      }
+    }
+  } else {
+    for (const { item, username } of rows) {
+      body.append(createMediaTableRow(item, username, { showUser: true }));
     }
   }
-  section?.querySelector(".user-section-count")?.replaceChildren();
-  const countEl = section?.querySelector(".user-section-count");
-  if (countEl) {
-    const totalBytes = sumMediaSize(items);
-    countEl.textContent = `${items.length} recording${items.length === 1 ? "" : "s"} · ${formatBytes(totalBytes)}`;
-  }
 
-  const storageWrap = section?.querySelector(".user-section-storage");
-  const storageBar = section?.querySelector(".user-section-storage-bar");
-  const libraryTotal = sumMediaSize(Object.values(latestMedia).flat());
-  if (storageWrap && storageBar && libraryTotal > 0) {
-    const share = sumMediaSize(items) / libraryTotal;
-    storageWrap.classList.remove("hidden");
-    storageWrap.setAttribute("aria-hidden", "false");
-    storageBar.style.width = `${Math.max(4, Math.round(share * 100))}%`;
-    storageWrap.title = `${Math.round(share * 100)}% of library storage`;
-  } else {
-    storageWrap?.classList.add("hidden");
-  }
-
-  const visibleCount = getVisibleCount(username, items.length);
-  const list = section?.querySelector(".media-list");
-  list?.replaceChildren();
-  for (const item of items.slice(0, visibleCount)) {
-    const row = createMediaRow(item, username);
-    if (item.url === libraryState.playingUrl) row.classList.add("is-active");
-    list?.append(row);
-  }
-
-  const footer = section?.querySelector(".user-section-footer");
-  const showMore = section?.querySelector(".show-more");
-  if (visibleCount < items.length) {
-    footer?.classList.remove("hidden");
-    if (showMore) showMore.textContent = `Show ${items.length - visibleCount} more`;
-  } else {
-    footer?.classList.add("hidden");
-  }
-}
-
-function renderRecentList(media) {
-  const rows = flattenAndSortMedia(media);
-  const visibleCount = getRecentVisibleCount(rows.length);
-
-  mediaLibrary?.querySelectorAll(".user-section").forEach((section) => section.remove());
-
-  let section = mediaLibrary?.querySelector(".recent-section");
-  if (!section && mediaLibrary) {
-    section = document.createElement("section");
-    section.className = "recent-section";
-    section.innerHTML = `
-      <div class="recent-section-head">
-        <h3 class="recent-section-title">All recordings</h3>
-        <span class="recent-section-count"></span>
-      </div>
-      <div class="media-list"></div>
-      <div class="recent-section-footer hidden">
-        <button class="btn btn-ghost btn-small show-more" type="button"></button>
-      </div>
-    `;
-    section.querySelector(".show-more").addEventListener("click", () => {
-      const current = getRecentVisibleCount(rows.length);
-      libraryState.recentVisibleCount = Math.min(current + LOAD_MORE_STEP, rows.length);
-      renderMedia(latestMedia);
-    });
-    mediaLibrary.append(section);
-  }
-
-  section?.querySelector(".recent-section-count")?.replaceChildren();
-  const countNode = section?.querySelector(".recent-section-count");
-  if (countNode) {
-    countNode.textContent = `${rows.length} recording${rows.length === 1 ? "" : "s"} · ${formatBytes(sumMediaSize(rows.map((entry) => entry.item)))}`;
-  }
-
-  const list = section?.querySelector(".media-list");
-  list?.replaceChildren();
-  for (const { item, username } of rows.slice(0, visibleCount)) {
-    const row = createMediaRow(item, username, { showUsername: true });
-    if (item.url === libraryState.playingUrl) row.classList.add("is-active");
-    list?.append(row);
-  }
-
-  const footer = section?.querySelector(".recent-section-footer");
-  const showMore = section?.querySelector(".show-more");
-  if (visibleCount < rows.length) {
-    footer?.classList.remove("hidden");
-    if (showMore) showMore.textContent = `Show ${rows.length - visibleCount} more`;
-  } else {
-    footer?.classList.add("hidden");
-  }
+  table.append(body);
+  mediaLibrary.replaceChildren(table);
 }
 
 export function renderMedia(media) {
   setLatestMedia(media || {});
   const query = mediaSearch?.value || "";
   const filtered = filterMedia(latestMedia, query);
-  if (mediaSearch) {
-    mediaSearch.placeholder = "Search by username or filename…";
-  }
-
-  const usernames = Object.keys(filtered).sort((a, b) =>
-    a.localeCompare(b, undefined, { sensitivity: "base" }),
-  );
 
   updateLibrarySummary(filtered);
 
+  const usernames = Object.keys(filtered);
   if (!usernames.length) {
     if (!isAnyMediaPlaying() && mediaLibrary) {
       mediaLibrary.innerHTML = query
-        ? '<p class="empty">No recordings match your search.</p>'
-        : '<p class="empty">No recordings yet.</p>';
+        ? '<p class="empty library-empty">No recordings match your search.</p>'
+        : '<p class="empty library-empty">No recordings yet.</p>';
     }
-    applyLibraryViewToggle();
     return;
   }
 
-  mediaLibrary?.querySelector(".empty")?.remove();
-  applyLibraryViewToggle();
-
-  if (libraryState.viewMode === "recent") {
-    renderRecentList(filtered);
-    return;
-  }
-
-  mediaLibrary?.querySelector(".recent-section")?.remove();
-  const seenUsers = new Set();
-
-  for (const username of usernames) {
-    seenUsers.add(username);
-    renderUserSection(username, filtered[username]);
-  }
-
-  mediaLibrary?.querySelectorAll(".user-section").forEach((section) => {
-    if (!seenUsers.has(section.dataset.username)) section.remove();
-  });
-
-  if (usernames.length === 1 && !query) {
-    setExpanded(usernames[0], true);
-    mediaLibrary
-      ?.querySelector(`.user-section[data-username="${CSS.escape(usernames[0])}"]`)
-      ?.classList.add("expanded");
-  }
+  const rows = flattenAndSortMedia(filtered);
+  renderMediaTable(rows);
 }
 
 export function maybeApplyPendingMedia() {
@@ -523,7 +331,6 @@ export function maybeApplyPendingMedia() {
   }
 }
 
-/** Apply a media payload without rebuilding the library while the player is open. */
 export function applyMediaUpdate(media, { force = false } = {}) {
   if (!force && shouldDeferMediaRender()) {
     setPendingMedia(media);
@@ -640,25 +447,23 @@ export function initMediaInteractions() {
   });
 
   mediaSearch?.addEventListener("input", () => {
-    libraryState.recentVisibleCount = null;
     renderMedia(latestMedia);
-  });
-
-  document.getElementById("library-view-by-user")?.addEventListener("click", () => {
-    setLibraryViewMode("by-user");
-  });
-
-  document.getElementById("library-view-recent")?.addEventListener("click", () => {
-    setLibraryViewMode("recent");
   });
 
   document.getElementById("library-sort")?.addEventListener("change", (event) => {
     saveLibrarySortMode(event.target.value);
-    libraryState.recentVisibleCount = null;
     renderMedia(latestMedia);
   });
 
   document.getElementById("player-close")?.addEventListener("click", closePlayer);
   mediaPlayerVideo?.addEventListener("pause", maybeApplyPendingMedia);
   mediaPlayerVideo?.addEventListener("ended", maybeApplyPendingMedia);
+
+  mediaPlayer?.addEventListener(
+    "wheel",
+    (event) => {
+      event.stopPropagation();
+    },
+    { passive: true },
+  );
 }

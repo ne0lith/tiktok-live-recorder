@@ -52,25 +52,9 @@
           <p id="status-meta" class="meta">Loading…</p>
         </div>
         <div id="poll-summary" class="poll-summary hidden"></div>
-        <div id="status-cards" class="status-cards"></div>
-        <div class="table-wrap status-table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>User</th>
-                <th>State</th>
-                <th class="col-room">Room</th>
-                <th class="col-elapsed">Elapsed</th>
-                <th class="col-size">Size</th>
-                <th class="col-actions">Actions</th>
-              </tr>
-            </thead>
-            <tbody id="status-body"></tbody>
-          </table>
+        <div class="status-scroll">
+          <div id="status-board" class="status-board" aria-live="polite"></div>
         </div>
-        <button id="status-more" class="btn btn-ghost btn-small status-more hidden" type="button">
-          Show all users
-        </button>
       </section>
 
       <section class="panel activity-panel">
@@ -101,30 +85,13 @@
           </div>
         </div>
         <div class="library-toolbar">
-          <div
-            id="library-view-toggle"
-            class="segmented-control"
-            role="group"
-            aria-label="Library view"
-          >
-            <button
-              type="button"
-              id="library-view-by-user"
-              class="btn btn-ghost btn-small is-active"
-            >
-              By user
-            </button>
-            <button type="button" id="library-view-recent" class="btn btn-ghost btn-small">
-              Most recent
-            </button>
-          </div>
           <label class="toolbar-field" for="library-sort">
             <span class="toolbar-field-label">Sort</span>
             <select id="library-sort" class="logs-select toolbar-select">
               <option value="newest">Newest</option>
               <option value="oldest">Oldest</option>
               <option value="largest">Largest</option>
-              <option value="user">A-Z user</option>
+              <option value="user">By user</option>
             </select>
           </label>
           <input
@@ -135,20 +102,24 @@
             spellcheck="false"
           />
         </div>
-        <div id="media-player" class="media-player hidden">
-          <div class="media-player-head">
-            <div>
-              <p class="eyebrow">Now playing</p>
-              <h3 id="player-title" class="player-title"></h3>
-              <p id="player-meta" class="meta"></p>
+        <div class="library-body" id="library-body">
+          <aside id="media-player" class="media-player hidden" aria-label="Now playing">
+            <div class="media-player-head">
+              <div>
+                <p class="eyebrow">Now playing</p>
+                <h3 id="player-title" class="player-title"></h3>
+                <p id="player-meta" class="meta"></p>
+              </div>
+              <button id="player-close" class="btn btn-ghost btn-small" type="button">
+                Close
+              </button>
             </div>
-            <button id="player-close" class="btn btn-ghost btn-small" type="button">
-              Close
-            </button>
+            <video id="media-player-video" controls preload="metadata" playsinline></video>
+          </aside>
+          <div class="library-list-wrap">
+            <div id="media-library" class="media-library" role="region" aria-label="Recordings"></div>
           </div>
-          <video id="media-player-video" controls preload="metadata"></video>
         </div>
-        <div id="media-library" class="media-library"></div>
       </section>
     </div>
 

@@ -7,7 +7,6 @@ import {
   initMediaInteractions,
   loadLibraryPreferences,
   refreshMedia,
-  syncLibraryViewButtons,
 } from "./media.js";
 import { initModals } from "./modal.js";
 import { initSegmentedControls } from "./segmented.js";
@@ -34,7 +33,6 @@ async function boot() {
   syncStartupFfmpegFromDom();
   readProfileFromHash();
   loadLibraryPreferences();
-  syncLibraryViewButtons();
 
   const [statusResult, mediaResult] = await Promise.allSettled([
     refreshStatus(),

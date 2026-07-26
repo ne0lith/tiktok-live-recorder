@@ -11,29 +11,31 @@ import {
 } from "./format.js";
 import {
   STATE_SORT_ORDER,
-  latestMedia,
   latestStatus,
-  libraryState,
-  expandStatusRowLimit,
   selectedProfile,
   setLatestStatus,
   setSelectedProfileValue,
   setStatusFilter,
   statusFilter,
-  statusRowLimit,
-  STATUS_ROW_LIMIT,
 } from "./state.js";
 import { refreshPendingConvertCount, syncConvertJobUi } from "./media.js";
 import { renderTelegramUploads, syncRuntimeControls } from "./runtime-ui.js";
 
-const statusBody = document.getElementById("status-body");
+const statusBoard = document.getElementById("status-board");
 const statusMeta = document.getElementById("status-meta");
-const statusMore = document.getElementById("status-more");
 const pollSummary = document.getElementById("poll-summary");
 const summaryChips = document.getElementById("summary-chips");
-const statusCards = document.getElementById("status-cards");
 const addUserForm = document.getElementById("add-user-form");
 const forcePollBtn = document.getElementById("force-poll-btn");
+
+const ACTIVE_STATES = new Set([
+  "live",
+  "starting",
+  "recording",
+  "converting",
+  "stopping",
+  "error",
+]);
 
 export function deriveRows(status) {
   const paused = new Set((status.paused || []).map((u) => u.toLowerCase()));
@@ -240,12 +242,6 @@ function profileLinkMarkup(username, { active = false } = {}) {
   return `<button type="button" class="profile-link${active ? " is-active" : ""}" data-profile="${username}">@${username}</button>`;
 }
 
-function statusActionSlot(buttonHtml, placeholderLabel) {
-  const content =
-    buttonHtml || `<span class="action-placeholder">${placeholderLabel}</span>`;
-  return `<div class="status-action-slot">${content}</div>`;
-}
-
 function renderStatusActions(row, status) {
   const paused = (status.paused || [])
     .map((u) => u.toLowerCase())
@@ -255,29 +251,25 @@ function renderStatusActions(row, status) {
     row.state === "recording" ||
     row.state === "converting" ||
     row.state === "stopping";
+  const buttons = [];
 
-  const stopBtn = canStop
-    ? `<button class="btn btn-danger btn-small" data-action="stop" data-user="${row.username}">Stop</button>`
-    : null;
+  if (canStop) {
+    buttons.push(
+      `<button class="btn btn-danger btn-small" data-action="stop" data-user="${row.username}">Stop</button>`,
+    );
+  }
+  buttons.push(
+    paused
+      ? `<button class="btn btn-ghost btn-small" data-action="resume" data-user="${row.username}">Resume</button>`
+      : `<button class="btn btn-ghost btn-small" data-action="pause" data-user="${row.username}">Pause</button>`,
+  );
+  if (isWatchlist) {
+    buttons.push(
+      `<button class="btn btn-ghost btn-small" data-action="remove" data-user="${row.username}">Remove</button>`,
+    );
+  }
 
-  const pauseBtn = paused
-    ? `<button class="btn btn-ghost btn-small" data-action="resume" data-user="${row.username}">Resume</button>`
-    : `<button class="btn btn-ghost btn-small" data-action="pause" data-user="${row.username}">Pause</button>`;
-
-  const removeBtn = isWatchlist
-    ? `<button class="btn btn-ghost btn-small" data-action="remove" data-user="${row.username}">Remove</button>`
-    : null;
-
-  const slots = [
-    statusActionSlot(stopBtn, "Stop"),
-    statusActionSlot(pauseBtn, "Resume"),
-  ];
-  if (isWatchlist) slots.push(statusActionSlot(removeBtn, "Remove"));
-
-  const actionClass = isWatchlist
-    ? "status-actions"
-    : "status-actions status-actions--followers";
-  return `<div class="${actionClass}">${slots.join("")}</div>`;
+  return `<div class="status-actions">${buttons.join("")}</div>`;
 }
 
 function formatStateLabel(row) {
@@ -320,115 +312,99 @@ function renderStateCell(row) {
   </div>`;
 }
 
-function renderStatusRowCells(row, status) {
+function partitionStatusRows(rows) {
+  const active = [];
+  const idle = [];
+  for (const row of rows) {
+    if (ACTIVE_STATES.has(row.state)) active.push(row);
+    else idle.push(row);
+  }
+  return { active, idle };
+}
+
+function statusItemClasses(row) {
+  const focused = usernamesMatch(row.username, selectedProfile);
+  const highlight =
+    row.state === "recording" || row.state === "live" ? " status-item--active" : "";
+  const focusClass = focused ? " status-item--focused" : "";
+  return `${highlight}${focusClass}`.trim();
+}
+
+function renderActiveCard(row, status) {
   const sizeCell = row.output_path
     ? `<span class="output-cell" title="${row.output_path}"><span class="output-size">${formatBytes(row.bytes_written)}</span><span class="output-hint">${basename(row.output_path)}</span></span>`
     : formatBytes(row.bytes_written);
   const focused = usernamesMatch(row.username, selectedProfile);
-  const highlight =
-    row.state === "recording" || row.state === "live" ? " status-row--active" : "";
-  const focusClass = focused ? " status-row--focused" : "";
   return `
-    <tr class="status-row${highlight}${focusClass}" data-username="${row.username}">
-      <td class="username">${profileLinkMarkup(row.username, {
-        active: focused,
-      })}</td>
-      <td class="col-state">${renderStateCell(row)}</td>
-      <td class="col-room">${row.room_id || "-"}</td>
-      <td class="col-elapsed">${formatDuration(row.elapsed_seconds)}</td>
-      <td class="col-size">${sizeCell}</td>
-      <td class="col-actions">${renderStatusActions(row, status)}</td>
-    </tr>
-  `;
-}
-
-function updateStatusRow(tr, row, status) {
-  const focused = usernamesMatch(row.username, selectedProfile);
-  tr.className = `status-row${
-    row.state === "recording" || row.state === "live" ? " status-row--active" : ""
-  }${focused ? " status-row--focused" : ""}`;
-  const stateTd = tr.querySelector(".col-state");
-  if (stateTd) {
-    stateTd.innerHTML = renderStateCell(row);
-  }
-  const room = tr.querySelector(".col-room");
-  if (room) room.textContent = row.room_id || "-";
-  const elapsed = tr.querySelector(".col-elapsed");
-  if (elapsed) elapsed.textContent = formatDuration(row.elapsed_seconds);
-  const sizeCell = tr.children[4];
-  if (sizeCell) {
-    if (row.output_path) {
-      sizeCell.innerHTML = `<span class="output-cell" title="${row.output_path}"><span class="output-size">${formatBytes(row.bytes_written)}</span><span class="output-hint">${basename(row.output_path)}</span></span>`;
-    } else {
-      sizeCell.textContent = formatBytes(row.bytes_written);
-    }
-  }
-  const actions = tr.querySelector(".col-actions");
-  if (actions) actions.innerHTML = renderStatusActions(row, status);
-  const link = tr.querySelector(".profile-link");
-  if (link) link.classList.toggle("is-active", focused);
-}
-
-function updateStatusTable(rows, status) {
-  if (!statusBody) return;
-  const existing = new Map();
-  statusBody.querySelectorAll("tr.status-row").forEach((tr) => {
-    existing.set(tr.dataset.username, tr);
-  });
-  const seen = new Set();
-  for (const row of rows) {
-    seen.add(row.username);
-    let tr = existing.get(row.username);
-    if (!tr) {
-      const temp = document.createElement("tbody");
-      temp.innerHTML = renderStatusRowCells(row, status);
-      tr = temp.firstElementChild;
-      statusBody.appendChild(tr);
-    } else {
-      updateStatusRow(tr, row, status);
-    }
-  }
-  existing.forEach((tr, username) => {
-    if (!seen.has(username)) tr.remove();
-  });
-}
-
-function renderStatusCard(row, status) {
-  const focused = usernamesMatch(row.username, selectedProfile);
-  const highlight =
-    row.state === "recording" || row.state === "live" ? " status-card--active" : "";
-  const focusClass = focused ? " status-card--focused" : "";
-  return `
-    <article class="status-card${highlight}${focusClass}">
+    <article class="status-card ${statusItemClasses(row)}" data-username="${row.username}">
       <div class="status-card-head">
         ${profileLinkMarkup(row.username, { active: focused })}
-        <span class="badge ${row.state}">${formatStateLabel(row)}</span>
+        ${renderStateCell(row)}
       </div>
-      ${renderConvertProgress(row)}
-      <div class="status-card-meta">
-        <span>Room ${row.room_id || "-"}</span>
-        <span>${formatDuration(row.elapsed_seconds)}</span>
-        <span>${formatBytes(row.bytes_written)}</span>
-      </div>
-      ${row.output_path ? `<p class="status-card-file" title="${row.output_path}">${basename(row.output_path)}</p>` : ""}
+      <dl class="status-card-stats">
+        <div><dt>Room</dt><dd>${row.room_id || "-"}</dd></div>
+        <div><dt>Elapsed</dt><dd>${formatDuration(row.elapsed_seconds)}</dd></div>
+        <div><dt>Size</dt><dd>${sizeCell}</dd></div>
+      </dl>
       <div class="status-card-actions">${renderStatusActions(row, status)}</div>
     </article>
   `;
 }
 
-export function scrollToFocusedUser() {
-  if (!selectedProfile) return;
-  const section = document.querySelector(
-    `.user-section[data-username="${CSS.escape(selectedProfile)}"]`,
-  );
-  if (section) {
-    section.scrollIntoView({ behavior: "smooth", block: "start" });
+function renderIdleTile(row, status) {
+  const focused = usernamesMatch(row.username, selectedProfile);
+  return `
+    <article class="status-tile ${statusItemClasses(row)}" data-username="${row.username}">
+      <div class="status-tile-main">
+        ${profileLinkMarkup(row.username, { active: focused })}
+        <span class="badge ${row.state}">${formatStateLabel(row)}</span>
+      </div>
+      <div class="status-tile-actions">${renderStatusActions(row, status)}</div>
+    </article>
+  `;
+}
+
+function renderStatusBoard(rows, status) {
+  if (!statusBoard) return;
+  if (!rows.length) {
+    statusBoard.innerHTML = `<p class="empty">${emptyUsersMessage(status)}</p>`;
     return;
   }
-  const row = statusBody?.querySelector(
-    `tr.status-row[data-username="${CSS.escape(selectedProfile)}"]`,
+
+  const { active, idle } = partitionStatusRows(rows);
+  const sections = [];
+
+  if (active.length) {
+    sections.push(`
+      <section class="status-zone">
+        <h3 class="status-zone-title">Active · ${active.length}</h3>
+        <div class="status-active-grid">
+          ${active.map((row) => renderActiveCard(row, status)).join("")}
+        </div>
+      </section>
+    `);
+  }
+
+  if (idle.length) {
+    sections.push(`
+      <section class="status-zone">
+        <h3 class="status-zone-title">${active.length ? "Watchlist" : "Users"} · ${idle.length}</h3>
+        <div class="status-idle-grid">
+          ${idle.map((row) => renderIdleTile(row, status)).join("")}
+        </div>
+      </section>
+    `);
+  }
+
+  statusBoard.innerHTML = sections.join("");
+}
+
+export function scrollToFocusedUser() {
+  if (!selectedProfile || !statusBoard) return;
+  const item = statusBoard.querySelector(
+    `[data-username="${CSS.escape(selectedProfile)}"]`,
   );
-  row?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  item?.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 export function setSelectedProfile(username) {
@@ -436,23 +412,11 @@ export function setSelectedProfile(username) {
   const base = `${window.location.pathname}${window.location.search}`;
   if (selectedProfile) {
     window.history.replaceState(null, "", `${base}#user/${encodeURIComponent(selectedProfile)}`);
-    libraryState.expandedUsers.add(selectedProfile);
-    libraryState.visibleCounts.delete(selectedProfile);
-    if (libraryState.viewMode === "recent") {
-      libraryState.viewMode = "by-user";
-      import("./media.js").then((m) => {
-        m.saveLibraryViewMode("by-user");
-        m.syncLibraryViewButtons();
-      });
-    }
   } else {
     window.history.replaceState(null, "", base);
   }
   if (latestStatus) renderStatus(latestStatus);
   else renderSummaryChips(latestStatus || {});
-  if (Object.keys(latestMedia).length) {
-    import("./media.js").then((m) => m.applyMediaUpdate(latestMedia));
-  }
   if (selectedProfile) {
     requestAnimationFrame(() => scrollToFocusedUser());
   }
@@ -462,7 +426,6 @@ export function readProfileFromHash() {
   const match = window.location.hash.match(/^#user\/(.+)$/);
   if (match) {
     setSelectedProfileValue(normalizeUsername(decodeURIComponent(match[1])));
-    libraryState.expandedUsers.add(selectedProfile);
   }
 }
 
@@ -471,7 +434,6 @@ export function renderStatus(status) {
   applyModeUI(status);
   syncPollUI(status);
   let rows = deriveRows(status);
-  const totalRows = rows.length;
   rows = rows.filter(rowMatchesFilter);
 
   const pollLabel = status.poll_label ? ` · ${status.poll_label}` : "";
@@ -491,29 +453,13 @@ export function renderStatus(status) {
   }
 
   if (!rows.length) {
-    const empty = emptyUsersMessage(status);
-    if (statusBody) statusBody.innerHTML = `<tr><td colspan="6" class="empty">${empty}</td></tr>`;
-    if (statusCards) statusCards.innerHTML = `<p class="empty">${empty}</p>`;
-    if (statusMore) statusMore.classList.add("hidden");
+    if (statusBoard) {
+      statusBoard.innerHTML = `<p class="empty">${emptyUsersMessage(status)}</p>`;
+    }
     return;
   }
 
-  const limited = rows.length > statusRowLimit;
-  const visibleRows = limited ? rows.slice(0, statusRowLimit) : rows;
-  updateStatusTable(visibleRows, status);
-
-  if (statusMore) {
-    if (limited) {
-      statusMore.classList.remove("hidden");
-      statusMore.textContent = `Showing ${statusRowLimit} of ${totalRows} users`;
-    } else {
-      statusMore.classList.add("hidden");
-    }
-  }
-
-  if (statusCards) {
-    statusCards.innerHTML = visibleRows.map((row) => renderStatusCard(row, status)).join("");
-  }
+  renderStatusBoard(rows, status);
 }
 
 export async function refreshStatus() {
@@ -533,14 +479,7 @@ export function initStatusInteractions() {
     setStatusFilterValue(chip.dataset.filter);
   });
 
-  statusMore?.addEventListener("click", () => {
-    if (!latestStatus) return;
-    expandStatusRowLimit(deriveRows(latestStatus).length);
-    renderStatus(latestStatus);
-  });
-
-  statusBody?.addEventListener("click", handleStatusAction);
-  statusCards?.addEventListener("click", handleStatusAction);
+  statusBoard?.addEventListener("click", handleStatusAction);
 }
 
 async function handleStatusAction(event) {
