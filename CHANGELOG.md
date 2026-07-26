@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.14.4] - 2026-07-26
+
+### Added
+
+- **Media library**: Settings toggle to show or hide legacy recordings (`output/<user>/legacy/`); hidden by default, persisted in browser `localStorage`
+
+### Changed
+
+- **Docs**: align README and GUIDE with current dashboard media library and legacy visibility setting
+
 ## [8.14.3] - 2026-07-26
 
 ### Fixed
@@ -453,7 +463,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.12.6...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.14.4...HEAD
+[8.14.4]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.14.3...v8.14.4
 [8.12.6]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.12.5...v8.12.6
 [8.12.5]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.12.4...v8.12.5
 [8.12.4]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.12.3...v8.12.4

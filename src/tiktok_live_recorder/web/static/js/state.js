@@ -2,6 +2,7 @@ export const API_TIMEOUT_MS = 12000;
 export const LOG_REFRESH_MS = 3000;
 
 export const STORAGE_SORT_KEY = "ttlr_library_sort";
+export const STORAGE_SHOW_LEGACY_KEY = "ttlr_library_show_legacy";
 
 export const STATE_SORT_ORDER = {
   recording: 0,
@@ -24,6 +25,7 @@ export let statusFilter = "all";
 export const libraryState = {
   playingUrl: null,
   sortMode: "newest",
+  showLegacy: false,
 };
 
 export const logState = {

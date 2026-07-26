@@ -302,7 +302,7 @@ Step-by-step setup: [docs/GUIDE.md](docs/GUIDE.md).
 
 - **Default:** `output/<username>/TK_<username>_<timestamp>_flv.mp4` while recording, then converted to `TK_<username>_<timestamp>.mp4`
 - **Custom `-output`:** files are saved directly in that directory; the username is still included in the filename
-- **Legacy folder:** older recordings may live under `output/<username>/legacy/`
+- **Legacy folder:** older recordings may live under `output/<username>/legacy/`; the dashboard hides them by default (**Settings -> Runtime -> Legacy recordings**)
 
 If conversion fails, the intermediate `*_flv.mp4` is kept and the user shows **`convert_failed`** in the dashboard until you fix FFmpeg or use **Convert leftover FLV** ([salvage guide](docs/GUIDE.md#salvaging-leftover-recordings)).
 

@@ -2,6 +2,7 @@ import { api, showToast } from "./api.js";
 import { formatBytes, formatTimestamp, usernamesMatch } from "./format.js";
 import { createMediaThumb, observeMediaThumbs } from "./media-thumbs.js";
 import {
+  STORAGE_SHOW_LEGACY_KEY,
   STORAGE_SORT_KEY,
   latestMedia,
   libraryState,
@@ -24,13 +25,26 @@ const playerMeta = document.getElementById("player-meta");
 export function loadLibraryPreferences() {
   const savedSort = localStorage.getItem(STORAGE_SORT_KEY);
   if (savedSort) libraryState.sortMode = savedSort;
+  libraryState.showLegacy = localStorage.getItem(STORAGE_SHOW_LEGACY_KEY) === "1";
   const sortSelect = document.getElementById("library-sort");
   if (sortSelect) sortSelect.value = libraryState.sortMode;
+  syncLibraryShowLegacyToggle();
 }
 
 export function saveLibrarySortMode(mode) {
   libraryState.sortMode = mode;
   localStorage.setItem(STORAGE_SORT_KEY, mode);
+}
+
+export function saveShowLegacyPreference(show) {
+  libraryState.showLegacy = Boolean(show);
+  localStorage.setItem(STORAGE_SHOW_LEGACY_KEY, show ? "1" : "0");
+  syncLibraryShowLegacyToggle();
+}
+
+export function syncLibraryShowLegacyToggle() {
+  const toggle = document.getElementById("library-show-legacy");
+  if (toggle) toggle.checked = libraryState.showLegacy;
 }
 
 function isAnyMediaPlaying() {
@@ -85,8 +99,20 @@ function filterMedia(media, query) {
   return filtered;
 }
 
+function stripLegacyItems(media) {
+  const filtered = {};
+  for (const [username, items] of Object.entries(media || {})) {
+    const visible = items.filter((item) => item.source !== "legacy");
+    if (visible.length) filtered[username] = visible;
+  }
+  return filtered;
+}
+
 function applyLibraryFilters(media, query) {
   let filtered = filterMedia(media, query);
+  if (!libraryState.showLegacy) {
+    filtered = stripLegacyItems(filtered);
+  }
   if (!selectedProfile) return filtered;
 
   const scoped = {};
@@ -99,7 +125,7 @@ function applyLibraryFilters(media, query) {
 }
 
 function updateLibrarySummary(media) {
-  const source = latestMedia || media || {};
+  const source = media || latestMedia || {};
   const usernames = Object.keys(source);
   const fileCount = usernames.reduce((total, username) => total + source[username].length, 0);
   const totalSize = usernames.reduce(
@@ -108,7 +134,8 @@ function updateLibrarySummary(media) {
   );
   if (!librarySummary) return;
   const focusSuffix = selectedProfile ? ` · @${selectedProfile}` : "";
-  librarySummary.textContent = `${fileCount} recording${fileCount === 1 ? "" : "s"} · ${usernames.length} user${usernames.length === 1 ? "" : "s"} · ${formatBytes(totalSize)}${focusSuffix}`;
+  const legacySuffix = libraryState.showLegacy ? "" : " · legacy hidden";
+  librarySummary.textContent = `${fileCount} recording${fileCount === 1 ? "" : "s"} · ${usernames.length} user${usernames.length === 1 ? "" : "s"} · ${formatBytes(totalSize)}${focusSuffix}${legacySuffix}`;
 }
 
 export function flattenAndSortMedia(media) {
@@ -302,7 +329,9 @@ export function renderMedia(media) {
         ? `No recordings for @${selectedProfile}${query ? " matching your search." : "."}`
         : query
           ? "No recordings match your search."
-          : "No recordings yet.";
+          : !libraryState.showLegacy && Object.keys(latestMedia || {}).length
+            ? "No recordings visible (legacy hidden)."
+            : "No recordings yet.";
       mediaLibrary.innerHTML = `<p class="empty library-empty">${emptyMessage}</p>`;
     }
     return;

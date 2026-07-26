@@ -3,6 +3,12 @@ import { closeModal, isModalOpen, openModal, registerModalCloseHandler } from ".
 import { syncFfmpegInfo, syncStartupFfmpegFromDom } from "./runtime-ui.js";
 import { latestStatus } from "./state.js";
 import { refreshStatus } from "./status.js";
+import {
+  latestMedia,
+  renderMedia,
+  saveShowLegacyPreference,
+  syncLibraryShowLegacyToggle,
+} from "./media.js";
 
 const settingsModalId = "settings-modal";
 const settingsToggle = document.getElementById("settings-toggle");
@@ -50,6 +56,8 @@ export async function loadSettings() {
     }
   }
 
+  syncLibraryShowLegacyToggle();
+
   await loadFfmpegInfo();
 }
 
@@ -87,6 +95,11 @@ export function initSettingsInteractions() {
   });
 
   document.getElementById("settings-close")?.addEventListener("click", closeSettingsPanel);
+
+  document.getElementById("library-show-legacy")?.addEventListener("change", (event) => {
+    saveShowLegacyPreference(event.target.checked);
+    renderMedia(latestMedia);
+  });
 
   document.getElementById("save-runtime-btn")?.addEventListener("click", async () => {
     try {

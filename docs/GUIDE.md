@@ -205,7 +205,7 @@ The UI updates live via **Server-Sent Events** (`GET /api/events`) with polling 
 
 ### Summary strip and filters
 
-The sticky summary strip shows live/recording/offline/paused/error counts, poll timing, app version, and (when focused) the selected user. **Click a chip** to filter the status table (All / Live / Recording / Offline / Paused / Errors). The table sorts recording users first; large watchlists show a **Show all users** control.
+The sticky summary strip shows live/recording/offline/paused/error counts, poll timing, app version, and (when focused) the selected user. **Click a chip** to filter the status list (All / Live / Recording / Offline / Paused / Errors). Recording users sort first; large watchlists show a **Show all users** control.
 
 ### Live status
 
@@ -227,14 +227,13 @@ Click a `@handle` to filter status and the media library to that user. Each prof
 
 ### Media library
 
-- Finished **MP4** files grouped by username (includes `output/<username>/legacy/`)
-- **By user** vs **Most recent** view toggle
+- Finished **MP4** files grouped by username under `output/<username>/`
+- **Legacy recordings** (`output/<username>/legacy/`) are **hidden by default**; enable **Settings -> Runtime -> Legacy recordings** to show them (saved in `localStorage`)
 - Sort: Newest, Oldest, Largest, A-Z user (preference saved in `localStorage`)
 - Search by username or filename (`/` focuses search)
-- Thumbnail previews for finished recordings
-- Per-user storage share bars in section headers
-- In-progress recordings and orphan `*_flv.mp4` files pinned and styled (`in progress`, `needs convert`)
-- Shared in-browser player (sticky while scrolling)
+- Thumbnail previews for finished recordings (lazy load with IndexedDB cache)
+- In-progress recordings and orphan `*_flv.mp4` files pinned and styled (`in progress`, `needs convert`); legacy items show a `legacy` tag when visible
+- Docked in-browser player above the scrollable list (playback is not interrupted by library refreshes)
 - Download or delete files (delete requires confirmation)
 - **Convert leftover FLV** - convert orphan `*_flv.mp4` files that were never finalized (badge shows count). Skips files that belong to an active recording. See [Salvaging leftover recordings](#salvaging-leftover-recordings).
 
@@ -242,7 +241,7 @@ Click a `@handle` to filter status and the media library to that user. Each prof
 
 Opens in a modal overlay (shortcut **`s`**):
 
-- **Runtime** - poll interval (minutes) and Telegram upload on/off (no restart)
+- **Runtime** - poll interval (minutes), Telegram upload on/off (no restart), and **Legacy recordings** visibility in the media library (browser `localStorage`, off by default)
 - **Record now** - start recording by username and/or room ID
 - **Cookies / Telegram** - edit `cookies.json` and `telegram.json` in the browser
 - **Recent Telegram uploads** - when uploads are enabled
