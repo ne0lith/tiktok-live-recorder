@@ -156,32 +156,108 @@ textarea {
   padding: 0.8rem 0.95rem;
 }
 
-select {
-  width: auto;
-  min-width: 6.5rem;
-  padding: 0.45rem 2rem 0.45rem 0.65rem;
-  border-radius: 10px;
-  border: 1px solid var(--line);
-  background-color: var(--surface-2);
-  color: var(--text);
-  color-scheme: dark;
-  cursor: pointer;
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%239aa6b2' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 0.65rem center;
-}
-
-select option {
-  background-color: var(--surface-2);
-  color: var(--text);
-}
-
 input:focus,
-textarea:focus,
-select:focus {
+textarea:focus {
   outline: 2px solid rgba(63, 208, 201, 0.35);
   border-color: rgba(63, 208, 201, 0.45);
+}
+
+.menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.55rem;
+  min-width: 6.5rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: pointer;
+  line-height: 1.2;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease;
+}
+
+.menu-trigger:hover {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.menu-trigger:focus-visible,
+.menu-option:focus-visible {
+  outline: 2px solid rgba(63, 208, 201, 0.35);
+  outline-offset: 2px;
+}
+
+.menu.is-open .menu-trigger {
+  border-color: rgba(63, 208, 201, 0.45);
+  background: rgba(63, 208, 201, 0.08);
+}
+
+.menu-chevron {
+  width: 0.65rem;
+  height: 0.65rem;
+  flex: 0 0 auto;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%239aa6b2' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+  transition: transform 160ms ease;
+}
+
+.menu.is-open .menu-chevron {
+  transform: rotate(180deg);
+}
+
+.menu-popover {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  z-index: 30;
+  min-width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.35rem;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.menu-popover[hidden] {
+  display: none !important;
+}
+
+.menu-option {
+  display: block;
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.menu-option:hover,
+.menu-option:focus-visible {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.menu-option.is-selected {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .btn {

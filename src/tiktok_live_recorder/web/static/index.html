@@ -164,25 +164,49 @@
             <p id="logs-meta" class="meta">Loading…</p>
           </div>
           <div class="logs-toolbar">
-            <label class="logs-control">
-              <span class="logs-control-label">Lines</span>
-              <select id="logs-lines">
-                <option value="100">100</option>
-                <option value="300" selected>300</option>
-                <option value="500">500</option>
-                <option value="1000">1000</option>
-              </select>
-            </label>
-            <label class="logs-control">
-              <span class="logs-control-label">Level</span>
-              <select id="logs-level">
-                <option value="">All</option>
-                <option value="DEBUG">Debug+</option>
-                <option value="INFO" selected>Info+</option>
-                <option value="WARNING">Warning+</option>
-                <option value="ERROR">Error+</option>
-              </select>
-            </label>
+            <div class="logs-control">
+              <span class="logs-control-label" id="logs-lines-label">Lines</span>
+              <div class="menu" id="logs-lines-menu" data-value="300">
+                <button
+                  type="button"
+                  class="menu-trigger"
+                  aria-haspopup="listbox"
+                  aria-expanded="false"
+                  aria-labelledby="logs-lines-label logs-lines-value"
+                >
+                  <span class="menu-trigger-label" id="logs-lines-value">300</span>
+                  <span class="menu-chevron" aria-hidden="true"></span>
+                </button>
+                <div class="menu-popover" role="listbox" aria-labelledby="logs-lines-label" hidden>
+                  <button type="button" class="menu-option" role="option" data-value="100">100</button>
+                  <button type="button" class="menu-option is-selected" role="option" data-value="300" aria-selected="true">300</button>
+                  <button type="button" class="menu-option" role="option" data-value="500">500</button>
+                  <button type="button" class="menu-option" role="option" data-value="1000">1000</button>
+                </div>
+              </div>
+            </div>
+            <div class="logs-control">
+              <span class="logs-control-label" id="logs-level-label">Level</span>
+              <div class="menu" id="logs-level-menu" data-value="INFO">
+                <button
+                  type="button"
+                  class="menu-trigger"
+                  aria-haspopup="listbox"
+                  aria-expanded="false"
+                  aria-labelledby="logs-level-label logs-level-value"
+                >
+                  <span class="menu-trigger-label" id="logs-level-value">Info+</span>
+                  <span class="menu-chevron" aria-hidden="true"></span>
+                </button>
+                <div class="menu-popover" role="listbox" aria-labelledby="logs-level-label" hidden>
+                  <button type="button" class="menu-option" role="option" data-value="">All</button>
+                  <button type="button" class="menu-option" role="option" data-value="DEBUG">Debug+</button>
+                  <button type="button" class="menu-option is-selected" role="option" data-value="INFO" aria-selected="true">Info+</button>
+                  <button type="button" class="menu-option" role="option" data-value="WARNING">Warning+</button>
+                  <button type="button" class="menu-option" role="option" data-value="ERROR">Error+</button>
+                </div>
+              </div>
+            </div>
             <label class="toggle-row toggle-row--compact logs-autorefresh" for="logs-autorefresh">
               <span class="toggle-copy">
                 <span class="toggle-title">Auto-refresh</span>

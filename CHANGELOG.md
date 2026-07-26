@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.6.2] - 2026-07-26
+
+### Fixed
+
+- Log viewer Lines/Level filters use custom dark-theme menus instead of native `<select>` dropdowns (fixes unreadable white option lists on Windows)
+
 ## [8.6.1] - 2026-07-26
 
 ### Fixed

@@ -44,6 +44,82 @@ const logState = {
   stickToBottom: true,
 };
 
+let openMenu = null;
+
+function closeMenu(menu) {
+  if (!menu) return;
+  menu.classList.remove("is-open");
+  menu.querySelector(".menu-trigger")?.setAttribute("aria-expanded", "false");
+  menu.querySelector(".menu-popover")?.setAttribute("hidden", "");
+  if (openMenu === menu) {
+    openMenu = null;
+  }
+}
+
+function closeAllMenus() {
+  closeMenu(openMenu);
+}
+
+function getMenuValue(menuId) {
+  return document.getElementById(menuId)?.dataset.value ?? "";
+}
+
+function initMenu(menuId, { onChange } = {}) {
+  const menu = document.getElementById(menuId);
+  if (!menu) return;
+
+  const trigger = menu.querySelector(".menu-trigger");
+  const popover = menu.querySelector(".menu-popover");
+  const label = menu.querySelector(".menu-trigger-label");
+  const options = [...menu.querySelectorAll(".menu-option")];
+
+  function setValue(value, { silent = false } = {}) {
+    const option = options.find((entry) => entry.dataset.value === value);
+    if (!option) return;
+
+    menu.dataset.value = value;
+    label.textContent = option.textContent.trim();
+    for (const entry of options) {
+      const selected = entry === option;
+      entry.classList.toggle("is-selected", selected);
+      entry.setAttribute("aria-selected", selected ? "true" : "false");
+    }
+    if (!silent && typeof onChange === "function") {
+      onChange(value);
+    }
+  }
+
+  trigger.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (menu.classList.contains("is-open")) {
+      closeMenu(menu);
+      return;
+    }
+    closeAllMenus();
+    menu.classList.add("is-open");
+    trigger.setAttribute("aria-expanded", "true");
+    popover.removeAttribute("hidden");
+    openMenu = menu;
+    options.find((entry) => entry.classList.contains("is-selected"))?.focus();
+  });
+
+  for (const option of options) {
+    option.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const value = option.dataset.value ?? "";
+      const changed = value !== menu.dataset.value;
+      setValue(value, { silent: true });
+      closeMenu(menu);
+      trigger.focus();
+      if (changed && typeof onChange === "function") {
+        onChange(value);
+      }
+    });
+  }
+
+  menu.setValue = setValue;
+}
+
 function showToast(message) {
   toast.textContent = message;
   toast.classList.remove("hidden");
@@ -904,8 +980,8 @@ function renderLogs(payload) {
 }
 
 async function refreshLogs() {
-  const lines = document.getElementById("logs-lines")?.value || "300";
-  const level = document.getElementById("logs-level")?.value || "";
+  const lines = getMenuValue("logs-lines-menu") || "300";
+  const level = getMenuValue("logs-level-menu") || "";
   const params = new URLSearchParams({ lines: String(lines) });
   if (level) params.set("level", level);
   const payload = await api(`/api/logs?${params.toString()}`);
@@ -1102,7 +1178,7 @@ document.getElementById("logs-refresh-btn").addEventListener("click", async () =
   }
 });
 
-document.getElementById("logs-lines").addEventListener("change", async () => {
+async function handleLogFilterChange() {
   if (!isLogsPanelOpen()) return;
   try {
     logState.stickToBottom = true;
@@ -1110,15 +1186,18 @@ document.getElementById("logs-lines").addEventListener("change", async () => {
   } catch (error) {
     showToast(error.message);
   }
+}
+
+initMenu("logs-lines-menu", { onChange: handleLogFilterChange });
+initMenu("logs-level-menu", { onChange: handleLogFilterChange });
+
+document.addEventListener("click", () => {
+  closeAllMenus();
 });
 
-document.getElementById("logs-level").addEventListener("change", async () => {
-  if (!isLogsPanelOpen()) return;
-  try {
-    logState.stickToBottom = true;
-    await refreshLogs();
-  } catch (error) {
-    showToast(error.message);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    closeAllMenus();
   }
 });
 
