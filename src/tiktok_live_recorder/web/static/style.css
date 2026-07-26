@@ -141,11 +141,12 @@ body {
 
 input,
 textarea,
+select,
 button {
   font: inherit;
 }
 
-input,
+input:not([type="checkbox"]):not([type="radio"]),
 textarea {
   width: 100%;
   border: 1px solid var(--line);
@@ -155,8 +156,30 @@ textarea {
   padding: 0.8rem 0.95rem;
 }
 
+select {
+  width: auto;
+  min-width: 6.5rem;
+  padding: 0.45rem 2rem 0.45rem 0.65rem;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background-color: var(--surface-2);
+  color: var(--text);
+  color-scheme: dark;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%239aa6b2' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.65rem center;
+}
+
+select option {
+  background-color: var(--surface-2);
+  color: var(--text);
+}
+
 input:focus,
-textarea:focus {
+textarea:focus,
+select:focus {
   outline: 2px solid rgba(63, 208, 201, 0.35);
   border-color: rgba(63, 208, 201, 0.45);
 }
@@ -327,7 +350,7 @@ th {
 .logs-toolbar {
   display: flex;
   flex-wrap: wrap;
-  align-items: end;
+  align-items: center;
   gap: 0.65rem 0.85rem;
 }
 
@@ -339,18 +362,19 @@ th {
   color: var(--muted);
 }
 
-.logs-control select {
-  min-width: 6.5rem;
-  padding: 0.35rem 0.55rem;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.03);
-  color: var(--text);
+.logs-toolbar .toggle-row--compact {
+  padding: 0.55rem 0.75rem;
+  min-width: min(100%, 15rem);
 }
 
-.logs-autorefresh {
-  margin: 0;
-  padding-bottom: 0.35rem;
+.logs-toolbar .toggle-hint {
+  display: none;
+}
+
+@media (min-width: 900px) {
+  .logs-toolbar .toggle-hint {
+    display: block;
+  }
 }
 
 .log-output {

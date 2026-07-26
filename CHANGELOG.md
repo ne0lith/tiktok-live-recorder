@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.6.1] - 2026-07-26
+
+### Fixed
+
+- Log viewer dropdown menus use dark-theme option colors so the list is readable when opened
+- Log viewer auto-refresh control uses the same toggle switch as Settings
+
 ## [8.6.0] - 2026-07-26
 
 ### Added

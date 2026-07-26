@@ -183,9 +183,15 @@
                 <option value="ERROR">Error+</option>
               </select>
             </label>
-            <label class="field-checkbox logs-autorefresh">
-              <input id="logs-autorefresh" type="checkbox" checked />
-              Auto-refresh
+            <label class="toggle-row toggle-row--compact logs-autorefresh" for="logs-autorefresh">
+              <span class="toggle-copy">
+                <span class="toggle-title">Auto-refresh</span>
+                <span class="toggle-hint">Update every 3 seconds</span>
+              </span>
+              <span class="toggle">
+                <input id="logs-autorefresh" type="checkbox" checked />
+                <span class="toggle-slider" aria-hidden="true"></span>
+              </span>
             </label>
             <button id="logs-refresh-btn" class="btn btn-ghost btn-small" type="button">
               Refresh
