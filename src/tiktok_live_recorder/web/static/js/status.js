@@ -280,7 +280,7 @@ function renderStatusRowCells(row, status) {
       <td><span class="badge ${row.state}">${row.state}</span></td>
       <td class="col-room">${row.room_id || "-"}</td>
       <td class="col-elapsed">${formatDuration(row.elapsed_seconds)}</td>
-      <td>${sizeCell}</td>
+      <td class="col-size">${sizeCell}</td>
       <td class="col-actions">${renderStatusActions(row, status)}</td>
     </tr>
   `;
@@ -354,7 +354,7 @@ function renderStatusCard(row, status) {
         <span>${formatDuration(row.elapsed_seconds)}</span>
         <span>${formatBytes(row.bytes_written)}</span>
       </div>
-      ${row.output_path ? `<p class="status-card-file">${basename(row.output_path)}</p>` : ""}
+      ${row.output_path ? `<p class="status-card-file" title="${row.output_path}">${basename(row.output_path)}</p>` : ""}
       <div class="status-card-actions">${renderStatusActions(row, status)}</div>
     </article>
   `;
