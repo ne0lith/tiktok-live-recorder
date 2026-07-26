@@ -1,7 +1,10 @@
 import os
+import subprocess
 import tempfile
 import time
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import ffmpeg
 
@@ -10,6 +13,8 @@ from tiktok_live_recorder.utils.flv_hevc_rewrite import (
     rewrite_legacy_hevc_flv,
 )
 from tiktok_live_recorder.utils.logger_manager import logger
+
+ConvertProgressCallback = Callable[[dict[str, Any]], None]
 
 
 class VideoManagement:
@@ -52,6 +57,67 @@ class VideoManagement:
         )
 
     @staticmethod
+    def parse_ffmpeg_progress_line(line: str) -> dict[str, Any] | None:
+        stripped = line.strip()
+        if not stripped or "=" not in stripped:
+            return None
+        key, value = stripped.split("=", 1)
+        if key == "out_time_us":
+            return {"out_time_us": int(value)}
+        if key == "out_time_ms":
+            return {"out_time_us": int(value) * 1000}
+        if key == "out_time":
+            return {"out_time": value}
+        if key == "progress":
+            return {"progress": value}
+        return None
+
+    @staticmethod
+    def progress_percent(
+        out_time_us: int, duration_seconds: float | None
+    ) -> int | None:
+        if not duration_seconds or duration_seconds <= 0:
+            return None
+        total_us = int(duration_seconds * 1_000_000)
+        if total_us <= 0:
+            return None
+        return max(0, min(99, int(out_time_us / total_us * 100)))
+
+    @staticmethod
+    def _probe_duration_seconds(input_file: str, ffprobe_cmd: str) -> float | None:
+        try:
+            probe = ffmpeg.probe(input_file, cmd=ffprobe_cmd)
+            duration = probe.get("format", {}).get("duration")
+            if duration:
+                return float(duration)
+            for stream in probe.get("streams", []):
+                if stream.get("codec_type") == "video" and stream.get("duration"):
+                    return float(stream["duration"])
+        except Exception as exc:
+            logger.warning(f"Could not probe duration for {input_file}: {exc}")
+        return None
+
+    @staticmethod
+    def _emit_convert_progress(
+        on_progress: ConvertProgressCallback | None,
+        *,
+        percent: int | None,
+        duration_seconds: float | None,
+        out_time_us: int | None = None,
+        phase: str = "encode",
+    ) -> None:
+        if on_progress is None:
+            return
+        payload: dict[str, Any] = {"phase": phase}
+        if percent is not None:
+            payload["percent"] = percent
+        if duration_seconds is not None:
+            payload["duration_seconds"] = round(duration_seconds, 3)
+        if out_time_us is not None and duration_seconds:
+            payload["out_time_seconds"] = round(out_time_us / 1_000_000, 3)
+        on_progress(payload)
+
+    @staticmethod
     def _canvas_from_source(file: str, ffprobe_cmd: str) -> tuple[int, int]:
         """
         Use the file's initial coded size as the fixed output canvas.
@@ -84,6 +150,8 @@ class VideoManagement:
         bitrate: str | None,
         ffmpeg_cmd: str,
         ffprobe_cmd: str,
+        on_progress: ConvertProgressCallback | None = None,
+        phase: str = "encode",
     ) -> bool:
         try:
             width, height = VideoManagement._canvas_from_source(input_file, ffprobe_cmd)
@@ -100,32 +168,102 @@ class VideoManagement:
         )
         logger.info(f"Re-encoding to fixed canvas {width}x{height} for seek-safe MP4")
 
-        output_args = {
-            "vf": vf,
-            "c:v": "libx264",
-            "preset": "veryfast",
-            "c:a": "aac",
-            "b:a": "160k",
-            "movflags": "+faststart",
-            "avoid_negative_ts": "make_zero",
-            "pix_fmt": "yuv420p",
-        }
+        duration_seconds = VideoManagement._probe_duration_seconds(
+            input_file, ffprobe_cmd
+        )
+        VideoManagement._emit_convert_progress(
+            on_progress,
+            percent=0,
+            duration_seconds=duration_seconds,
+            phase=phase,
+        )
 
+        cmd = [
+            ffmpeg_cmd,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-nostats",
+            "-progress",
+            "pipe:1",
+            "-y",
+            "-fflags",
+            "+genpts+igndts",
+            "-i",
+            input_file,
+            "-vf",
+            vf,
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "160k",
+            "-movflags",
+            "+faststart",
+            "-avoid_negative_ts",
+            "make_zero",
+            "-pix_fmt",
+            "yuv420p",
+        ]
         if bitrate:
-            output_args["b:v"] = bitrate
+            cmd.extend(["-b:v", bitrate])
         else:
-            output_args["crf"] = "20"
+            cmd.extend(["-crf", "20"])
+        cmd.append(output_file)
+
+        last_percent = -1
+        last_emit_at = 0.0
+        out_time_us = 0
 
         try:
-            (
-                ffmpeg.input(input_file, fflags="+genpts+igndts")
-                .output(output_file, **output_args)
-                .overwrite_output()
-                .run(quiet=True, cmd=ffmpeg_cmd)
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1,
             )
-            return True
-        except ffmpeg.Error as e:
-            stderr = e.stderr.decode() if hasattr(e, "stderr") and e.stderr else str(e)
+            assert process.stdout is not None
+            for line in process.stdout:
+                parsed = VideoManagement.parse_ffmpeg_progress_line(line)
+                if not parsed:
+                    continue
+                if "out_time_us" in parsed:
+                    out_time_us = parsed["out_time_us"]
+                if parsed.get("progress") == "end":
+                    out_time_us = int((duration_seconds or 0) * 1_000_000)
+                percent = VideoManagement.progress_percent(
+                    out_time_us, duration_seconds
+                )
+                if percent is None:
+                    continue
+                now = time.time()
+                if percent != last_percent or now - last_emit_at >= 0.5:
+                    last_percent = percent
+                    last_emit_at = now
+                    VideoManagement._emit_convert_progress(
+                        on_progress,
+                        percent=percent,
+                        duration_seconds=duration_seconds,
+                        out_time_us=out_time_us,
+                        phase=phase,
+                    )
+
+            stderr = process.stderr.read() if process.stderr else ""
+            returncode = process.wait()
+            if returncode == 0:
+                VideoManagement._emit_convert_progress(
+                    on_progress,
+                    percent=100,
+                    duration_seconds=duration_seconds,
+                    out_time_us=out_time_us,
+                    phase=phase,
+                )
+                return True
+
             logger.error(f"ffmpeg conversion failed: {stderr}")
             if VideoManagement._is_hevc_demux_error(stderr):
                 logger.warning(
@@ -133,9 +271,17 @@ class VideoManagement:
                     "Will try Enhanced FLV rewrite if available."
                 )
             return False
+        except OSError as exc:
+            logger.error(f"ffmpeg conversion failed: {exc}")
+            return False
 
     @staticmethod
-    def convert_flv_to_mp4(file, bitrate=None, ffmpeg_path=None) -> bool:
+    def convert_flv_to_mp4(
+        file,
+        bitrate=None,
+        ffmpeg_path=None,
+        on_progress: ConvertProgressCallback | None = None,
+    ) -> bool:
         """
         Convert a live FLV recording into a seekable MP4.
 
@@ -160,6 +306,7 @@ class VideoManagement:
             bitrate=bitrate,
             ffmpeg_cmd=ffmpeg_cmd,
             ffprobe_cmd=ffprobe_cmd,
+            on_progress=on_progress,
         ):
             os.remove(file)
             logger.info(f"Finished converting {Path(output_file).resolve()}\n")
@@ -175,6 +322,14 @@ class VideoManagement:
             rewrite_legacy_hevc_flv(Path(file), Path(rewritten_path))
             rewrite_source = rewritten_path
             logger.info("Retrying conversion after legacy HEVC → Enhanced hvc1 rewrite")
+            VideoManagement._emit_convert_progress(
+                on_progress,
+                percent=0,
+                duration_seconds=VideoManagement._probe_duration_seconds(
+                    rewrite_source, ffprobe_cmd
+                ),
+                phase="rewrite",
+            )
 
         try:
             if rewrite_source != file and VideoManagement._run_ffmpeg_convert(
@@ -183,6 +338,8 @@ class VideoManagement:
                 bitrate=bitrate,
                 ffmpeg_cmd=ffmpeg_cmd,
                 ffprobe_cmd=ffprobe_cmd,
+                on_progress=on_progress,
+                phase="rewrite",
             ):
                 os.remove(file)
                 logger.info(f"Finished converting {Path(output_file).resolve()}\n")

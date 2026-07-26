@@ -1,5 +1,5 @@
 import { setConnectionState } from "./connection.js";
-import { renderMedia } from "./media.js";
+import { applyMediaUpdate } from "./media.js";
 import { renderStatus } from "./status.js";
 
 let eventSource = null;
@@ -38,7 +38,7 @@ export function connectEventStream() {
       if (payload.type === "status" && payload.data) {
         renderStatus(payload.data);
       } else if (payload.type === "media" && payload.data) {
-        renderMedia(payload.data);
+        applyMediaUpdate(payload.data);
       }
     } catch (error) {
       console.warn("SSE payload parse failed", error);
@@ -67,5 +67,5 @@ export function disconnectEventStream() {
 
 export function startMediaFallback(refreshMedia) {
   if (mediaFallbackTimer) return;
-  mediaFallbackTimer = setInterval(() => refreshMedia({ force: true }), 60000);
+  mediaFallbackTimer = setInterval(() => refreshMedia(), 60000);
 }

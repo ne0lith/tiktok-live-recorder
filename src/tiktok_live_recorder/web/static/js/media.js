@@ -52,6 +52,20 @@ function isAnyMediaPlaying() {
   );
 }
 
+function isPlayerActive() {
+  return Boolean(
+    mediaPlayerVideo &&
+      mediaPlayerVideo.src &&
+      !mediaPlayerVideo.ended &&
+      mediaPlayer &&
+      !mediaPlayer.classList.contains("hidden"),
+  );
+}
+
+function shouldDeferMediaRender() {
+  return isPlayerActive();
+}
+
 function mediaItemMeta(item) {
   const statusBits = [];
   if (item.in_progress) statusBits.push("in progress");
@@ -191,6 +205,7 @@ export function closePlayer() {
   mediaPlayer?.classList.add("hidden");
   mediaPlayer?.classList.remove("is-sticky");
   highlightActiveRow();
+  maybeApplyPendingMedia();
 }
 
 function highlightActiveRow() {
@@ -501,23 +516,70 @@ export function renderMedia(media) {
 }
 
 export function maybeApplyPendingMedia() {
-  if (pendingMedia && !isAnyMediaPlaying()) {
+  if (pendingMedia && !shouldDeferMediaRender()) {
     const media = pendingMedia;
     setPendingMedia(null);
     renderMedia(media);
   }
 }
 
-export async function refreshPendingConvertCount() {
+/** Apply a media payload without rebuilding the library while the player is open. */
+export function applyMediaUpdate(media, { force = false } = {}) {
+  if (!force && shouldDeferMediaRender()) {
+    setPendingMedia(media);
+    setLatestMedia(media || {});
+    updateLibrarySummary(filterMedia(latestMedia, mediaSearch?.value || ""));
+    return false;
+  }
+  setPendingMedia(null);
+  renderMedia(media);
+  return true;
+}
+
+export function updateConvertJobButton(job) {
+  const btn = document.getElementById("convert-pending-btn");
+  if (!btn || !job?.running) return;
+  const progress = job.current_progress?.percent;
+  const fileIndex = job.total ? Math.min(job.total, job.completed + 1) : null;
+  const batchLabel = job.total ? ` · file ${fileIndex}/${job.total}` : "";
+  if (progress != null) {
+    btn.textContent = `Converting FLV… ${progress}%${batchLabel}`;
+  } else {
+    btn.textContent = `Converting FLV…${batchLabel}`;
+  }
+}
+
+export function syncConvertJobUi(job) {
   const btn = document.getElementById("convert-pending-btn");
   const badge = document.getElementById("convert-pending-count");
   if (!btn) return;
+  if (job?.running) {
+    btn.disabled = true;
+    updateConvertJobButton(job);
+    return;
+  }
+  btn.textContent = "Convert leftover FLV";
+}
+
+export async function refreshPendingConvertCount(jobFromStatus = null) {
+  const btn = document.getElementById("convert-pending-btn");
+  const badge = document.getElementById("convert-pending-count");
+  if (!btn) return;
+  if (jobFromStatus?.running) {
+    syncConvertJobUi(jobFromStatus);
+    return;
+  }
   try {
     const payload = await api("/api/media/pending-convert");
     const count = payload.count || 0;
-    const running = Boolean(payload.job?.running);
+    const job = payload.job;
+    const running = Boolean(job?.running);
     btn.disabled = count === 0 || running;
-    btn.textContent = running ? "Converting FLV…" : "Convert leftover FLV";
+    if (running) {
+      updateConvertJobButton(job);
+    } else {
+      btn.textContent = "Convert leftover FLV";
+    }
     if (badge) {
       if (count > 0 && !running) {
         badge.textContent = String(count);
@@ -533,12 +595,7 @@ export async function refreshPendingConvertCount() {
 
 export async function refreshMedia({ force = false } = {}) {
   const media = await api("/api/media");
-  if (!force && isAnyMediaPlaying()) {
-    setPendingMedia(media);
-    return;
-  }
-  setPendingMedia(null);
-  renderMedia(media);
+  applyMediaUpdate(media, { force });
   await refreshPendingConvertCount();
 }
 

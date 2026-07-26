@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.11.0] - 2026-07-26
+
+### Added
+
+- MP4 conversion progress in the dashboard: live status shows percent and ETA while `converting`; **Convert leftover FLV** shows per-file progress during batch salvage
+
+### Fixed
+
+- SSE and media polling no longer rebuild the media library while the sticky player is open (updates are deferred until the player closes)
+
 ## [8.10.1] - 2026-07-26
 
 ### Fixed
@@ -307,7 +317,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.10.1...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.11.0...HEAD
+[8.11.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.10.1...v8.11.0
 [8.10.1]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.10.0...v8.10.1
 [8.10.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.9.0...v8.10.0
 [8.9.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.8.0...v8.9.0

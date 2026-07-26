@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tiktok-live-recorder"
-version = "8.10.1"
+version = "8.11.0"
 description = "A tool for recording TikTok live streams"
 readme = "README.md"
 license = { file = "LICENSE" }

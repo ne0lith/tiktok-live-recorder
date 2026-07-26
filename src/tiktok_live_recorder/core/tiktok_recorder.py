@@ -189,6 +189,7 @@ class TikTokRecorder:
                     "bytes_written": file_size,
                     "output_path": output_path,
                     "is_alive": bool(thread and thread.is_alive()),
+                    "convert_progress": entry.get("convert_progress"),
                 }
             )
 
@@ -206,6 +207,7 @@ class TikTokRecorder:
             "telegram_uploads": telegram_uploads,
             "poll_in_progress": poll_in_progress,
             "activity": activity,
+            "convert_job": self.get_convert_job(),
         }
 
     def update_runtime_settings(
@@ -999,16 +1001,29 @@ class TikTokRecorder:
             raise LiveNotFound(TikTokError.RETRIEVE_LIVE_URL)
 
         self._log_recording(user, f"Recording finished: {Path(output).resolve()}\n")
-        self._update_recording_entry(user, status="converting")
+        self._update_recording_entry(
+            user,
+            status="converting",
+            convert_progress={"percent": 0, "phase": "starting"},
+        )
+
+        def on_convert_progress(progress: dict) -> None:
+            self._update_recording_entry(user, convert_progress=progress)
+
         converted = VideoManagement.convert_flv_to_mp4(
-            output, self.bitrate, self.ffmpeg_path
+            output,
+            self.bitrate,
+            self.ffmpeg_path,
+            on_progress=on_convert_progress,
         )
         mp4_output = output.replace("_flv.mp4", ".mp4")
         if converted and Path(mp4_output).is_file():
-            self._update_recording_entry(user, status="finished")
+            self._update_recording_entry(user, status="finished", convert_progress=None)
             self._maybe_upload_to_telegram(user, mp4_output)
         else:
-            self._update_recording_entry(user, status="convert_failed")
+            self._update_recording_entry(
+                user, status="convert_failed", convert_progress=None
+            )
 
     def active_recording_output_paths(self) -> set[str]:
         active: set[str] = set()
@@ -1047,6 +1062,7 @@ class TikTokRecorder:
                 "completed": 0,
                 "failed": 0,
                 "current": None,
+                "current_progress": None,
                 "results": [],
             }
             job_snapshot = dict(self._convert_job)
@@ -1059,6 +1075,7 @@ class TikTokRecorder:
                     "completed": 0,
                     "failed": 0,
                     "current": None,
+                    "current_progress": None,
                     "results": [],
                 }
             return dict(self._convert_job)
@@ -1070,6 +1087,16 @@ class TikTokRecorder:
                 with self._convert_lock:
                     if self._convert_job:
                         self._convert_job["current"] = item["filename"]
+                        self._convert_job["current_progress"] = {
+                            "percent": 0,
+                            "phase": "starting",
+                        }
+
+                def on_convert_progress(progress: dict) -> None:
+                    with self._convert_lock:
+                        if self._convert_job:
+                            self._convert_job["current_progress"] = progress
+
                 if str(path.resolve()) in active_paths:
                     result = {
                         "filename": item["filename"],
@@ -1079,7 +1106,10 @@ class TikTokRecorder:
                     }
                 else:
                     ok = VideoManagement.convert_flv_to_mp4(
-                        str(path), self.bitrate, self.ffmpeg_path
+                        str(path),
+                        self.bitrate,
+                        self.ffmpeg_path,
+                        on_progress=on_convert_progress,
                     )
                     mp4_path = str(path).replace("_flv.mp4", ".mp4")
                     if ok and Path(mp4_path).is_file():
@@ -1101,6 +1131,7 @@ class TikTokRecorder:
                 if self._convert_job:
                     self._convert_job["running"] = False
                     self._convert_job["current"] = None
+                    self._convert_job["current_progress"] = None
 
         Thread(target=worker, daemon=True, name="convert-pending-flv").start()
         return job_snapshot

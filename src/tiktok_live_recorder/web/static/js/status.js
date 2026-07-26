@@ -23,7 +23,7 @@ import {
   statusRowLimit,
   STATUS_ROW_LIMIT,
 } from "./state.js";
-import { renderTelegramUploads, syncRuntimeControls } from "./settings.js";
+import { refreshPendingConvertCount, syncConvertJobUi } from "./media.js";
 
 const statusBody = document.getElementById("status-body");
 const statusMeta = document.getElementById("status-meta");
@@ -52,6 +52,7 @@ export function deriveRows(status) {
         elapsed_seconds: null,
         bytes_written: null,
         output_path: null,
+        convert_progress: null,
       });
     }
     return rows.get(key);
@@ -90,6 +91,7 @@ export function deriveRows(status) {
     row.elapsed_seconds = entry.elapsed_seconds;
     row.bytes_written = entry.bytes_written;
     row.output_path = entry.output_path || row.output_path;
+    row.convert_progress = entry.convert_progress || null;
   });
 
   return Array.from(rows.values()).sort((a, b) => {
@@ -264,6 +266,46 @@ function renderStatusActions(row, status) {
   return `<div class="${actionClass}">${slots.join("")}</div>`;
 }
 
+function formatStateLabel(row) {
+  if (row.state === "converting") {
+    const percent = row.convert_progress?.percent;
+    if (percent != null) return `converting ${percent}%`;
+  }
+  return row.state;
+}
+
+function renderConvertProgress(row) {
+  if (row.state !== "converting") return "";
+  const percent = row.convert_progress?.percent;
+  if (percent == null) return "";
+  const safe = Math.max(0, Math.min(100, percent));
+  const eta =
+    row.convert_progress?.duration_seconds &&
+    row.convert_progress?.out_time_seconds != null
+      ? formatDuration(
+          Math.max(
+            0,
+            row.convert_progress.duration_seconds -
+              row.convert_progress.out_time_seconds,
+          ),
+        )
+      : null;
+  const etaLabel = eta && eta !== "0s" ? ` · ~${eta} left` : "";
+  return `<div class="convert-progress" role="progressbar" aria-valuenow="${safe}" aria-valuemin="0" aria-valuemax="100" title="MP4 conversion in progress">
+    <div class="convert-progress-track">
+      <div class="convert-progress-fill" style="width: ${safe}%"></div>
+    </div>
+    <span class="convert-progress-meta">${safe}%${etaLabel}</span>
+  </div>`;
+}
+
+function renderStateCell(row) {
+  return `<div class="state-cell">
+    <span class="badge ${row.state}">${formatStateLabel(row)}</span>
+    ${renderConvertProgress(row)}
+  </div>`;
+}
+
 function renderStatusRowCells(row, status) {
   const sizeCell = row.output_path
     ? `<span class="output-cell" title="${row.output_path}"><span class="output-size">${formatBytes(row.bytes_written)}</span><span class="output-hint">${basename(row.output_path)}</span></span>`
@@ -277,7 +319,7 @@ function renderStatusRowCells(row, status) {
       <td class="username">${profileLinkMarkup(row.username, {
         active: focused,
       })}</td>
-      <td><span class="badge ${row.state}">${row.state}</span></td>
+      <td class="col-state">${renderStateCell(row)}</td>
       <td class="col-room">${row.room_id || "-"}</td>
       <td class="col-elapsed">${formatDuration(row.elapsed_seconds)}</td>
       <td class="col-size">${sizeCell}</td>
@@ -291,10 +333,9 @@ function updateStatusRow(tr, row, status) {
   tr.className = `status-row${
     row.state === "recording" || row.state === "live" ? " status-row--active" : ""
   }${focused ? " status-row--focused" : ""}`;
-  const badge = tr.querySelector(".badge");
-  if (badge) {
-    badge.textContent = row.state;
-    badge.className = `badge ${row.state}`;
+  const stateTd = tr.querySelector(".col-state");
+  if (stateTd) {
+    stateTd.innerHTML = renderStateCell(row);
   }
   const room = tr.querySelector(".col-room");
   if (room) room.textContent = row.room_id || "-";
@@ -347,8 +388,9 @@ function renderStatusCard(row, status) {
     <article class="status-card${highlight}${focusClass}">
       <div class="status-card-head">
         ${profileLinkMarkup(row.username, { active: focused })}
-        <span class="badge ${row.state}">${row.state}</span>
+        <span class="badge ${row.state}">${formatStateLabel(row)}</span>
       </div>
+      ${renderConvertProgress(row)}
       <div class="status-card-meta">
         <span>Room ${row.room_id || "-"}</span>
         <span>${formatDuration(row.elapsed_seconds)}</span>
@@ -395,7 +437,7 @@ export function setSelectedProfile(username) {
   if (latestStatus) renderStatus(latestStatus);
   else renderSummaryChips(latestStatus || {});
   if (Object.keys(latestMedia).length) {
-    import("./media.js").then((m) => m.renderMedia(latestMedia));
+    import("./media.js").then((m) => m.applyMediaUpdate(latestMedia));
   }
   if (selectedProfile) {
     requestAnimationFrame(() => scrollToFocusedUser());
@@ -430,6 +472,9 @@ export function renderStatus(status) {
   renderActivityFeed(status.activity || []);
   renderTelegramUploads(status.telegram_uploads || []);
   syncRuntimeControls(status);
+  if (status.convert_job?.running) {
+    syncConvertJobUi(status.convert_job);
+  }
 
   if (!rows.length) {
     const empty = emptyUsersMessage(status);

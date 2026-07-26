@@ -179,3 +179,21 @@ def test_resolve_ffmpeg_path_linux_installs_with_no_candidates(
 
     assert resolve_ffmpeg_path() == "/repo/.vendor/ffmpeg/n8.1-linux64/bin/ffmpeg"
     mock_install.assert_called_once()
+
+
+def test_parse_ffmpeg_progress_line_reads_out_time_us():
+    from tiktok_live_recorder.utils.video_management import VideoManagement
+
+    assert VideoManagement.parse_ffmpeg_progress_line("out_time_us=1500000") == {
+        "out_time_us": 1500000
+    }
+    assert VideoManagement.parse_ffmpeg_progress_line("progress=continue") == {
+        "progress": "continue"
+    }
+
+
+def test_progress_percent_clamps_to_ninety_nine_until_done():
+    from tiktok_live_recorder.utils.video_management import VideoManagement
+
+    assert VideoManagement.progress_percent(1_500_000_000, 3600.0) == 41
+    assert VideoManagement.progress_percent(4_000_000_000, 3600.0) == 99
