@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.12.9] - 2026-07-26
+
+### Fixed
+
+- **Vendor BtbN n8.1 install no longer rejected when only roundtrip passes**: synthetic codec-12 fixtures can fail on the real BtbN build while libx265 FLV roundtrip succeeds; pinned vendor FFmpeg accepts roundtrip, system FFmpeg still requires legacy or enhanced demux
+
 ## [8.12.8] - 2026-07-26
 
 ### Fixed

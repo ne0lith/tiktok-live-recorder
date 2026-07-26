@@ -206,12 +206,41 @@ def test_ffmpeg_hevc_capable_accepts_enhanced_probe_only(
     return_value=True,
 )
 @patch("tiktok_live_recorder.utils.ffmpeg_setup._probe_flv_bytes", return_value=False)
-def test_ffmpeg_hevc_capable_rejects_roundtrip_only(
+def test_ffmpeg_hevc_capable_rejects_system_roundtrip_only(
     _mock_probe, _mock_sane, _mock_roundtrip, _mock_which
 ):
     from tiktok_live_recorder.utils.ffmpeg_setup import ffmpeg_hevc_capable
 
     assert ffmpeg_hevc_capable("/usr/bin/ffmpeg") is False
+
+
+@patch(
+    "tiktok_live_recorder.utils.ffmpeg_setup.is_vendor_ffmpeg_path",
+    return_value=True,
+)
+@patch("tiktok_live_recorder.utils.ffmpeg_setup.shutil.which", return_value=None)
+@patch(
+    "tiktok_live_recorder.utils.ffmpeg_setup._verify_ffmpeg_hevc_roundtrip",
+    return_value=True,
+)
+@patch(
+    "tiktok_live_recorder.utils.ffmpeg_setup._ffmpeg_install_sane",
+    return_value=True,
+)
+@patch("tiktok_live_recorder.utils.ffmpeg_setup._probe_flv_bytes", return_value=False)
+def test_ffmpeg_hevc_capable_accepts_vendor_roundtrip_only(
+    _mock_probe,
+    _mock_sane,
+    _mock_roundtrip,
+    _mock_which,
+    _mock_vendor,
+    tmp_path,
+):
+    from tiktok_live_recorder.utils.ffmpeg_setup import ffmpeg_hevc_capable
+
+    ffmpeg_bin = tmp_path / "ffmpeg"
+    ffmpeg_bin.write_text("", encoding="utf-8")
+    assert ffmpeg_hevc_capable(str(ffmpeg_bin)) is True
 
 
 @patch(
@@ -407,6 +436,40 @@ def test_check_ffmpeg_linux_raises_when_vendor_install_fails(
 
     with pytest.raises(FfmpegRequirementError, match="network down"):
         check_ffmpeg()
+
+
+def test_trusted_vendor_ffmpeg_accepts_roundtrip_only_marker(tmp_path):
+    from tiktok_live_recorder.utils.ffmpeg_setup import (
+        _save_vendor_probes,
+        _trusted_vendor_ffmpeg,
+        describe_ffmpeg_binary,
+    )
+
+    arch_key = "linux64"
+    install_dir = tmp_path / ".vendor" / "ffmpeg" / "n8.1-linux64"
+    bin_dir = install_dir / "bin"
+    bin_dir.mkdir(parents=True)
+    ffmpeg_bin = bin_dir / "ffmpeg"
+    ffprobe_bin = bin_dir / "ffprobe"
+    ffmpeg_bin.write_text("", encoding="utf-8")
+    ffprobe_bin.write_text("", encoding="utf-8")
+    probes = {"legacy": False, "enhanced": False, "roundtrip": True}
+
+    with patch(
+        "tiktok_live_recorder.utils.ffmpeg_setup.vendor_ffmpeg_dir",
+        return_value=install_dir,
+    ):
+        _save_vendor_probes(arch_key, probes)
+        with patch(
+            "tiktok_live_recorder.utils.ffmpeg_setup._ffmpeg_install_sane",
+            return_value=True,
+        ):
+            trusted = _trusted_vendor_ffmpeg(arch_key)
+            info = describe_ffmpeg_binary(str(ffmpeg_bin))
+
+    assert trusted is not None
+    assert info["hevc_capable"] is True
+    assert info["hevc_probe"]["roundtrip"] is True
 
 
 def test_trusted_vendor_ffmpeg_uses_saved_probes_without_verify(tmp_path):
