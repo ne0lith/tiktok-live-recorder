@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import platform
 import shutil
 import struct
@@ -337,25 +336,24 @@ def _tiktok_hevc_capable_from_probes(probes: dict[str, bool]) -> bool:
 
 
 def _vendor_hevc_capable_from_probes(probes: dict[str, bool]) -> bool:
-    """Pinned BtbN n8.1 may pass libx265 roundtrip when synthetic codec-12 fixtures do not."""
+    """Deprecated for vendor pin; kept for non-vendor probe helpers."""
     return _tiktok_hevc_capable_from_probes(probes) or probes["roundtrip"]
 
 
 def verify_installed_ffmpeg(
     ffmpeg_path: str, *, vendor: bool = False
 ) -> tuple[bool, dict[str, bool]]:
-    """Verify ffmpeg/ffprobe run and probe HEVC-in-FLV (TikTok + roundtrip sanity)."""
+    """Run HEVC-in-FLV probes (non-vendor / Windows paths only)."""
+    if vendor or is_vendor_ffmpeg_path(ffmpeg_path):
+        sane = _ffmpeg_install_sane(ffmpeg_path)
+        return sane, _empty_hevc_probe()
     probes = _empty_hevc_probe()
     if not _ffmpeg_install_sane(ffmpeg_path):
         return False, probes
     probes["legacy"] = _probe_flv_bytes(ffmpeg_path, build_legacy_hevc_probe_flv())
     probes["enhanced"] = _probe_flv_bytes(ffmpeg_path, build_enhanced_hevc_probe_flv())
     probes["roundtrip"] = _verify_ffmpeg_hevc_roundtrip(ffmpeg_path)
-    capable = (
-        _vendor_hevc_capable_from_probes(probes)
-        if vendor
-        else _tiktok_hevc_capable_from_probes(probes)
-    )
+    capable = _tiktok_hevc_capable_from_probes(probes)
     return capable, probes
 
 
@@ -391,8 +389,9 @@ def ffmpeg_hevc_capable(ffmpeg_path: str) -> bool:
     """Return True when ffmpeg can handle TikTok HEVC-in-FLV for its install source."""
     if not shutil.which(ffmpeg_path) and not Path(ffmpeg_path).is_file():
         return False
-    vendor = is_vendor_ffmpeg_path(ffmpeg_path)
-    capable, _ = verify_installed_ffmpeg(ffmpeg_path, vendor=vendor)
+    if is_vendor_ffmpeg_path(ffmpeg_path):
+        return _ffmpeg_install_sane(ffmpeg_path)
+    capable, _ = verify_installed_ffmpeg(ffmpeg_path)
     return capable
 
 
@@ -426,55 +425,20 @@ def is_vendor_ffmpeg_path(ffmpeg_path: str) -> bool:
     return any(part.startswith(f"{FFMPEG_PIN}-") for part in parts)
 
 
-def _vendor_arch_for_path(ffmpeg_path: str) -> str | None:
-    try:
-        resolved = Path(ffmpeg_path).resolve()
-    except OSError:
-        resolved = Path(ffmpeg_path)
-    for arch_key in ARCH_ASSETS:
-        install_dir = vendor_ffmpeg_dir(arch_key)
-        try:
-            resolved.relative_to(install_dir)
-            return arch_key
-        except ValueError:
-            continue
-    return None
+def _vendor_install_marker(arch_key: str) -> Path:
+    return vendor_ffmpeg_dir(arch_key) / ".installed"
 
 
-def _vendor_probe_marker(arch_key: str) -> Path:
-    return vendor_ffmpeg_dir(arch_key) / ".hevc-probes.json"
+def _mark_vendor_installed(arch_key: str) -> None:
+    _vendor_install_marker(arch_key).write_text(FFMPEG_PIN, encoding="utf-8")
 
 
-def _load_vendor_probes(arch_key: str) -> dict[str, bool] | None:
-    marker = _vendor_probe_marker(arch_key)
-    if not marker.is_file():
-        return None
-    try:
-        data = json.loads(marker.read_text(encoding="utf-8"))
-        return {
-            "legacy": bool(data["legacy"]),
-            "enhanced": bool(data["enhanced"]),
-            "roundtrip": bool(data.get("roundtrip", False)),
-        }
-    except (json.JSONDecodeError, KeyError, TypeError, OSError):
-        return None
-
-
-def _save_vendor_probes(arch_key: str, probes: dict[str, bool]) -> None:
-    marker = _vendor_probe_marker(arch_key)
-    marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text(json.dumps(probes), encoding="utf-8")
-
-
-def _trusted_vendor_ffmpeg(arch_key: str) -> tuple[str, dict[str, bool]] | None:
-    """Return vendor ffmpeg when install marker proves prior verification."""
+def _trusted_vendor_ffmpeg(arch_key: str) -> str | None:
+    """Return pinned BtbN vendor ffmpeg when binaries exist and run."""
     target = vendor_ffmpeg_dir(arch_key) / "bin" / "ffmpeg"
     path = str(target)
-    if not target.is_file() or not _ffmpeg_install_sane(path):
-        return None
-    probes = _load_vendor_probes(arch_key)
-    if probes and _vendor_hevc_capable_from_probes(probes):
-        return path, probes
+    if target.is_file() and _ffmpeg_install_sane(path):
+        return path
     return None
 
 
@@ -542,7 +506,7 @@ def install_linux_vendor_ffmpeg(arch_key: str) -> str:
     install_dir = vendor_ffmpeg_dir(arch_key)
     trusted = _trusted_vendor_ffmpeg(arch_key)
     if trusted:
-        return trusted[0]
+        return trusted
 
     if install_dir.exists():
         shutil.rmtree(install_dir, ignore_errors=True)
@@ -567,20 +531,11 @@ def install_linux_vendor_ffmpeg(arch_key: str) -> str:
         else:
             logger.warning(f"No checksum entry for {asset}; skipping SHA-256 verify")
 
-        ffmpeg_bin, ffprobe_bin = _extract_ffmpeg_tree(archive_path, install_dir)
-        capable, probes = verify_installed_ffmpeg(str(ffmpeg_bin), vendor=True)
-        if not capable:
-            raise RuntimeError(
-                f"Installed FFmpeg at {ffmpeg_bin} failed HEVC FLV verification "
-                f"(legacy={probes['legacy']}, enhanced={probes['enhanced']}, "
-                f"roundtrip={probes['roundtrip']}, ffprobe={ffprobe_bin.is_file()})"
-            )
-        _save_vendor_probes(arch_key, probes)
-        logger.info(
-            f"Installed capable FFmpeg: {ffmpeg_bin} "
-            f"(HEVC probe legacy={probes['legacy']} enhanced={probes['enhanced']} "
-            f"roundtrip={probes['roundtrip']})"
-        )
+        ffmpeg_bin, _ffprobe_bin = _extract_ffmpeg_tree(archive_path, install_dir)
+        if not _ffmpeg_install_sane(str(ffmpeg_bin)):
+            raise RuntimeError(f"Installed FFmpeg at {ffmpeg_bin} is not runnable")
+        _mark_vendor_installed(arch_key)
+        logger.info(f"Installed vendor FFmpeg: {ffmpeg_bin} (BtbN {FFMPEG_PIN})")
         return str(ffmpeg_bin)
 
 
@@ -604,10 +559,10 @@ def linux_ffmpeg_requirement_help() -> str:
 
 def resolve_ffmpeg_path(ffmpeg_path: str | None = None) -> str:
     """
-    Return an ffmpeg binary that can demux TikTok legacy HEVC FLV when possible.
+    Return an ffmpeg binary for TikTok HEVC FLV conversion.
 
-    Order: explicit path (if TikTok-capable) → existing Linux vendor → PATH ffmpeg
-    → Linux vendor install. Roundtrip-only builds (e.g. Debian 7.x) are not accepted.
+    On Linux: use pinned BtbN n8.1 vendor build (checksum + runnable binaries only).
+    Elsewhere: explicit path, then PATH, with HEVC-in-FLV probes for non-vendor builds.
     """
     linux = platform.system().lower() == "linux"
     arch_key = _linux_arch_key() if linux else None
@@ -616,44 +571,35 @@ def resolve_ffmpeg_path(ffmpeg_path: str | None = None) -> str:
     if ffmpeg_path:
         explicit = shutil.which(ffmpeg_path) or str(Path(ffmpeg_path))
 
-    def existing_vendor() -> str | None:
-        if not linux or arch_key is None:
-            return None
-        trusted = _trusted_vendor_ffmpeg(arch_key)
-        return trusted[0] if trusted else None
-
-    if explicit and ffmpeg_tiktok_hevc_capable(explicit):
-        return explicit
-
-    vendor = existing_vendor()
-    if vendor:
-        if explicit and Path(explicit).resolve() != Path(vendor).resolve():
-            logger.info(
-                f"Using vendor FFmpeg instead of {explicit} "
-                f"({ffmpeg_version_line(explicit)} cannot demux TikTok legacy HEVC FLV)"
+    if linux:
+        if arch_key is None:
+            raise FfmpegRequirementError(
+                f"Unsupported Linux architecture for vendor FFmpeg: {platform.machine()}."
             )
-        return vendor
-
-    if not explicit:
-        path_ffmpeg = shutil.which("ffmpeg")
-        if path_ffmpeg and ffmpeg_tiktok_hevc_capable(path_ffmpeg):
-            return path_ffmpeg
-
-    if linux and arch_key:
+        if explicit:
+            if not _ffmpeg_install_sane(explicit):
+                raise FfmpegRequirementError(f"FFmpeg at {explicit} is not runnable")
+            if not is_vendor_ffmpeg_path(explicit):
+                logger.warning(f"Using custom FFmpeg on Linux: {explicit}")
+            return explicit
+        trusted = _trusted_vendor_ffmpeg(arch_key)
+        if trusted:
+            return trusted
         try:
             return install_linux_vendor_ffmpeg(arch_key)
         except Exception as exc:
             raise FfmpegRequirementError(
-                f"Could not install or verify BtbN FFmpeg {FFMPEG_PIN} for TikTok "
-                f"HEVC FLV: {exc}"
+                f"Could not install BtbN FFmpeg {FFMPEG_PIN}: {exc}"
             ) from exc
-    if linux:
-        raise FfmpegRequirementError(
-            f"Unsupported Linux architecture for vendor FFmpeg: {platform.machine()}. "
-            "TikTok HEVC FLV recording requires FFmpeg 8+ with legacy codec-12 demux."
-        )
 
-    fallback = explicit or shutil.which("ffmpeg")
+    if explicit and ffmpeg_tiktok_hevc_capable(explicit):
+        return explicit
+
+    path_ffmpeg = shutil.which("ffmpeg")
+    if path_ffmpeg and ffmpeg_tiktok_hevc_capable(path_ffmpeg):
+        return path_ffmpeg
+
+    fallback = explicit or path_ffmpeg
     if fallback:
         if not ffmpeg_tiktok_hevc_capable(fallback):
             logger.warning(
@@ -670,6 +616,12 @@ def log_ffmpeg_status(
     ffmpeg_path: str | None = None, *, info: dict[str, Any] | None = None
 ) -> None:
     details = info or describe_ffmpeg_binary(ffmpeg_path)
+    if details.get("source") == "vendor":
+        logger.info(
+            f"FFmpeg: {details['path']} ({details['version']}) — "
+            f"vendor BtbN {FFMPEG_PIN} (pinned)"
+        )
+        return
     probes = details.get("hevc_probe") or {}
     status = (
         "capable for TikTok HEVC FLV"
@@ -729,25 +681,23 @@ def describe_ffmpeg_binary(
     except OSError:
         pass
 
-    exists = path.is_file() or bool(shutil.which(ffmpeg_path))
-    if probes is None and source == "vendor":
-        arch_key = _vendor_arch_for_path(resolved)
-        if arch_key:
-            trusted = _trusted_vendor_ffmpeg(arch_key)
-            if trusted and trusted[0] == resolved:
-                probes = trusted[1]
+    if source == "vendor" and _ffmpeg_install_sane(ffmpeg_path):
+        return {
+            "path": resolved,
+            "source": "vendor",
+            "version": ffmpeg_version_line(ffmpeg_path),
+            "hevc_capable": True,
+            "hevc_probe": None,
+        }
 
+    exists = path.is_file() or bool(shutil.which(ffmpeg_path))
     if probes is None:
         _, probes = (
-            verify_installed_ffmpeg(ffmpeg_path, vendor=(source == "vendor"))
+            verify_installed_ffmpeg(ffmpeg_path)
             if exists
             else (False, _empty_hevc_probe())
         )
-    capable = (
-        _vendor_hevc_capable_from_probes(probes)
-        if source == "vendor"
-        else _tiktok_hevc_capable_from_probes(probes)
-    )
+    capable = _tiktok_hevc_capable_from_probes(probes)
 
     return {
         "path": resolved,

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.13.0] - 2026-07-26
+
+### Changed
+
+- **Linux vendor FFmpeg is trusted without runtime HEVC probes**: BtbN **n8.1** is installed when checksum + runnable `ffmpeg`/`ffprobe` pass; no synthetic codec-12, enhanced, or roundtrip tests on the pinned build (system FFmpeg on Windows/macOS is still probed)
+
 ## [8.12.9] - 2026-07-26
 
 ### Fixed

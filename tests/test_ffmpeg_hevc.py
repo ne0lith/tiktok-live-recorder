@@ -220,18 +220,11 @@ def test_ffmpeg_hevc_capable_rejects_system_roundtrip_only(
 )
 @patch("tiktok_live_recorder.utils.ffmpeg_setup.shutil.which", return_value=None)
 @patch(
-    "tiktok_live_recorder.utils.ffmpeg_setup._verify_ffmpeg_hevc_roundtrip",
-    return_value=True,
-)
-@patch(
     "tiktok_live_recorder.utils.ffmpeg_setup._ffmpeg_install_sane",
     return_value=True,
 )
-@patch("tiktok_live_recorder.utils.ffmpeg_setup._probe_flv_bytes", return_value=False)
-def test_ffmpeg_hevc_capable_accepts_vendor_roundtrip_only(
-    _mock_probe,
+def test_ffmpeg_hevc_capable_trusts_vendor_without_probes(
     _mock_sane,
-    _mock_roundtrip,
     _mock_which,
     _mock_vendor,
     tmp_path,
@@ -265,22 +258,18 @@ def test_ffmpeg_hevc_capable_rejects_when_all_probes_fail(
 
 
 @patch(
-    "tiktok_live_recorder.utils.ffmpeg_setup._verify_ffmpeg_hevc_roundtrip",
-    return_value=False,
+    "tiktok_live_recorder.utils.ffmpeg_setup.is_vendor_ffmpeg_path",
+    return_value=True,
 )
 @patch(
     "tiktok_live_recorder.utils.ffmpeg_setup._ffmpeg_install_sane",
     return_value=True,
 )
-@patch("tiktok_live_recorder.utils.ffmpeg_setup._probe_flv_bytes")
-def test_probe_ffmpeg_hevc_flv_reports_legacy_and_enhanced(
-    mock_probe, _mock_sane, _mock_roundtrip
-):
+def test_probe_ffmpeg_hevc_flv_skips_probes_for_vendor(_mock_sane, _mock_vendor):
     from tiktok_live_recorder.utils.ffmpeg_setup import probe_ffmpeg_hevc_flv
 
-    mock_probe.side_effect = lambda _ffmpeg, flv: flv == build_legacy_hevc_probe_flv()
     assert probe_ffmpeg_hevc_flv("/repo/.vendor/ffmpeg/n8.1-linux64/bin/ffmpeg") == {
-        "legacy": True,
+        "legacy": False,
         "enhanced": False,
         "roundtrip": False,
     }
@@ -359,28 +348,16 @@ def test_check_ffmpeg_non_linux_exits_when_missing(
 
 @patch("platform.system", return_value="Linux")
 @patch(
-    "tiktok_live_recorder.utils.ffmpeg_setup.shutil.which",
-    return_value="/usr/bin/ffmpeg",
+    "tiktok_live_recorder.utils.ffmpeg_setup._trusted_vendor_ffmpeg",
+    return_value=None,
 )
-@patch(
-    "tiktok_live_recorder.utils.ffmpeg_setup._verify_ffmpeg_hevc_roundtrip",
-    return_value=True,
-)
-@patch(
-    "tiktok_live_recorder.utils.ffmpeg_setup._ffmpeg_install_sane",
-    return_value=True,
-)
-@patch("tiktok_live_recorder.utils.ffmpeg_setup._probe_flv_bytes", return_value=False)
 @patch(
     "tiktok_live_recorder.utils.ffmpeg_setup.install_linux_vendor_ffmpeg",
     return_value="/repo/.vendor/ffmpeg/n8.1-linux64/bin/ffmpeg",
 )
-def test_resolve_ffmpeg_path_linux_installs_when_system_roundtrip_only(
+def test_resolve_ffmpeg_path_linux_installs_vendor(
     mock_install,
-    _mock_probe,
-    _mock_sane,
-    _mock_roundtrip,
-    _mock_which,
+    _mock_trusted,
     _mock_platform,
 ):
     from tiktok_live_recorder.utils.ffmpeg_setup import resolve_ffmpeg_path
@@ -438,9 +415,8 @@ def test_check_ffmpeg_linux_raises_when_vendor_install_fails(
         check_ffmpeg()
 
 
-def test_trusted_vendor_ffmpeg_accepts_roundtrip_only_marker(tmp_path):
+def test_trusted_vendor_ffmpeg_uses_installed_binary_without_probes(tmp_path):
     from tiktok_live_recorder.utils.ffmpeg_setup import (
-        _save_vendor_probes,
         _trusted_vendor_ffmpeg,
         describe_ffmpeg_binary,
     )
@@ -453,64 +429,28 @@ def test_trusted_vendor_ffmpeg_accepts_roundtrip_only_marker(tmp_path):
     ffprobe_bin = bin_dir / "ffprobe"
     ffmpeg_bin.write_text("", encoding="utf-8")
     ffprobe_bin.write_text("", encoding="utf-8")
-    probes = {"legacy": False, "enhanced": False, "roundtrip": True}
 
-    with patch(
-        "tiktok_live_recorder.utils.ffmpeg_setup.vendor_ffmpeg_dir",
-        return_value=install_dir,
-    ):
-        _save_vendor_probes(arch_key, probes)
-        with patch(
+    with (
+        patch(
+            "tiktok_live_recorder.utils.ffmpeg_setup.vendor_ffmpeg_dir",
+            return_value=install_dir,
+        ),
+        patch(
             "tiktok_live_recorder.utils.ffmpeg_setup._ffmpeg_install_sane",
             return_value=True,
-        ):
-            trusted = _trusted_vendor_ffmpeg(arch_key)
-            info = describe_ffmpeg_binary(str(ffmpeg_bin))
-
-    assert trusted is not None
-    assert info["hevc_capable"] is True
-    assert info["hevc_probe"]["roundtrip"] is True
-
-
-def test_trusted_vendor_ffmpeg_uses_saved_probes_without_verify(tmp_path):
-    from tiktok_live_recorder.utils.ffmpeg_setup import (
-        _save_vendor_probes,
-        _trusted_vendor_ffmpeg,
-        describe_ffmpeg_binary,
-    )
-
-    arch_key = "linux64"
-    install_dir = tmp_path / ".vendor" / "ffmpeg" / "n8.1-linux64"
-    bin_dir = install_dir / "bin"
-    bin_dir.mkdir(parents=True)
-    ffmpeg_bin = bin_dir / "ffmpeg"
-    ffprobe_bin = bin_dir / "ffprobe"
-    ffmpeg_bin.write_text("", encoding="utf-8")
-    ffprobe_bin.write_text("", encoding="utf-8")
-    probes = {"legacy": True, "enhanced": True, "roundtrip": True}
-
-    with patch(
-        "tiktok_live_recorder.utils.ffmpeg_setup.vendor_ffmpeg_dir",
-        return_value=install_dir,
+        ),
+        patch(
+            "tiktok_live_recorder.utils.ffmpeg_setup.verify_installed_ffmpeg"
+        ) as mock_verify,
     ):
-        _save_vendor_probes(arch_key, probes)
-        with (
-            patch(
-                "tiktok_live_recorder.utils.ffmpeg_setup._ffmpeg_install_sane",
-                return_value=True,
-            ),
-            patch(
-                "tiktok_live_recorder.utils.ffmpeg_setup.verify_installed_ffmpeg"
-            ) as mock_verify,
-        ):
-            trusted = _trusted_vendor_ffmpeg(arch_key)
-            info = describe_ffmpeg_binary(str(ffmpeg_bin))
+        path = _trusted_vendor_ffmpeg(arch_key)
+        info = describe_ffmpeg_binary(str(ffmpeg_bin))
 
-    assert trusted is not None
-    assert trusted[1] == probes
+    assert path == str(ffmpeg_bin)
     mock_verify.assert_not_called()
     assert info["hevc_capable"] is True
-    assert info["hevc_probe"] == probes
+    assert info["source"] == "vendor"
+    assert info["hevc_probe"] is None
 
 
 @patch("platform.system", return_value="Linux")

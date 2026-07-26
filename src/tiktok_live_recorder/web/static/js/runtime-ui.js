@@ -24,6 +24,12 @@ export function syncFfmpegInfo(ffmpeg) {
   pathEl.textContent = ffmpeg.path;
   pathEl.title = ffmpeg.path;
   versionEl.textContent = ffmpeg.version || "-";
+  if (ffmpeg.source === "vendor") {
+    hevcEl.textContent = "Pinned BtbN n8.1";
+    hevcEl.title = "Trusted vendor build (no runtime probe)";
+    hevcEl.className = "ffmpeg-hevc ffmpeg-hevc--ok";
+    return;
+  }
   const probe = ffmpeg.hevc_probe;
   let hevcText = ffmpeg.hevc_capable ? "Capable" : "Not capable";
   if (probe) {
