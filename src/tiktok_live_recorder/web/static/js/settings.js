@@ -1,14 +1,9 @@
 import { api, showToast } from "./api.js";
 import { closeModal, isModalOpen, openModal, registerModalCloseHandler } from "./modal.js";
 import { syncFfmpegInfo, syncStartupFfmpegFromDom } from "./runtime-ui.js";
-import { latestStatus } from "./state.js";
+import { latestMedia, latestStatus } from "./state.js";
 import { refreshStatus } from "./status.js";
-import {
-  latestMedia,
-  renderMedia,
-  saveShowLegacyPreference,
-  syncLibraryShowLegacyToggle,
-} from "./media.js";
+import { renderMedia, saveShowLegacyPreference, syncLibraryShowLegacyToggle } from "./media.js";
 
 const settingsModalId = "settings-modal";
 const settingsToggle = document.getElementById("settings-toggle");
