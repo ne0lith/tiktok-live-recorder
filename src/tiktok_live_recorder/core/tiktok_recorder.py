@@ -57,6 +57,8 @@ class TikTokRecorder:
         self._last_poll_at: float | None = None
         self._last_poll_snapshot: dict | None = None
         self._poll_label: str | None = None
+        self._telegram_uploads: list[dict] = []
+        self._max_telegram_upload_history = 20
 
     def request_stop(self):
         """Signal all loops/threads to finish and finalize open recordings."""
@@ -150,6 +152,7 @@ class TikTokRecorder:
                 )
 
             snapshot = dict(self._last_poll_snapshot or {})
+            telegram_uploads = list(self._telegram_uploads)
 
         return {
             "mode": self.mode.name.lower(),
@@ -157,11 +160,133 @@ class TikTokRecorder:
             "paused": paused,
             "users_file": self.users_file,
             "automatic_interval_minutes": self.automatic_interval,
+            "use_telegram": self.use_telegram,
             "last_poll_at": self._last_poll_at,
             "poll_label": self._poll_label,
             "poll": snapshot,
             "recordings": recordings,
+            "telegram_uploads": telegram_uploads,
         }
+
+    def update_runtime_settings(
+        self,
+        *,
+        automatic_interval_minutes: int | None = None,
+        use_telegram: bool | None = None,
+    ) -> dict:
+        if automatic_interval_minutes is not None:
+            if automatic_interval_minutes < 1:
+                raise ValueError("automatic_interval_minutes must be at least 1")
+            self.automatic_interval = automatic_interval_minutes
+        if use_telegram is not None:
+            self.use_telegram = use_telegram
+        return {
+            "automatic_interval_minutes": self.automatic_interval,
+            "use_telegram": self.use_telegram,
+        }
+
+    def _record_telegram_upload(
+        self,
+        username: str,
+        filename: str,
+        status: str,
+        message: str,
+    ) -> None:
+        with self._state_lock:
+            self._telegram_uploads.insert(
+                0,
+                {
+                    "username": username,
+                    "file": filename,
+                    "status": status,
+                    "message": message,
+                    "at": time.time(),
+                },
+            )
+            del self._telegram_uploads[self._max_telegram_upload_history :]
+
+    def _maybe_upload_to_telegram(self, user: str, file_path: str) -> None:
+        if not self.use_telegram:
+            return
+        from tiktok_live_recorder.upload.telegram import Telegram
+
+        filename = Path(file_path).name
+        self._record_telegram_upload(user, filename, "uploading", "Upload started")
+        result = Telegram().upload(file_path)
+        self._record_telegram_upload(
+            user,
+            filename,
+            result.get("status", "error"),
+            result.get("message", "Upload finished"),
+        )
+
+    def _is_user_recording(self, username: str) -> bool:
+        entry = self._active_recordings.get(username)
+        if not entry:
+            return False
+        thread = entry.get("thread")
+        return bool(thread and thread.is_alive())
+
+    def _room_owner(self, room_id: str, *, exclude: str | None = None) -> str | None:
+        for name, entry in self._active_recordings.items():
+            if exclude and name == exclude:
+                continue
+            if entry.get("room_id") == room_id:
+                thread = entry.get("thread")
+                if thread and thread.is_alive():
+                    return name
+        return None
+
+    def _spawn_recording_thread(self, username: str, room_id: str) -> None:
+        thread = Thread(
+            target=self._recording_worker,
+            args=(username, room_id),
+            daemon=False,
+            name=f"record-{username}",
+        )
+        thread.start()
+        stop_event = Event()
+        self._user_stop_events[username] = stop_event
+        self._active_recordings[username] = {
+            "thread": thread,
+            "room_id": room_id,
+            "started_at": time.time(),
+            "output_path": None,
+            "bytes_written": 0,
+            "status": "recording",
+            "stop_event": stop_event,
+        }
+
+    def start_recording_now(
+        self,
+        *,
+        username: str | None = None,
+        room_id: str | None = None,
+    ) -> dict:
+        if not username and not room_id:
+            raise ValueError("username or room_id is required")
+
+        if room_id and not username:
+            username = self.tiktok.get_user_from_room_id(room_id)
+        elif username and not room_id:
+            room_id = self.tiktok.get_room_id_from_user(username.lstrip("@").strip())
+
+        username = username.lstrip("@").strip()
+        if not username or not room_id:
+            raise ValueError("Could not resolve username and room_id")
+
+        if self._is_user_recording(username):
+            raise RuntimeError(f"@{username} is already recording")
+
+        owner = self._room_owner(room_id, exclude=username)
+        if owner:
+            raise RuntimeError(f"Room is already being recorded by @{owner}")
+
+        if not self.tiktok.is_room_alive(room_id, user=username):
+            raise UserLiveError(f"@{username} is not currently live")
+
+        self._spawn_recording_thread(username, room_id)
+        return {"username": username, "room_id": room_id, "status": "started"}
 
     def _update_recording_entry(self, user: str, **fields) -> None:
         with self._state_lock:
@@ -439,24 +564,8 @@ class TikTokRecorder:
         for username, room_id in groups["starting"]:
             if self._should_stop():
                 break
-            thread = Thread(
-                target=self._recording_worker,
-                args=(username, room_id),
-                daemon=False,
-                name=f"record-{username}",
-            )
-            thread.start()
-            stop_event = Event()
-            self._user_stop_events[username] = stop_event
-            active_recordings[username] = {
-                "thread": thread,
-                "room_id": room_id,
-                "started_at": time.time(),
-                "output_path": None,
-                "bytes_written": 0,
-                "status": "recording",
-                "stop_event": stop_event,
-            }
+            self._spawn_recording_thread(username, room_id)
+            active_recordings[username] = self._active_recordings[username]
             time.sleep(2.5)
 
         return active_recordings
@@ -794,6 +903,9 @@ class TikTokRecorder:
         self._update_recording_entry(user, status="converting")
         VideoManagement.convert_flv_to_mp4(output, self.bitrate, self.ffmpeg_path)
         self._update_recording_entry(user, status="finished")
+        mp4_output = output.replace("_flv.mp4", ".mp4")
+        if Path(mp4_output).is_file():
+            self._maybe_upload_to_telegram(user, mp4_output)
 
     def check_country_blacklisted(self):
         is_blacklisted = self.tiktok.is_country_blacklisted()

@@ -102,6 +102,10 @@ body {
   align-items: center;
 }
 
+.inline-form.hidden {
+  display: none;
+}
+
 .inline-form input {
   min-width: 220px;
   width: auto;
@@ -192,6 +196,9 @@ textarea:focus {
 }
 
 .btn-small {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 0.45rem 0.75rem;
   font-size: 0.86rem;
 }
@@ -223,6 +230,85 @@ th {
 .username {
   font-family: var(--font-serif);
   font-size: 1.08rem;
+}
+
+.profile-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-family: var(--font-serif);
+  font-size: 1.08rem;
+  cursor: pointer;
+  text-align: left;
+  transition: color 160ms ease;
+}
+
+.profile-link:hover,
+.profile-link.is-active {
+  color: var(--accent);
+}
+
+.profile-banner {
+  padding: 1rem 1.25rem;
+  scroll-margin-top: 1rem;
+}
+
+.profile-banner-inner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem 1rem;
+  align-items: center;
+}
+
+.profile-identity {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.profile-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.65rem 0.85rem;
+}
+
+.profile-title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.profile-tiktok-link {
+  color: var(--accent);
+  font-size: 0.86rem;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: opacity 160ms ease;
+}
+
+.profile-tiktok-link:hover {
+  opacity: 0.85;
+  text-decoration: underline;
+}
+
+.settings-panel {
+  scroll-margin-top: 1rem;
+}
+
+#settings-toggle.is-active {
+  border-color: rgba(63, 208, 201, 0.45);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+body.profile-active .status-panel .panel-head h2,
+body.profile-active .library-panel .panel-head h2 {
+  font-size: 1.15rem;
 }
 
 .badge {
@@ -280,6 +366,50 @@ th {
 
 .actions {
   flex-wrap: wrap;
+}
+
+th.col-actions,
+td.col-actions {
+  text-align: right;
+  width: 1%;
+  white-space: nowrap;
+}
+
+.status-actions {
+  display: grid;
+  grid-template-columns: 3.9rem 4.9rem 4.9rem;
+  gap: 0.45rem;
+  justify-content: end;
+  margin-left: auto;
+}
+
+.status-actions--followers {
+  grid-template-columns: 3.9rem 4.9rem;
+}
+
+.status-action-slot {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.action-placeholder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.86rem;
+  font-weight: 500;
+  line-height: 1;
+  border: 1px solid transparent;
+  visibility: hidden;
+  user-select: none;
+  pointer-events: none;
+}
+
+.status-action-slot .btn {
+  width: 100%;
+  justify-content: center;
 }
 
 .media-library {
@@ -362,6 +492,10 @@ th {
   font-weight: 600;
 }
 
+.user-section-title.profile-link {
+  font-size: 1.15rem;
+}
+
 .user-section-count {
   color: var(--muted);
   font-size: 0.86rem;
@@ -393,7 +527,7 @@ th {
 
 .media-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 0.75rem 1rem;
   align-items: center;
   width: 100%;
@@ -402,9 +536,32 @@ th {
   border-bottom: 1px solid var(--line);
   background: transparent;
   color: var(--text);
-  cursor: pointer;
   text-align: left;
   transition: background 160ms ease;
+}
+
+.media-row-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0.75rem 1rem;
+  align-items: center;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.media-row-actions {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.media-delete-btn {
+  color: #ff8f8f;
 }
 
 .media-row:last-child {
@@ -460,6 +617,67 @@ th {
 .settings-card {
   display: grid;
   gap: 0.75rem;
+}
+
+.field-label {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.field-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--text);
+  font-size: 0.92rem;
+}
+
+.telegram-uploads ul {
+  margin: 0;
+  padding-left: 1rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.upload-status.success {
+  color: var(--accent);
+}
+
+.upload-status.error {
+  color: #ff8f8f;
+}
+
+.upload-status.uploading {
+  color: #f0c674;
+}
+
+.poll-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem 1rem;
+  padding: 0 0 1rem;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.poll-label {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(63, 208, 201, 0.1);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.poll-group-label {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.output-hint {
+  color: var(--muted);
+  font-size: 0.82rem;
 }
 
 .hidden {

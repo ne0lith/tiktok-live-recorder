@@ -102,6 +102,8 @@ def test_get_status_includes_recordings():
     assert status["users"] == ["alpha"]
     assert status["recordings"][0]["username"] == "alpha"
     assert status["recordings"][0]["bytes_written"] == 4096
+    assert status["use_telegram"] is False
+    assert status["telegram_uploads"] == []
 
 
 def test_scan_media_library_groups_by_username(tmp_path):
@@ -184,6 +186,9 @@ class StubRecorder:
     mode = Mode.WATCHLIST
     users = ["alpha"]
     users_file = None
+    automatic_interval = 5
+    use_telegram = False
+    _telegram_uploads: list = []
 
     def get_status(self):
         return {
@@ -191,6 +196,12 @@ class StubRecorder:
             "users": self.users,
             "paused": [],
             "recordings": [],
+            "automatic_interval_minutes": self.automatic_interval,
+            "use_telegram": self.use_telegram,
+            "telegram_uploads": list(self._telegram_uploads),
+            "poll": {},
+            "poll_label": None,
+            "last_poll_at": None,
         }
 
     def force_poll(self):
@@ -201,6 +212,25 @@ class StubRecorder:
 
     def reload_cookies(self):
         self.cookies_reloaded = True
+
+    def update_runtime_settings(self, **kwargs):
+        if kwargs.get("automatic_interval_minutes") is not None:
+            self.automatic_interval = kwargs["automatic_interval_minutes"]
+        if kwargs.get("use_telegram") is not None:
+            self.use_telegram = kwargs["use_telegram"]
+        return {
+            "automatic_interval_minutes": self.automatic_interval,
+            "use_telegram": self.use_telegram,
+        }
+
+    def start_recording_now(self, *, username=None, room_id=None):
+        if username == "busy":
+            raise RuntimeError("@busy is already recording")
+        return {
+            "username": username or "roomuser",
+            "room_id": room_id or "room-1",
+            "status": "started",
+        }
 
 
 @pytest.fixture
@@ -307,3 +337,55 @@ def test_legacy_media_range_response(tmp_path, monkeypatch):
     )
     assert response.status_code in (200, 206)
     assert response.content[:5] == b"01234"
+
+
+def test_api_runtime_settings(api_client):
+    client, recorder, _ = api_client
+    response = client.get("/api/settings/runtime")
+    assert response.status_code == 200
+    assert response.json()["automatic_interval_minutes"] == 5
+
+    response = client.put(
+        "/api/settings/runtime",
+        json={"automatic_interval_minutes": 10, "use_telegram": True},
+    )
+    assert response.status_code == 200
+    assert recorder.automatic_interval == 10
+    assert recorder.use_telegram is True
+
+
+def test_api_record_now(api_client):
+    client, _, _ = api_client
+    response = client.post("/api/record", json={"username": "beta"})
+    assert response.status_code == 200
+    assert response.json()["username"] == "beta"
+
+    response = client.post("/api/record", json={})
+    assert response.status_code == 400
+
+    response = client.post("/api/record", json={"username": "busy"})
+    assert response.status_code == 409
+
+
+def test_api_delete_media(tmp_path):
+    file_path = tmp_path / "TK_alpha_2026.01.01_12-00-00.mp4"
+    file_path.write_bytes(b"video-data")
+    in_progress = tmp_path / "TK_alpha_2026.01.01_13-00-00_flv.mp4"
+    in_progress.write_bytes(b"partial")
+
+    recorder = StubRecorder()
+    config = RecorderConfig(
+        mode=Mode.WATCHLIST,
+        users=["alpha"],
+        cookies={},
+        output=str(tmp_path),
+    )
+    client = TestClient(create_app(recorder, config))
+
+    response = client.delete("/api/media/alpha/TK_alpha_2026.01.01_12-00-00.mp4")
+    assert response.status_code == 204
+    assert not file_path.exists()
+
+    response = client.delete("/api/media/alpha/TK_alpha_2026.01.01_13-00-00_flv.mp4")
+    assert response.status_code == 400
+    assert in_progress.exists()

@@ -25,12 +25,14 @@ class Telegram:
             api_hash=self.api_hash,
         )
 
-    def upload(self, file_path: str):
+    def upload(self, file_path: str) -> dict[str, str]:
         """
         Upload a file to the user's Saved Messages via Telethon.
         """
+        result = {"status": "error", "message": "Upload failed"}
 
         async def _upload():
+            nonlocal result
             try:
                 await self.client.connect()
 
@@ -52,10 +54,12 @@ class Telegram:
                 )
 
                 if file_size > max_size:
-                    logger.warning(
+                    message = (
                         "The file is too large to be uploaded "
                         "with this type of account."
                     )
+                    logger.warning(message)
+                    result = {"status": "error", "message": message}
                     return
 
                 logger.info(
@@ -77,11 +81,14 @@ class Telegram:
                 )
 
                 logger.info("File successfully uploaded to Telegram.\n")
+                result = {"status": "success", "message": "Uploaded to Telegram"}
 
             except Exception as e:
                 logger.error(f"Error during Telegram upload: {e}\n", exc_info=True)
+                result = {"status": "error", "message": str(e)}
 
             finally:
                 await self.client.disconnect()
 
         asyncio.run(_upload())
+        return result

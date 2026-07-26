@@ -10,7 +10,10 @@ def record_user(config):
     web_server = None
     try:
         recorder = TikTokRecorder(config)
-        if config.mode in (Mode.WATCHLIST, Mode.FOLLOWERS) and not config.no_web:
+        if (
+            config.mode in (Mode.WATCHLIST, Mode.FOLLOWERS, Mode.AUTOMATIC)
+            and not config.no_web
+        ):
             from tiktok_live_recorder.web.server import start_web_server
 
             web_server = start_web_server(recorder, config)

@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.4.0] - 2026-07-26
+
+### Added
+
+- Web dashboard user profiles: click a handle to filter live status and recordings to that user, with a profile banner, TikTok profile link, and shareable `#user/<username>` URL
+- Last-poll summary strip (finished / skipped / errors) and active recording output path in status
+- Media library download and delete actions (with confirmation)
+- Runtime settings API and UI: editable poll interval and Telegram upload toggle
+- Telegram upload status history in settings (when uploads are enabled)
+- Manual **Record now** API and settings form (username and/or room ID)
+- Web dashboard available in **automatic** mode
+
+### Changed
+
+- Settings panel opens directly under the top bar (scrolls into view) instead of at the bottom of the page
+- Mode-aware toolbar: add/remove user controls hidden outside watchlist mode
+- Settings reload when opened; API error toasts show FastAPI `detail` messages
+- Finished recordings trigger Telegram upload when `use_telegram` is enabled (with status tracking)
+
+### Fixed
+
+- Live status action buttons use fixed slots so Stop / Pause / Remove stay column-aligned across rows
+
 ## [8.3.2] - 2026-07-25
 
 ### Changed
@@ -145,7 +168,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.3.2...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.4.0...HEAD
+[8.4.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.3.2...v8.4.0
 [8.3.2]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.3.1...v8.3.2
 [8.3.1]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.3.0...v8.3.1
 [8.3.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.2.0...v8.3.0

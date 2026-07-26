@@ -35,11 +35,100 @@
         </div>
       </header>
 
+      <section id="settings-panel" class="panel settings-panel hidden">
+        <div class="panel-head">
+          <h2>Settings</h2>
+          <p class="meta">Writes directly to config files on save.</p>
+        </div>
+        <div class="settings-grid">
+          <div class="settings-card">
+            <h3>Runtime</h3>
+            <label class="field-label" for="interval-input">Poll interval (minutes)</label>
+            <input
+              id="interval-input"
+              type="number"
+              min="1"
+              step="1"
+              value="5"
+            />
+            <label class="field-checkbox">
+              <input id="telegram-enabled" type="checkbox" />
+              Upload finished recordings to Telegram
+            </label>
+            <button id="save-runtime-btn" class="btn btn-primary" type="button">
+              Save runtime
+            </button>
+            <div id="telegram-uploads" class="telegram-uploads hidden">
+              <p class="eyebrow">Recent Telegram uploads</p>
+              <ul id="telegram-uploads-list"></ul>
+            </div>
+          </div>
+          <div class="settings-card">
+            <h3>Record now</h3>
+            <p class="meta">Start a one-off recording when the user is live.</p>
+            <label class="field-label" for="record-username-input">Username</label>
+            <input
+              id="record-username-input"
+              type="text"
+              placeholder="@username"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <label class="field-label" for="record-room-input">Room ID (optional)</label>
+            <input
+              id="record-room-input"
+              type="text"
+              placeholder="Room ID"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <button id="record-now-btn" class="btn btn-primary" type="button">
+              Start recording
+            </button>
+          </div>
+          <div class="settings-card">
+            <h3>Cookies</h3>
+            <textarea id="cookies-editor" rows="8" spellcheck="false"></textarea>
+            <button id="save-cookies-btn" class="btn btn-primary">Save cookies</button>
+          </div>
+          <div class="settings-card">
+            <h3>Telegram</h3>
+            <textarea id="telegram-editor" rows="8" spellcheck="false"></textarea>
+            <button id="save-telegram-btn" class="btn btn-primary">Save telegram</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="profile-banner" class="panel profile-banner hidden">
+        <div class="profile-banner-inner">
+          <button id="profile-back" class="btn btn-ghost btn-small" type="button">
+            &lt;- All users
+          </button>
+          <div class="profile-identity">
+            <div class="profile-title-row">
+              <h2 id="profile-title" class="profile-title"></h2>
+              <a
+                id="profile-tiktok-link"
+                class="profile-tiktok-link"
+                href="#"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                View on TikTok ↗
+              </a>
+            </div>
+            <p id="profile-meta" class="meta"></p>
+          </div>
+          <span id="profile-badge" class="badge offline">offline</span>
+        </div>
+      </section>
+
       <section class="panel status-panel">
         <div class="panel-head">
           <h2>Live status</h2>
           <p id="status-meta" class="meta">Loading…</p>
         </div>
+        <div id="poll-summary" class="poll-summary hidden"></div>
         <div class="table-wrap">
           <table>
             <thead>
@@ -49,7 +138,7 @@
                 <th>Room</th>
                 <th>Elapsed</th>
                 <th>Size</th>
-                <th>Actions</th>
+                <th class="col-actions">Actions</th>
               </tr>
             </thead>
             <tbody id="status-body"></tbody>
@@ -88,25 +177,6 @@
           <video id="media-player-video" controls preload="metadata"></video>
         </div>
         <div id="media-library" class="media-library"></div>
-      </section>
-
-      <section id="settings-panel" class="panel settings-panel hidden">
-        <div class="panel-head">
-          <h2>Settings</h2>
-          <p class="meta">Writes directly to config files on save.</p>
-        </div>
-        <div class="settings-grid">
-          <div class="settings-card">
-            <h3>Cookies</h3>
-            <textarea id="cookies-editor" rows="8" spellcheck="false"></textarea>
-            <button id="save-cookies-btn" class="btn btn-primary">Save cookies</button>
-          </div>
-          <div class="settings-card">
-            <h3>Telegram</h3>
-            <textarea id="telegram-editor" rows="8" spellcheck="false"></textarea>
-            <button id="save-telegram-btn" class="btn btn-primary">Save telegram</button>
-          </div>
-        </div>
       </section>
     </div>
 

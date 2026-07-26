@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from tiktok_live_recorder.utils.custom_exceptions import UserLiveError
 from tiktok_live_recorder.utils.enums import Mode
 from tiktok_live_recorder.utils.utils import (
     add_user_to_file,
@@ -36,6 +37,16 @@ class UsernamePayload(BaseModel):
     username: str = Field(min_length=1)
 
 
+class RuntimeSettingsPayload(BaseModel):
+    automatic_interval_minutes: int | None = Field(default=None, ge=1)
+    use_telegram: bool | None = None
+
+
+class RecordPayload(BaseModel):
+    username: str | None = None
+    room_id: str | None = None
+
+
 def _normalize_username(username: str) -> str:
     return username.lstrip("@").strip()
 
@@ -46,6 +57,31 @@ def _ensure_users_file(recorder: TikTokRecorder) -> str:
     path = users_file_path()
     recorder.users_file = path
     return path
+
+
+def _delete_media_file(
+    output_base: Path,
+    custom_output: str | Path | None,
+    username: str,
+    filename: str,
+    *,
+    subdir: str | None = None,
+) -> None:
+    path = resolve_media_path(
+        output_base,
+        custom_output,
+        username,
+        filename,
+        subdir=subdir,
+    )
+    if path is None:
+        raise HTTPException(status_code=404, detail="Media not found")
+    if path.name.endswith("_flv.mp4"):
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete an in-progress recording",
+        )
+    path.unlink()
 
 
 def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
@@ -88,6 +124,20 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
             path,
             media_type="video/mp4",
             filename=filename,
+        )
+
+    @app.delete("/api/media/{username}/{filename}", status_code=204)
+    def delete_media(username: str, filename: str):
+        _delete_media_file(output_base, custom_output, username, filename)
+
+    @app.delete("/api/media/{username}/legacy/{filename}", status_code=204)
+    def delete_legacy_media(username: str, filename: str):
+        _delete_media_file(
+            output_base,
+            custom_output,
+            username,
+            filename,
+            subdir="legacy",
         )
 
     @app.post("/api/users")
@@ -155,6 +205,44 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
         if not recorder.stop_user(username):
             raise HTTPException(status_code=404, detail="No active recording for user")
         return {"status": "stopping", "username": username}
+
+    @app.post("/api/record")
+    def start_record(payload: RecordPayload) -> dict[str, Any]:
+        username = _normalize_username(payload.username) if payload.username else None
+        room_id = payload.room_id.strip() if payload.room_id else None
+        if not username and not room_id:
+            raise HTTPException(
+                status_code=400,
+                detail="username or room_id is required",
+            )
+        try:
+            return recorder.start_recording_now(username=username, room_id=room_id)
+        except UserLiveError as ex:
+            raise HTTPException(status_code=400, detail=str(ex)) from ex
+        except RuntimeError as ex:
+            raise HTTPException(status_code=409, detail=str(ex)) from ex
+        except ValueError as ex:
+            raise HTTPException(status_code=400, detail=str(ex)) from ex
+
+    @app.get("/api/settings/runtime")
+    def get_runtime_settings() -> dict[str, Any]:
+        return {
+            "automatic_interval_minutes": recorder.automatic_interval,
+            "use_telegram": recorder.use_telegram,
+        }
+
+    @app.put("/api/settings/runtime")
+    def put_runtime_settings(payload: RuntimeSettingsPayload) -> dict[str, Any]:
+        try:
+            settings = recorder.update_runtime_settings(
+                automatic_interval_minutes=payload.automatic_interval_minutes,
+                use_telegram=payload.use_telegram,
+            )
+        except ValueError as ex:
+            raise HTTPException(status_code=400, detail=str(ex)) from ex
+        config.automatic_interval = settings["automatic_interval_minutes"]
+        config.use_telegram = settings["use_telegram"]
+        return settings
 
     @app.get("/api/settings/cookies")
     def get_cookies() -> dict[str, Any]:
