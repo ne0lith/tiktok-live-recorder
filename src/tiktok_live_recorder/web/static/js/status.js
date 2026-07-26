@@ -10,6 +10,7 @@ import {
 } from "./format.js";
 import {
   STATE_SORT_ORDER,
+  latestMedia,
   latestStatus,
   selectedProfile,
   setLatestStatus,
@@ -17,7 +18,7 @@ import {
   setStatusFilter,
   statusFilter,
 } from "./state.js";
-import { refreshPendingConvertCount, syncConvertJobUi } from "./media.js";
+import { refreshPendingConvertCount, renderMedia, syncConvertJobUi } from "./media.js";
 import { renderTelegramUploads, syncRuntimeControls } from "./runtime-ui.js";
 
 const statusBoard = document.getElementById("status-board");
@@ -390,6 +391,9 @@ export function setSelectedProfile(username) {
   }
   if (latestStatus) renderStatus(latestStatus);
   else renderSummaryChips(latestStatus || {});
+  if (Object.keys(latestMedia).length) {
+    renderMedia(latestMedia);
+  }
   if (selectedProfile) {
     requestAnimationFrame(() => scrollToFocusedUser());
   }

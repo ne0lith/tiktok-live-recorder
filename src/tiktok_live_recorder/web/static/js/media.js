@@ -1,11 +1,12 @@
 import { api, showToast } from "./api.js";
-import { formatBytes, formatTimestamp } from "./format.js";
+import { formatBytes, formatTimestamp, usernamesMatch } from "./format.js";
 import { createMediaThumb, observeMediaThumbs } from "./media-thumbs.js";
 import {
   STORAGE_SORT_KEY,
   latestMedia,
   libraryState,
   pendingMedia,
+  selectedProfile,
   setLatestMedia,
   setPendingMedia,
 } from "./state.js";
@@ -84,6 +85,19 @@ function filterMedia(media, query) {
   return filtered;
 }
 
+function applyLibraryFilters(media, query) {
+  let filtered = filterMedia(media, query);
+  if (!selectedProfile) return filtered;
+
+  const scoped = {};
+  for (const [username, items] of Object.entries(filtered)) {
+    if (usernamesMatch(username, selectedProfile)) {
+      scoped[username] = items;
+    }
+  }
+  return scoped;
+}
+
 function updateLibrarySummary(media) {
   const source = latestMedia || media || {};
   const usernames = Object.keys(source);
@@ -93,7 +107,8 @@ function updateLibrarySummary(media) {
     0,
   );
   if (!librarySummary) return;
-  librarySummary.textContent = `${fileCount} recording${fileCount === 1 ? "" : "s"} · ${usernames.length} user${usernames.length === 1 ? "" : "s"} · ${formatBytes(totalSize)}`;
+  const focusSuffix = selectedProfile ? ` · @${selectedProfile}` : "";
+  librarySummary.textContent = `${fileCount} recording${fileCount === 1 ? "" : "s"} · ${usernames.length} user${usernames.length === 1 ? "" : "s"} · ${formatBytes(totalSize)}${focusSuffix}`;
 }
 
 export function flattenAndSortMedia(media) {
@@ -276,16 +291,19 @@ function renderMediaList(rows) {
 export function renderMedia(media) {
   setLatestMedia(media || {});
   const query = mediaSearch?.value || "";
-  const filtered = filterMedia(latestMedia, query);
+  const filtered = applyLibraryFilters(latestMedia, query);
 
   updateLibrarySummary(filtered);
 
   const usernames = Object.keys(filtered);
   if (!usernames.length) {
     if (!isAnyMediaPlaying() && mediaLibrary) {
-      mediaLibrary.innerHTML = query
-        ? '<p class="empty library-empty">No recordings match your search.</p>'
-        : '<p class="empty library-empty">No recordings yet.</p>';
+      const emptyMessage = selectedProfile
+        ? `No recordings for @${selectedProfile}${query ? " matching your search." : "."}`
+        : query
+          ? "No recordings match your search."
+          : "No recordings yet.";
+      mediaLibrary.innerHTML = `<p class="empty library-empty">${emptyMessage}</p>`;
     }
     return;
   }
@@ -306,7 +324,7 @@ export function applyMediaUpdate(media, { force = false } = {}) {
   if (!force && shouldDeferMediaRender()) {
     setPendingMedia(media);
     setLatestMedia(media || {});
-    updateLibrarySummary(filterMedia(latestMedia, mediaSearch?.value || ""));
+    updateLibrarySummary(applyLibraryFilters(latestMedia, mediaSearch?.value || ""));
     return false;
   }
   setPendingMedia(null);

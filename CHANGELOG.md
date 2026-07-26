@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.14.3] - 2026-07-26
+
+### Fixed
+
+- **Media library profile filter**: clicking a user in Live status again filters the library to that user's recordings (clear via the focus chip or Esc)
+
 ## [8.14.2] - 2026-07-26
 
 ### Fixed
