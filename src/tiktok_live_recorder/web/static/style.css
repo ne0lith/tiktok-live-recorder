@@ -924,8 +924,6 @@ td.col-room {
 }
 
 .user-section--focused {
-  border-color: rgba(63, 208, 201, 0.28);
-  box-shadow: inset 3px 0 0 var(--accent);
   scroll-margin-top: 1rem;
 }
 
@@ -1131,13 +1129,12 @@ td.col-room {
   border-bottom: 0;
 }
 
-.media-row:hover,
-.media-row.is-active {
+.media-row:hover {
   background: rgba(63, 208, 201, 0.06);
 }
 
 .media-row.is-active {
-  box-shadow: inset 3px 0 0 var(--accent);
+  background: rgba(63, 208, 201, 0.08);
 }
 
 .media-row-name {
@@ -1628,14 +1625,6 @@ td.col-room {
 
 .summary-strip.sticky-chrome {
   top: 0;
-}
-
-.library-toolbar.sticky-chrome {
-  top: 0;
-  z-index: 5;
-  padding: 0.5rem 0;
-  margin: -0.25rem 0 1rem;
-  background: var(--surface);
 }
 
 .activity-panel {

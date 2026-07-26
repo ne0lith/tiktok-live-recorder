@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.12.1] - 2026-07-26
+
+### Fixed
+
+- Media library toolbar no longer shows a solid background band behind the view/sort controls
+- Focused user sections and active media rows no longer use a left accent stripe (highlight uses title color and row background only)
+
 ## [8.12.0] - 2026-07-26
 
 ### Added
@@ -327,7 +334,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.12.0...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.12.1...HEAD
+[8.12.1]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.12.0...v8.12.1
 [8.12.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.11.0...v8.12.0
 [8.11.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.10.1...v8.11.0
 [8.10.1]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.10.0...v8.10.1
