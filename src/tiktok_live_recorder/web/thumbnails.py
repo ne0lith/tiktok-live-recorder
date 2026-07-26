@@ -43,6 +43,11 @@ def _lock_for(path: Path) -> threading.Lock:
         return lock
 
 
+def _temp_thumbnail_path(thumb_path: Path) -> Path:
+    # Keep a .jpg extension so ffmpeg can infer the muxer (not .jpg.tmp).
+    return thumb_path.with_name(f"{thumb_path.stem}.tmp{thumb_path.suffix}")
+
+
 def generate_thumbnail(
     video_path: Path,
     thumb_path: Path,
@@ -51,7 +56,9 @@ def generate_thumbnail(
 ) -> bool:
     ffmpeg_cmd = ffmpeg_path or "ffmpeg"
     thumb_path.parent.mkdir(parents=True, exist_ok=True)
-    temp_path = thumb_path.with_suffix(f"{thumb_path.suffix}.tmp")
+    # Clean up legacy bad temp names from 8.15.0 (.thumb.jpg.tmp).
+    thumb_path.with_suffix(f"{thumb_path.suffix}.tmp").unlink(missing_ok=True)
+    temp_path = _temp_thumbnail_path(thumb_path)
     command = [
         ffmpeg_cmd,
         "-hide_banner",
@@ -68,6 +75,8 @@ def generate_thumbnail(
         "scale=320:-2",
         "-q:v",
         "4",
+        "-f",
+        "image2",
         str(temp_path),
     ]
     try:

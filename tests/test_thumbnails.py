@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 from tiktok_live_recorder.web.thumbnails import (
     THUMB_SUFFIX,
+    _temp_thumbnail_path,
     ensure_thumbnail,
     thumbnail_is_fresh,
     thumbnail_path_for,
@@ -24,6 +25,13 @@ def test_thumbnail_url_paths():
     assert (
         thumbnail_url("alpha", "old.mp4", subdir="legacy")
         == "/media/alpha/legacy/old.mp4/thumb"
+    )
+
+
+def test_temp_thumbnail_path_keeps_jpg_extension():
+    thumb = Path("/output/user/TK_alpha.thumb.jpg")
+    assert _temp_thumbnail_path(thumb) == Path(
+        "/output/user/TK_alpha.thumb.tmp.jpg"
     )
 
 
