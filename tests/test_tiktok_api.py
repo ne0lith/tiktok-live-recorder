@@ -17,7 +17,7 @@ class FakeHttpClient:
         self.responses = responses
         self.urls = []
 
-    def get(self, url):
+    def get(self, url, **kwargs):
         self.urls.append(url)
         return FakeResponse(self.responses.pop(0))
 
@@ -100,6 +100,16 @@ def test_check_alive_is_lightweight():
     assert api.check_alive("123") is True
     assert len(api.http_client.urls) == 1
     assert "check_alive" in api.http_client.urls[0]
+
+
+def test_check_alive_assumes_live_on_network_error_when_requested():
+    api = build_api({"data": [{"alive": True, "room_id": 123}], "status_code": 0})
+    api.http_client.get = lambda url, **kwargs: (_ for _ in ()).throw(
+        __import__("requests").ConnectionError("dns down")
+    )
+
+    assert api.check_alive("123", assume_live_on_error=True) is True
+    assert api.check_alive("123") is False
 
 
 def test_is_room_alive_rejects_null_check_alive_data():

@@ -426,7 +426,7 @@ def test_start_recording_finalizes_when_user_goes_offline(tmp_path, monkeypatch)
         def get_live_url_candidates(self, room_id, user=None):
             return ["https://cdn.example.com/live.flv"]
 
-        def check_alive(self, room_id):
+        def check_alive(self, room_id, **kwargs):
             self.alive_checks += 1
             # Live for the initial open; offline once the CDN stream ends.
             return self.alive_checks == 1
@@ -470,7 +470,7 @@ def test_cdn_404_tries_all_refreshed_candidates_before_giving_up(tmp_path, monke
         def get_live_url_candidates(self, room_id, user=None):
             return list(urls)
 
-        def check_alive(self, room_id):
+        def check_alive(self, room_id, **kwargs):
             return True
 
         def download_live_stream(self, live_url):
@@ -514,7 +514,7 @@ def test_404_after_data_finalizes_then_poll_can_start_again(tmp_path, monkeypatc
         def is_room_alive(self, room_id, user=None):
             return self.live
 
-        def check_alive(self, room_id):
+        def check_alive(self, room_id, **kwargs):
             return self.live
 
         def get_live_url_candidates(self, room_id, user=None):
@@ -591,7 +591,7 @@ def test_request_stop_ends_recording_and_finalizes(tmp_path, monkeypatch):
         def get_live_url_candidates(self, room_id, user=None):
             return ["https://cdn.example.com/live.flv"]
 
-        def check_alive(self, room_id):
+        def check_alive(self, room_id, **kwargs):
             return True
 
         def download_live_stream(self, live_url):
@@ -632,7 +632,7 @@ def test_cdn_refresh_offline_still_finalizes(tmp_path, monkeypatch):
                 return ["https://cdn.example.com/live.flv"]
             raise UserLiveError(TikTokError.USER_NOT_CURRENTLY_LIVE)
 
-        def check_alive(self, room_id):
+        def check_alive(self, room_id, **kwargs):
             # Stale alive: CDN already 404'd but check_alive still true briefly.
             return True
 

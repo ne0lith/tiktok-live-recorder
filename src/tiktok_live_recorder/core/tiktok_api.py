@@ -20,6 +20,8 @@ from tiktok_live_recorder.utils.custom_exceptions import (
     TikRecUnavailableError,
 )
 
+DEFAULT_API_TIMEOUT = (10, 20)
+
 
 _STREAM_URL_PATTERN = re.compile(
     r"https?://[^\s\"'<>\\]+\.(?:flv|m3u8)[^\s\"'<>\\]*", re.IGNORECASE
@@ -427,16 +429,35 @@ class TikTokAPI:
 
         return response.status_code == StatusCode.REDIRECT
 
-    def check_alive(self, room_id: str) -> bool:
+    def _api_get(self, url: str, **kwargs):
+        kwargs.setdefault("timeout", DEFAULT_API_TIMEOUT)
+        return self.http_client.get(url, **kwargs)
+
+    def check_alive(
+        self,
+        room_id: str,
+        *,
+        assume_live_on_error: bool = False,
+    ) -> bool:
         """Lightweight live check — check_alive API only (no room/info or page scrape)."""
         if not room_id:
             return False
 
-        with self._http_lock:
-            alive_data = self.http_client.get(
-                f"{self.WEBCAST_URL}/webcast/room/check_alive/"
-                f"?aid=1988&region=CH&room_ids={room_id}&user_is_login=true"
-            ).json()
+        try:
+            with self._http_lock:
+                alive_data = self._api_get(
+                    f"{self.WEBCAST_URL}/webcast/room/check_alive/"
+                    f"?aid=1988&region=CH&room_ids={room_id}&user_is_login=true"
+                ).json()
+        except requests.RequestException as ex:
+            if assume_live_on_error:
+                logger.debug(
+                    f"check_alive network error for room {room_id} ({ex}); "
+                    "assuming still live"
+                )
+                return True
+            logger.warning(f"check_alive network error for room {room_id}: {ex}")
+            return False
 
         data_list = alive_data.get("data")
         return (

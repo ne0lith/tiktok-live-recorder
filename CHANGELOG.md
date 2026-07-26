@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.4.2] - 2026-07-26
+
+### Fixed
+
+- Web dashboard stays responsive during CDN/TikTok network blips: `check_alive` uses HTTP timeouts, active recordings assume still-live on transient API errors, and status API no longer blocks recording threads on disk stat
+- Dashboard API requests time out with a clear toast instead of hanging indefinitely
+
 ## [8.4.1] - 2026-07-26
 
 ### Changed
@@ -174,7 +181,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.4.1...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.4.2...HEAD
+[8.4.2]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.4.1...v8.4.2
 [8.4.1]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.4.0...v8.4.1
 [8.4.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.3.2...v8.4.0
 [8.3.2]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.3.1...v8.3.2

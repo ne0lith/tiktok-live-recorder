@@ -30,6 +30,7 @@ const libraryState = {
 
 const INITIAL_VISIBLE = 8;
 const LOAD_MORE_STEP = 20;
+const API_TIMEOUT_MS = 12000;
 
 function showToast(message) {
   toast.textContent = message;
@@ -55,16 +56,28 @@ function parseApiError(text, status) {
 }
 
 async function api(path, options = {}) {
-  const response = await fetch(path, {
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-    ...options,
-  });
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(parseApiError(detail, response.status));
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+  try {
+    const response = await fetch(path, {
+      headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+      signal: controller.signal,
+      ...options,
+    });
+    if (!response.ok) {
+      const detail = await response.text();
+      throw new Error(parseApiError(detail, response.status));
+    }
+    if (response.status === 204) return null;
+    return response.json();
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error("Request timed out — recorder may be busy or network is down");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
   }
-  if (response.status === 204) return null;
-  return response.json();
 }
 
 function formatBytes(bytes) {

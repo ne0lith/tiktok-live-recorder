@@ -121,38 +121,42 @@ class TikTokRecorder:
 
         paused = sorted(read_paused_users())
         users = list(self.users or [])
-        recordings = []
         now = time.time()
 
         with self._state_lock:
-            for username, entry in self._active_recordings.items():
-                thread = entry.get("thread")
-                started_at = entry.get("started_at")
-                elapsed = (now - started_at) if started_at else None
-                output_path = entry.get("output_path")
-                file_size = entry.get("bytes_written", 0)
-                if output_path:
-                    try:
-                        file_size = max(file_size, Path(output_path).stat().st_size)
-                    except OSError:
-                        pass
-                recordings.append(
-                    {
-                        "username": username,
-                        "room_id": entry.get("room_id"),
-                        "status": entry.get("status", "recording"),
-                        "started_at": started_at,
-                        "elapsed_seconds": round(elapsed, 1)
-                        if elapsed is not None
-                        else None,
-                        "bytes_written": file_size,
-                        "output_path": output_path,
-                        "is_alive": bool(thread and thread.is_alive()),
-                    }
-                )
-
+            active_entries = {
+                username: dict(entry)
+                for username, entry in self._active_recordings.items()
+            }
             snapshot = dict(self._last_poll_snapshot or {})
             telegram_uploads = list(self._telegram_uploads)
+
+        recordings = []
+        for username, entry in active_entries.items():
+            thread = entry.get("thread")
+            started_at = entry.get("started_at")
+            elapsed = (now - started_at) if started_at else None
+            output_path = entry.get("output_path")
+            file_size = entry.get("bytes_written", 0)
+            if output_path:
+                try:
+                    file_size = max(file_size, Path(output_path).stat().st_size)
+                except OSError:
+                    pass
+            recordings.append(
+                {
+                    "username": username,
+                    "room_id": entry.get("room_id"),
+                    "status": entry.get("status", "recording"),
+                    "started_at": started_at,
+                    "elapsed_seconds": round(elapsed, 1)
+                    if elapsed is not None
+                    else None,
+                    "bytes_written": file_size,
+                    "output_path": output_path,
+                    "is_alive": bool(thread and thread.is_alive()),
+                }
+            )
 
         return {
             "mode": self.mode.name.lower(),
@@ -694,6 +698,9 @@ class TikTokRecorder:
 
         self._log_recording(user, f"→ {Path(output).name} (Ctrl+C to stop)")
 
+        def _assume_live_on_check_error() -> bool:
+            return bytes_written >= min_stream_bytes
+
         try:
             with open(output, "wb") as out_file:
                 stop_recording = False
@@ -704,7 +711,10 @@ class TikTokRecorder:
                     bytes_before = bytes_written
 
                     try:
-                        if not self.tiktok.check_alive(room_id):
+                        if not self.tiktok.check_alive(
+                            room_id,
+                            assume_live_on_error=_assume_live_on_check_error(),
+                        ):
                             self._log_recording(
                                 user, "User is no longer live. Stopping recording."
                             )
@@ -744,7 +754,10 @@ class TikTokRecorder:
                             now = time.time()
                             if now - last_alive_check >= alive_check_interval:
                                 last_alive_check = now
-                                if not self.tiktok.check_alive(room_id):
+                                if not self.tiktok.check_alive(
+                                    room_id,
+                                    assume_live_on_error=True,
+                                ):
                                     self._log_recording(
                                         user,
                                         "User is no longer live. Stopping recording.",
@@ -780,7 +793,10 @@ class TikTokRecorder:
                                     continue
                                 break
 
-                            if not self.tiktok.check_alive(room_id):
+                            if not self.tiktok.check_alive(
+                                room_id,
+                                assume_live_on_error=True,
+                            ):
                                 self._log_recording(
                                     user,
                                     "User is no longer live. Stopping recording.",
@@ -811,7 +827,13 @@ class TikTokRecorder:
                                 last_reconnect_log = now
                             time.sleep(min(2 * max(empty_reconnects, 1), 10))
 
-                    except ConnectionError:
+                    except ConnectionError as ex:
+                        if _assume_live_on_check_error():
+                            self._log_recording(
+                                user, f"Network hiccup, retrying: {ex}", "warning"
+                            )
+                            time.sleep(2)
+                            continue
                         if (
                             self.mode in (Mode.AUTOMATIC, Mode.WATCHLIST)
                             and not self._should_stop()
@@ -822,11 +844,15 @@ class TikTokRecorder:
                             self._stop.wait(
                                 TimeOut.CONNECTION_CLOSED * TimeOut.ONE_MINUTE
                             )
+                            continue
 
                     except (RequestException, HTTPException) as ex:
                         if _is_stream_url_gone(ex):
                             failed_urls.add(live_url)
-                            if not self.tiktok.check_alive(room_id):
+                            if not self.tiktok.check_alive(
+                                room_id,
+                                assume_live_on_error=True,
+                            ):
                                 self._log_recording(
                                     user,
                                     "Stream ended (CDN URL gone). Stopping recording.",
@@ -856,6 +882,7 @@ class TikTokRecorder:
                             user, f"Network hiccup, retrying: {ex}", "warning"
                         )
                         time.sleep(2)
+                        continue
 
                     except (UserLiveError, LiveNotFound) as ex:
                         # Can escape from nested API calls in some paths; finalize below.
