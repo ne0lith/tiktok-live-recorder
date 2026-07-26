@@ -134,6 +134,9 @@ class TikTokRecorder:
         recordings = []
         for username, entry in active_entries.items():
             thread = entry.get("thread")
+            if thread is not None and not thread.is_alive():
+                # Thread ended; poll loop will clean this up on the next pass.
+                continue
             started_at = entry.get("started_at")
             elapsed = (now - started_at) if started_at else None
             output_path = entry.get("output_path")
@@ -521,6 +524,11 @@ class TikTokRecorder:
 
             except TikTokRecorderError as e:
                 groups["errors"].append(f"{username} ({e})")
+                counts["error"] += 1
+
+            except RequestException as e:
+                logger.warning(f"  @{username}: network error during poll: {e}")
+                groups["errors"].append(username)
                 counts["error"] += 1
 
             except Exception as e:

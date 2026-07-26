@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.4.3] - 2026-07-26
+
+### Fixed
+
+- Watchlist poll no longer hangs indefinitely on TikTok/tikrec API calls during DNS or network outages (`get_room_id_from_user`, `is_room_alive`, and signing now use the same HTTP timeouts as `check_alive`)
+- Per-user network errors during a poll are logged and counted as errors instead of stalling the whole loop
+- Dashboard no longer shows users stuck on **finished** when their recording thread has already ended but the next poll has not run yet
+- Force recheck / add-user now take effect once the current poll step completes (timeouts prevent multi-minute blocking)
+
 ## [8.4.2] - 2026-07-26
 
 ### Fixed

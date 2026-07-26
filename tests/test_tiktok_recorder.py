@@ -243,6 +243,25 @@ def test_recording_worker_catches_user_live_error():
     assert recorder._recording_results["alpha"] == "error"
 
 
+def test_poll_users_once_handles_network_error_per_user():
+    recorder = TikTokRecorder(
+        RecorderConfig(mode=Mode.WATCHLIST, users=["alpha"], cookies={})
+    )
+
+    class FailingTikTokAPI:
+        def get_room_id_from_user(self, user):
+            raise __import__("requests").ConnectionError("dns down")
+
+        def is_room_alive(self, room_id, user=None):
+            return True
+
+    recorder.tiktok = FailingTikTokAPI()
+    snapshot = recorder._poll_users_once(["alpha"], {}, label="Watchlist")
+
+    assert snapshot == {}
+    assert recorder._last_poll_snapshot["errors"] == ["alpha"]
+
+
 def test_poll_users_once_cleans_failed_thread_as_error():
     recorder = TikTokRecorder(
         RecorderConfig(mode=Mode.WATCHLIST, users=["alpha"], cookies={})

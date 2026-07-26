@@ -306,6 +306,7 @@ function deriveRows(status) {
   });
 
   recordings.forEach((entry, username) => {
+    if (entry.is_alive === false) return;
     const row = ensure(username, entry.status || "recording");
     row.state = entry.status || row.state;
     row.room_id = entry.room_id || row.room_id;

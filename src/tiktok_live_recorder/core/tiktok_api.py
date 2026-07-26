@@ -477,7 +477,7 @@ class TikTokAPI:
         if not self.check_alive(room_id):
             return False
 
-        room_info = self.http_client.get(
+        room_info = self._api_get(
             f"{self.WEBCAST_URL}/webcast/room/info/?aid=1988&room_id={room_id}"
         ).json()
 
@@ -571,7 +571,7 @@ class TikTokAPI:
     def _old_get_room_id_from_user(self, user: str) -> str:
         params = {"uniqueId": user, "giftInfo": "false"}
 
-        response = self.http_client.get(
+        response = self._api_get(
             f"{self.EULER_API}/webcast/room_info",
             params=params,
             headers={"x-api-key": ""},
@@ -590,7 +590,7 @@ class TikTokAPI:
 
     def _tikrec_get_room_id_signed_url(self, user: str) -> str:
         try:
-            response = self.http_client.get(
+            response = self._api_get(
                 f"{self.TIKREC_API}/tiktok/room/api/sign",
                 params={"unique_id": user},
             )
@@ -628,7 +628,7 @@ class TikTokAPI:
             )
             return self._old_get_room_id_from_user(user)
 
-        response = self.http_client.get(signed_url)
+        response = self._api_get(signed_url)
         content = response.text
 
         if not content or "Please wait" in content:

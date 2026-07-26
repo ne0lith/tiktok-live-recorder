@@ -1,4 +1,5 @@
 import pytest
+from unittest.mock import MagicMock
 
 from tiktok_live_recorder.core.tiktok_api import TikTokAPI
 from tiktok_live_recorder.utils.custom_exceptions import UserLiveError
@@ -209,3 +210,23 @@ def test_get_live_url_candidates_returns_ordered_unique_streams():
         "https://cdn/audio.flv",
         "https://cdn/sd.flv",
     ]
+
+
+def test_get_room_id_from_user_uses_api_timeout():
+    api = TikTokAPI.__new__(TikTokAPI)
+    api._http_lock = __import__("threading").Lock()
+    seen = {}
+
+    def fake_http_get(url, **kwargs):
+        seen["timeout"] = kwargs.get("timeout")
+        response = MagicMock()
+        response.text = '{"data": {"user": {"roomId": "123"}}}'
+        response.json.return_value = {"data": {"user": {"roomId": "123"}}}
+        return response
+
+    api.http_client = MagicMock()
+    api.http_client.get = fake_http_get
+    api._tikrec_get_room_id_signed_url = lambda user: "https://www.tiktok.com/signed"
+
+    assert api.get_room_id_from_user("creator") == "123"
+    assert seen["timeout"] == (10, 20)

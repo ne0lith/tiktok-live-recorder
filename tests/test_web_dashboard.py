@@ -1,4 +1,5 @@
 import json
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -104,6 +105,28 @@ def test_get_status_includes_recordings():
     assert status["recordings"][0]["bytes_written"] == 4096
     assert status["use_telegram"] is False
     assert status["telegram_uploads"] == []
+
+
+def test_get_status_omits_dead_finished_threads():
+    recorder = TikTokRecorder(
+        RecorderConfig(mode=Mode.WATCHLIST, users=["alpha"], cookies={})
+    )
+    dead_thread = MagicMock()
+    dead_thread.is_alive.return_value = False
+    recorder._active_recordings = {
+        "alpha": {
+            "thread": dead_thread,
+            "room_id": "room-alpha",
+            "started_at": 1000.0,
+            "output_path": "/tmp/alpha.mp4",
+            "bytes_written": 4096,
+            "status": "finished",
+        }
+    }
+
+    status = recorder.get_status()
+
+    assert status["recordings"] == []
 
 
 def test_scan_media_library_groups_by_username(tmp_path):
