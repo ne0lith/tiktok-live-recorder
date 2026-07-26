@@ -7,18 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.12.8] - 2026-07-26
+
+### Fixed
+
+- **Linux no longer sticks with incapable system FFmpeg**: Debian/Ubuntu 7.x builds that only pass the libx265 roundtrip probe are rejected for TikTok HEVC FLV; the resolver installs or prefers BtbN **n8.1** vendor FFmpeg when legacy/enhanced codec-12 probes fail
+- `hevc_capable` in status/settings now requires legacy or enhanced demux (roundtrip alone is informational only)
+
+### Changed
+
+- **Linux startup hard-fails without capable FFmpeg**: the recorder exits before watching or recording when vendor **n8.1** cannot be installed/verified (no fallback to system FFmpeg); errors are written to `tiktok-recorder.log` with fix steps
+- Vendor FFmpeg is verified once at install (saved to `.hevc-probes.json`); startup and the dashboard reuse that result instead of re-running probes
+
+## [8.12.7] - 2026-07-26
+
+### Fixed
+
+- **Settings FFmpeg panel stayed at dashes**: `status.js` called `syncRuntimeControls` / `renderTelegramUploads` without importing them, so `renderStatus()` threw and Settings never received FFmpeg data; UI helpers moved to `runtime-ui.js` with correct imports
+- `GET /api/settings/runtime` now includes `ffmpeg` so the panel populates even when status refresh fails
+
 ## [8.12.6] - 2026-07-26
 
 ### Fixed
 
 - **FFmpeg vendor verification was broken**: `ffprobe_for()` used `.replace("ffmpeg", "ffprobe")` on the full path, turning `.vendor/ffmpeg/.../ffmpeg` into `.vendor/ffprobe/...` so every HEVC probe failed and the app fell back to incapable system FFmpeg
-- `ffprobe_for()` now only swaps the binary basename (`ffmpeg` → `ffprobe`, `ffmpeg.exe` → `ffprobe.exe`); conversion uses the same helper
+- `ffprobe_for()` now only swaps the binary basename (`ffmpeg` -> `ffprobe`, `ffmpeg.exe` -> `ffprobe.exe`); conversion uses the same helper
 
 ## [8.12.5] - 2026-07-26
 
 ### Fixed
 
-- Vendor FFmpeg verification now includes a real **libx265 → FLV → demux roundtrip** on the installed binary; synthetic codec-12 fixtures alone were failing on BtbN 8.1 while the build is otherwise capable
+- Vendor FFmpeg verification now includes a real **libx265 -> FLV -> demux roundtrip** on the installed binary; synthetic codec-12 fixtures alone were failing on BtbN 8.1 while the build is otherwise capable
 - Capable when legacy, enhanced, or roundtrip probe passes; dashboard probe tooltip includes roundtrip status
 
 ## [8.12.4] - 2026-07-26

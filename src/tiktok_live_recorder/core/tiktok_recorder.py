@@ -12,6 +12,7 @@ from tiktok_live_recorder.utils.logger_manager import logger
 from tiktok_live_recorder.utils.recorder_config import RecorderConfig
 from tiktok_live_recorder.utils.ffmpeg_setup import (
     describe_ffmpeg_binary,
+    get_startup_ffmpeg_info,
     normalize_cdn_url,
 )
 from tiktok_live_recorder.utils.video_management import VideoManagement
@@ -50,7 +51,9 @@ class TikTokRecorder:
         self.output = config.output
         self.bitrate = config.bitrate
         self.ffmpeg_path = config.ffmpeg_path
-        self._ffmpeg_info = describe_ffmpeg_binary(self.ffmpeg_path)
+        self._ffmpeg_info = get_startup_ffmpeg_info() or describe_ffmpeg_binary(
+            self.ffmpeg_path
+        )
         self._stopped_by_signal: int | None = None
         self.use_telegram = config.use_telegram
         self._proxy = config.proxy

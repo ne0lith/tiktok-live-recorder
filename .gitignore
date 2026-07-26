@@ -45,6 +45,7 @@ htmlcov/
 .coverage.*
 .cache
 .vendor/
+.vendor-test/
 nosetests.xml
 coverage.xml
 *.cover

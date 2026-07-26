@@ -84,7 +84,10 @@ def run_recordings(args, mode, cookies):
 def main() -> int:
     from tiktok_live_recorder.check_updates import check_updates
     from tiktok_live_recorder.utils.args_handler import validate_and_parse_args
-    from tiktok_live_recorder.utils.custom_exceptions import TikTokRecorderError
+    from tiktok_live_recorder.utils.custom_exceptions import (
+        FfmpegRequirementError,
+        TikTokRecorderError,
+    )
     from tiktok_live_recorder.utils.dependencies import check_ffmpeg
     from tiktok_live_recorder.utils.logger_manager import logger
     from tiktok_live_recorder.utils.utils import (
@@ -100,8 +103,7 @@ def main() -> int:
         args, mode = validate_and_parse_args()
 
         resolved_ffmpeg = check_ffmpeg(args.ffmpeg_path)
-        if resolved_ffmpeg:
-            args.ffmpeg_path = resolved_ffmpeg
+        args.ffmpeg_path = resolved_ffmpeg
 
         if args.update_check is True:
             logger.info("Checking for updates...\n")
@@ -116,6 +118,10 @@ def main() -> int:
         instance_lock.acquire()
 
         run_recordings(args, mode, cookies)
+
+    except FfmpegRequirementError as ex:
+        logger.error(f"FFmpeg requirement not met: {ex}")
+        exit_code = 1
 
     except TikTokRecorderError as ex:
         logger.error(f"Application Error: {ex}")

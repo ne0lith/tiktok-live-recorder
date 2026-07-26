@@ -346,6 +346,7 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
         return {
             "automatic_interval_minutes": recorder.automatic_interval,
             "use_telegram": recorder.use_telegram,
+            "ffmpeg": recorder.get_ffmpeg_info(),
         }
 
     @app.put("/api/settings/runtime")

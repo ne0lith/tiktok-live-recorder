@@ -37,6 +37,12 @@ class NetworkError(TikTokRecorderError):
     pass
 
 
+class FfmpegRequirementError(TikTokRecorderError):
+    """Raised when no TikTok-capable FFmpeg binary is available."""
+
+    pass
+
+
 class TikRecUnavailableError(TikTokRecorderError):
     """Raised when the tikrec signing service is unreachable or returns an unexpected response."""
 

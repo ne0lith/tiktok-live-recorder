@@ -24,6 +24,7 @@ import {
   STATUS_ROW_LIMIT,
 } from "./state.js";
 import { refreshPendingConvertCount, syncConvertJobUi } from "./media.js";
+import { renderTelegramUploads, syncRuntimeControls } from "./runtime-ui.js";
 
 const statusBody = document.getElementById("status-body");
 const statusMeta = document.getElementById("status-meta");

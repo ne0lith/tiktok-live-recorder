@@ -1,6 +1,7 @@
 import pytest
 from unittest.mock import patch
 
+from tiktok_live_recorder.utils.custom_exceptions import FfmpegRequirementError
 from tiktok_live_recorder.utils.ffmpeg_setup import (
     ARCH_ASSETS,
     build_enhanced_hevc_probe_flv,
@@ -158,7 +159,6 @@ def test_ffprobe_for_does_not_rewrite_vendor_directory_segment(tmp_path):
     assert "ffprobe.exe" in resolved
     assert "/ffmpeg/" in resolved.replace("\\", "/") or "\\ffmpeg\\" in resolved
 
-
     path = vendor_ffmpeg_dir("linux64")
     assert path.parts[-3:] == (".vendor", "ffmpeg", "n8.1-linux64")
 
@@ -171,7 +171,10 @@ def test_build_enhanced_hevc_probe_flv_uses_hvc1_fourcc():
     assert b"hvc1" not in legacy
 
 
-@patch("tiktok_live_recorder.utils.ffmpeg_setup.shutil.which", return_value="/usr/bin/ffmpeg")
+@patch(
+    "tiktok_live_recorder.utils.ffmpeg_setup.shutil.which",
+    return_value="/usr/bin/ffmpeg",
+)
 @patch(
     "tiktok_live_recorder.utils.ffmpeg_setup._verify_ffmpeg_hevc_roundtrip",
     return_value=False,
@@ -190,7 +193,10 @@ def test_ffmpeg_hevc_capable_accepts_enhanced_probe_only(
     assert ffmpeg_hevc_capable("/usr/bin/ffmpeg") is True
 
 
-@patch("tiktok_live_recorder.utils.ffmpeg_setup.shutil.which", return_value="/usr/bin/ffmpeg")
+@patch(
+    "tiktok_live_recorder.utils.ffmpeg_setup.shutil.which",
+    return_value="/usr/bin/ffmpeg",
+)
 @patch(
     "tiktok_live_recorder.utils.ffmpeg_setup._verify_ffmpeg_hevc_roundtrip",
     return_value=True,
@@ -200,15 +206,18 @@ def test_ffmpeg_hevc_capable_accepts_enhanced_probe_only(
     return_value=True,
 )
 @patch("tiktok_live_recorder.utils.ffmpeg_setup._probe_flv_bytes", return_value=False)
-def test_ffmpeg_hevc_capable_accepts_roundtrip_only(
+def test_ffmpeg_hevc_capable_rejects_roundtrip_only(
     _mock_probe, _mock_sane, _mock_roundtrip, _mock_which
 ):
     from tiktok_live_recorder.utils.ffmpeg_setup import ffmpeg_hevc_capable
 
-    assert ffmpeg_hevc_capable("/usr/bin/ffmpeg") is True
+    assert ffmpeg_hevc_capable("/usr/bin/ffmpeg") is False
 
 
-@patch("tiktok_live_recorder.utils.ffmpeg_setup.shutil.which", return_value="/usr/bin/ffmpeg")
+@patch(
+    "tiktok_live_recorder.utils.ffmpeg_setup.shutil.which",
+    return_value="/usr/bin/ffmpeg",
+)
 @patch(
     "tiktok_live_recorder.utils.ffmpeg_setup._verify_ffmpeg_hevc_roundtrip",
     return_value=False,
@@ -273,20 +282,33 @@ def test_convert_flv_to_mp4_returns_false_when_locked(tmp_path):
     "tiktok_live_recorder.utils.dependencies.resolve_ffmpeg_path",
     return_value="/repo/.vendor/ffmpeg/n8.1-linux64/bin/ffmpeg",
 )
+@patch("tiktok_live_recorder.utils.dependencies.describe_ffmpeg_binary")
 @patch("tiktok_live_recorder.utils.dependencies.log_ffmpeg_status")
 @patch("tiktok_live_recorder.utils.dependencies.shutil.which", return_value=None)
 def test_check_ffmpeg_linux_vendor_install_when_missing(
     _mock_which,
     _mock_log_status,
+    mock_describe,
     mock_resolve,
     _mock_platform,
 ):
     from tiktok_live_recorder.utils.dependencies import check_ffmpeg
 
+    mock_describe.return_value = {
+        "path": "/repo/.vendor/ffmpeg/n8.1-linux64/bin/ffmpeg",
+        "source": "vendor",
+        "version": "ffmpeg version 8.1",
+        "hevc_capable": True,
+        "hevc_probe": {"legacy": True, "enhanced": True, "roundtrip": True},
+    }
+
     result = check_ffmpeg()
 
     assert result == "/repo/.vendor/ffmpeg/n8.1-linux64/bin/ffmpeg"
     mock_resolve.assert_called_once_with(None)
+    mock_describe.assert_called_once_with(
+        "/repo/.vendor/ffmpeg/n8.1-linux64/bin/ffmpeg"
+    )
 
 
 @patch("platform.system", return_value="Windows")
@@ -304,6 +326,128 @@ def test_check_ffmpeg_non_linux_exits_when_missing(
 
     with pytest.raises(SystemExit):
         check_ffmpeg()
+
+
+@patch("platform.system", return_value="Linux")
+@patch(
+    "tiktok_live_recorder.utils.ffmpeg_setup.shutil.which",
+    return_value="/usr/bin/ffmpeg",
+)
+@patch(
+    "tiktok_live_recorder.utils.ffmpeg_setup._verify_ffmpeg_hevc_roundtrip",
+    return_value=True,
+)
+@patch(
+    "tiktok_live_recorder.utils.ffmpeg_setup._ffmpeg_install_sane",
+    return_value=True,
+)
+@patch("tiktok_live_recorder.utils.ffmpeg_setup._probe_flv_bytes", return_value=False)
+@patch(
+    "tiktok_live_recorder.utils.ffmpeg_setup.install_linux_vendor_ffmpeg",
+    return_value="/repo/.vendor/ffmpeg/n8.1-linux64/bin/ffmpeg",
+)
+def test_resolve_ffmpeg_path_linux_installs_when_system_roundtrip_only(
+    mock_install,
+    _mock_probe,
+    _mock_sane,
+    _mock_roundtrip,
+    _mock_which,
+    _mock_platform,
+):
+    from tiktok_live_recorder.utils.ffmpeg_setup import resolve_ffmpeg_path
+
+    assert resolve_ffmpeg_path() == "/repo/.vendor/ffmpeg/n8.1-linux64/bin/ffmpeg"
+    mock_install.assert_called_once()
+
+
+@patch("platform.system", return_value="Linux")
+@patch(
+    "tiktok_live_recorder.utils.ffmpeg_setup.shutil.which",
+    return_value="/usr/bin/ffmpeg",
+)
+@patch(
+    "tiktok_live_recorder.utils.ffmpeg_setup._verify_ffmpeg_hevc_roundtrip",
+    return_value=True,
+)
+@patch(
+    "tiktok_live_recorder.utils.ffmpeg_setup._ffmpeg_install_sane",
+    return_value=True,
+)
+@patch("tiktok_live_recorder.utils.ffmpeg_setup._probe_flv_bytes", return_value=False)
+@patch(
+    "tiktok_live_recorder.utils.ffmpeg_setup.install_linux_vendor_ffmpeg",
+    side_effect=RuntimeError("network down"),
+)
+def test_resolve_ffmpeg_path_linux_raises_when_vendor_install_fails(
+    _mock_install,
+    _mock_probe,
+    _mock_sane,
+    _mock_roundtrip,
+    _mock_which,
+    _mock_platform,
+):
+    from tiktok_live_recorder.utils.custom_exceptions import FfmpegRequirementError
+    from tiktok_live_recorder.utils.ffmpeg_setup import resolve_ffmpeg_path
+
+    with pytest.raises(FfmpegRequirementError, match="network down"):
+        resolve_ffmpeg_path()
+
+
+@patch("platform.system", return_value="Linux")
+@patch(
+    "tiktok_live_recorder.utils.dependencies.resolve_ffmpeg_path",
+    side_effect=FfmpegRequirementError("network down"),
+)
+def test_check_ffmpeg_linux_raises_when_vendor_install_fails(
+    _mock_resolve,
+    _mock_platform,
+):
+    from tiktok_live_recorder.utils.custom_exceptions import FfmpegRequirementError
+    from tiktok_live_recorder.utils.dependencies import check_ffmpeg
+
+    with pytest.raises(FfmpegRequirementError, match="network down"):
+        check_ffmpeg()
+
+
+def test_trusted_vendor_ffmpeg_uses_saved_probes_without_verify(tmp_path):
+    from tiktok_live_recorder.utils.ffmpeg_setup import (
+        _save_vendor_probes,
+        _trusted_vendor_ffmpeg,
+        describe_ffmpeg_binary,
+    )
+
+    arch_key = "linux64"
+    install_dir = tmp_path / ".vendor" / "ffmpeg" / "n8.1-linux64"
+    bin_dir = install_dir / "bin"
+    bin_dir.mkdir(parents=True)
+    ffmpeg_bin = bin_dir / "ffmpeg"
+    ffprobe_bin = bin_dir / "ffprobe"
+    ffmpeg_bin.write_text("", encoding="utf-8")
+    ffprobe_bin.write_text("", encoding="utf-8")
+    probes = {"legacy": True, "enhanced": True, "roundtrip": True}
+
+    with patch(
+        "tiktok_live_recorder.utils.ffmpeg_setup.vendor_ffmpeg_dir",
+        return_value=install_dir,
+    ):
+        _save_vendor_probes(arch_key, probes)
+        with (
+            patch(
+                "tiktok_live_recorder.utils.ffmpeg_setup._ffmpeg_install_sane",
+                return_value=True,
+            ),
+            patch(
+                "tiktok_live_recorder.utils.ffmpeg_setup.verify_installed_ffmpeg"
+            ) as mock_verify,
+        ):
+            trusted = _trusted_vendor_ffmpeg(arch_key)
+            info = describe_ffmpeg_binary(str(ffmpeg_bin))
+
+    assert trusted is not None
+    assert trusted[1] == probes
+    mock_verify.assert_not_called()
+    assert info["hevc_capable"] is True
+    assert info["hevc_probe"] == probes
 
 
 @patch("platform.system", return_value="Linux")

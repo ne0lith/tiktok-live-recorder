@@ -4,7 +4,14 @@ import subprocess
 from pathlib import Path
 from subprocess import SubprocessError
 
-from .ffmpeg_setup import log_ffmpeg_status, resolve_ffmpeg_path
+from .custom_exceptions import FfmpegRequirementError
+from .ffmpeg_setup import (
+    describe_ffmpeg_binary,
+    linux_ffmpeg_requirement_help,
+    log_ffmpeg_status,
+    resolve_ffmpeg_path,
+    set_startup_ffmpeg_info,
+)
 from .logger_manager import logger
 
 
@@ -180,24 +187,38 @@ def _ffmpeg_binary_missing(ffmpeg_path: str | None) -> bool:
         return True
 
 
-def check_ffmpeg(ffmpeg_path: str | None = None) -> str | None:
+def check_ffmpeg(ffmpeg_path: str | None = None) -> str:
     """
-    Ensure ffmpeg exists and return the resolved binary path (vendor install on Linux).
+    Ensure a TikTok-capable FFmpeg exists and return the resolved binary path.
+
+    On Linux, startup aborts (logged to tiktok-recorder.log) when vendor FFmpeg
+    n8.1 cannot be installed or verified.
     """
+    linux = platform.system().lower() == "linux"
     if _ffmpeg_binary_missing(ffmpeg_path):
-        if platform.system().lower() != "linux":
+        if not linux:
             logger.error("FFmpeg binary is not installed")
             install_ffmpeg_binary()
-            return None
         logger.info(
             "FFmpeg not found on PATH; installing capable vendor build for Linux..."
         )
 
     try:
         resolved = resolve_ffmpeg_path(ffmpeg_path)
-    except FileNotFoundError:
+    except FfmpegRequirementError as exc:
+        logger.error(str(exc))
+        if linux:
+            logger.error(linux_ffmpeg_requirement_help())
+        raise
+    except FileNotFoundError as exc:
+        if linux:
+            message = f"FFmpeg binary not found: {exc}"
+            logger.error(message)
+            logger.error(linux_ffmpeg_requirement_help())
+            raise FfmpegRequirementError(message) from exc
         install_ffmpeg_binary()
-        return None
 
-    log_ffmpeg_status(resolved)
+    info = describe_ffmpeg_binary(resolved)
+    set_startup_ffmpeg_info(info)
+    log_ffmpeg_status(info=info)
     return resolved

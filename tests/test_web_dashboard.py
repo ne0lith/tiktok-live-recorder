@@ -239,6 +239,15 @@ class StubRecorder:
     def get_convert_job(self):
         return None
 
+    def get_ffmpeg_info(self):
+        return {
+            "path": "/usr/bin/ffmpeg",
+            "source": "system",
+            "version": "ffmpeg version 7.1.5",
+            "hevc_capable": True,
+            "hevc_probe": {"legacy": False, "enhanced": False, "roundtrip": True},
+        }
+
     def start_pending_flv_converts(self):
         return {"running": False, "total": 0, "completed": 0, "failed": 0}
 
@@ -414,7 +423,10 @@ def test_api_runtime_settings(api_client):
     client, recorder, _ = api_client
     response = client.get("/api/settings/runtime")
     assert response.status_code == 200
-    assert response.json()["automatic_interval_minutes"] == 5
+    payload = response.json()
+    assert payload["automatic_interval_minutes"] == 5
+    assert "ffmpeg" in payload
+    assert payload["ffmpeg"]["source"] in {"vendor", "system", "custom", "missing"}
 
     response = client.put(
         "/api/settings/runtime",
