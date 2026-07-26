@@ -135,8 +135,8 @@
               <tr>
                 <th>User</th>
                 <th>State</th>
-                <th>Room</th>
-                <th>Elapsed</th>
+                <th class="col-room">Room</th>
+                <th class="col-elapsed">Elapsed</th>
                 <th>Size</th>
                 <th class="col-actions">Actions</th>
               </tr>
@@ -155,6 +155,23 @@
           <button id="refresh-media-btn" class="btn btn-ghost">Refresh</button>
         </div>
         <div class="library-toolbar">
+          <div
+            id="library-view-toggle"
+            class="library-view-toggle"
+            role="group"
+            aria-label="Library view"
+          >
+            <button
+              type="button"
+              id="library-view-by-user"
+              class="btn btn-ghost btn-small is-active"
+            >
+              By user
+            </button>
+            <button type="button" id="library-view-recent" class="btn btn-ghost btn-small">
+              Most recent
+            </button>
+          </div>
           <input
             id="media-search"
             type="search"

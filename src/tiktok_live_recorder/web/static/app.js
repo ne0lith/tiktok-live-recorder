@@ -26,6 +26,8 @@ const libraryState = {
   expandedUsers: new Set(),
   visibleCounts: new Map(),
   playingUrl: null,
+  viewMode: "by-user",
+  recentVisibleCount: null,
 };
 
 const INITIAL_VISIBLE = 8;
@@ -389,7 +391,7 @@ function renderStatus(status) {
   statusBody.innerHTML = rows
     .map((row) => {
       const sizeCell = row.output_path
-        ? `<span title="${row.output_path}">${formatBytes(row.bytes_written)}<span class="output-hint"> · ${basename(row.output_path)}</span></span>`
+        ? `<span class="output-cell" title="${row.output_path}"><span class="output-size">${formatBytes(row.bytes_written)}</span><span class="output-hint">${basename(row.output_path)}</span></span>`
         : formatBytes(row.bytes_written);
       return `
         <tr>
@@ -397,8 +399,8 @@ function renderStatus(status) {
             active: usernamesMatch(row.username, selectedProfile),
           })}</td>
           <td><span class="badge ${row.state}">${row.state}</span></td>
-          <td>${row.room_id || "-"}</td>
-          <td>${formatDuration(row.elapsed_seconds)}</td>
+          <td class="col-room">${row.room_id || "-"}</td>
+          <td class="col-elapsed">${formatDuration(row.elapsed_seconds)}</td>
           <td>${sizeCell}</td>
           <td class="col-actions">${renderStatusActions(row, status)}</td>
         </tr>
@@ -462,6 +464,51 @@ function updateLibrarySummary(media) {
   librarySummary.textContent = `${fileCount} recording${fileCount === 1 ? "" : "s"} · ${usernames.length} user${usernames.length === 1 ? "" : "s"} · ${formatBytes(totalSize)}`;
 }
 
+function flattenAndSortMedia(media) {
+  const rows = [];
+  for (const [username, items] of Object.entries(media || {})) {
+    for (const item of items) {
+      rows.push({ item, username });
+    }
+  }
+  rows.sort((a, b) => (b.item.modified_at || 0) - (a.item.modified_at || 0));
+  return rows;
+}
+
+function getRecentVisibleCount(total) {
+  if (libraryState.recentVisibleCount == null) {
+    libraryState.recentVisibleCount = Math.min(INITIAL_VISIBLE, total);
+  }
+  return Math.min(libraryState.recentVisibleCount, total);
+}
+
+function syncLibraryViewButtons() {
+  const byUser = document.getElementById("library-view-by-user");
+  const recent = document.getElementById("library-view-recent");
+  if (!byUser || !recent) return;
+  byUser.classList.toggle("is-active", libraryState.viewMode === "by-user");
+  recent.classList.toggle("is-active", libraryState.viewMode === "recent");
+}
+
+function applyLibraryViewToggle() {
+  const toggle = document.getElementById("library-view-toggle");
+  if (!toggle) return;
+  const hideToggle = Boolean(selectedProfile);
+  toggle.classList.toggle("hidden", hideToggle);
+  if (hideToggle && libraryState.viewMode === "recent") {
+    libraryState.viewMode = "by-user";
+    syncLibraryViewButtons();
+  }
+}
+
+function setLibraryViewMode(mode) {
+  if (libraryState.viewMode === mode) return;
+  libraryState.viewMode = mode;
+  libraryState.recentVisibleCount = null;
+  syncLibraryViewButtons();
+  renderMedia(latestMedia);
+}
+
 function getVisibleCount(username, total) {
   if (!libraryState.visibleCounts.has(username)) {
     libraryState.visibleCounts.set(username, Math.min(INITIAL_VISIBLE, total));
@@ -492,6 +539,10 @@ function playMedia(item, username) {
     `.user-section[data-username="${CSS.escape(username)}"]`,
   );
   section?.classList.add("expanded");
+  const row = mediaLibrary.querySelector(
+    `.media-row[data-url="${CSS.escape(item.url)}"]`,
+  );
+  row?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   highlightActiveRow();
 }
 
@@ -510,7 +561,7 @@ function highlightActiveRow() {
   }
 }
 
-function createMediaRow(item, username) {
+function createMediaRow(item, username, { showUsername = false } = {}) {
   const row = document.createElement("div");
   row.className = "media-row";
   row.dataset.url = item.url;
@@ -523,7 +574,7 @@ function createMediaRow(item, username) {
   const name = document.createElement("span");
   name.className = "media-row-name";
   name.title = item.filename;
-  name.textContent = item.filename;
+  name.textContent = showUsername ? `@${username} · ${item.filename}` : item.filename;
 
   const meta = document.createElement("span");
   meta.className = "media-row-meta";
@@ -658,6 +709,58 @@ function renderUserSection(username, items) {
   return section;
 }
 
+function renderRecentList(media) {
+  const rows = flattenAndSortMedia(media);
+  const visibleCount = getRecentVisibleCount(rows.length);
+
+  mediaLibrary.querySelectorAll(".user-section").forEach((section) => section.remove());
+
+  let section = mediaLibrary.querySelector(".recent-section");
+  if (!section) {
+    section = document.createElement("section");
+    section.className = "recent-section";
+    section.innerHTML = `
+      <div class="recent-section-head">
+        <h3 class="recent-section-title">All recordings</h3>
+        <span class="recent-section-count"></span>
+      </div>
+      <div class="media-list"></div>
+      <div class="recent-section-footer hidden">
+        <button class="btn btn-ghost btn-small show-more" type="button"></button>
+      </div>
+    `;
+    section.querySelector(".show-more").addEventListener("click", () => {
+      const current = getRecentVisibleCount(rows.length);
+      libraryState.recentVisibleCount = Math.min(current + LOAD_MORE_STEP, rows.length);
+      renderMedia(latestMedia);
+    });
+    mediaLibrary.append(section);
+  }
+
+  section.querySelector(".recent-section-count").textContent = `${rows.length} recording${
+    rows.length === 1 ? "" : "s"
+  } · ${formatBytes(sumMediaSize(rows.map((entry) => entry.item)))}`;
+
+  const list = section.querySelector(".media-list");
+  list.replaceChildren();
+  for (const { item, username } of rows.slice(0, visibleCount)) {
+    const row = createMediaRow(item, username, { showUsername: true });
+    if (item.url === libraryState.playingUrl) {
+      row.classList.add("is-active");
+    }
+    list.append(row);
+  }
+
+  const footer = section.querySelector(".recent-section-footer");
+  const showMore = section.querySelector(".show-more");
+  if (visibleCount < rows.length) {
+    footer.classList.remove("hidden");
+    showMore.textContent = `Show ${rows.length - visibleCount} more`;
+  } else {
+    footer.classList.add("hidden");
+  }
+}
+
 function renderMedia(media) {
   latestMedia = media || {};
   const query = mediaSearch.value || "";
@@ -684,10 +787,20 @@ function renderMedia(media) {
     }
     updateLibrarySummary(filtered);
     updateProfileBanner();
+    applyLibraryViewToggle();
     return;
   }
 
   mediaLibrary.querySelector(".empty")?.remove();
+  applyLibraryViewToggle();
+
+  if (libraryState.viewMode === "recent" && !selectedProfile) {
+    renderRecentList(filtered);
+    updateProfileBanner();
+    return;
+  }
+
+  mediaLibrary.querySelector(".recent-section")?.remove();
   const seenUsers = new Set();
 
   for (const username of usernames) {
@@ -804,7 +917,16 @@ document.getElementById("refresh-media-btn").addEventListener("click", async () 
 });
 
 mediaSearch.addEventListener("input", () => {
+  libraryState.recentVisibleCount = null;
   renderMedia(latestMedia);
+});
+
+document.getElementById("library-view-by-user")?.addEventListener("click", () => {
+  setLibraryViewMode("by-user");
+});
+
+document.getElementById("library-view-recent")?.addEventListener("click", () => {
+  setLibraryViewMode("recent");
 });
 
 document.getElementById("player-close").addEventListener("click", closePlayer);
@@ -964,6 +1086,7 @@ document.getElementById("save-telegram-btn").addEventListener("click", async () 
 
 async function boot() {
   readProfileFromHash();
+  syncLibraryViewButtons();
   try {
     await Promise.all([refreshStatus(), refreshMedia(), loadSettings()]);
   } catch (error) {

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.5.0] - 2026-07-26
+
+### Added
+
+- Media library **Most recent** view: flat list of all recordings across users, sorted newest first (toggle next to search)
+
+### Fixed
+
+- Live status table shows recording size and filename on separate lines so long filenames do not wrap awkwardly
+- Elapsed and room columns no longer break across two lines on narrow layouts
+
 ## [8.4.3] - 2026-07-26
 
 ### Fixed
