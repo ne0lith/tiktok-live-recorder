@@ -27,6 +27,7 @@ function renderLogs(payload) {
     logOutput.scrollHeight - logOutput.scrollTop - logOutput.clientHeight < 24;
   if (atBottom) logState.stickToBottom = true;
 
+  logState.lastText = lines.join("\n");
   logOutput?.replaceChildren();
   if (!lines.length) {
     const empty = document.createElement("div");
@@ -147,6 +148,20 @@ export function initLogsInteractions() {
       await refreshLogs();
     } catch (error) {
       showToast(error.message);
+    }
+  });
+
+  document.getElementById("logs-copy-btn")?.addEventListener("click", async () => {
+    const text = logState.lastText || "";
+    if (!text) {
+      showToast("Nothing to copy");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast("Log copied to clipboard");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Could not copy log");
     }
   });
 

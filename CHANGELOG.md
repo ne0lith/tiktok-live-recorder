@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.13.1] - 2026-07-26
+
+### Fixed
+
+- **Settings FFmpeg panel stayed empty**: `loadSettings()` used `Promise.all`, so a cookies/telegram fetch failure skipped `syncFfmpegInfo`; FFmpeg now loads via dedicated `GET /api/ffmpeg` with `allSettled` and populates on first dashboard load
+- Stale module cache: `/js/*` and CSS are served with `Cache-Control: no-cache`
+
+### Added
+
+- **Copy** button on the recorder log panel (copies visible lines to clipboard)
+
+### Changed
+
+- FFmpeg block moved to the bottom of Settings (after configuration file editors)
+
 ## [8.13.0] - 2026-07-26
 
 ### Changed

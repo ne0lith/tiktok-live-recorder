@@ -152,6 +152,10 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
         job = recorder.start_pending_flv_converts()
         return {"job": job}
 
+    @app.get("/api/ffmpeg")
+    def api_ffmpeg() -> dict[str, Any]:
+        return recorder.get_ffmpeg_info()
+
     @app.get("/api/events")
     async def api_events(request: Request):
         async def event_stream():
@@ -394,5 +398,14 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
         write_telegram_config(telegram)
         return {"path": telegram_file_path(), "telegram": telegram}
 
+    @app.middleware("http")
+    async def dashboard_static_cache_headers(request: Request, call_next):
+        response = await call_next(request)
+        path = request.url.path
+        if path.startswith("/js/") or path.endswith(".css"):
+            response.headers["Cache-Control"] = "no-cache, must-revalidate"
+        return response
+
     app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+
     return app

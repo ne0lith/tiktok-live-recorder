@@ -437,6 +437,15 @@ def test_api_runtime_settings(api_client):
     assert recorder.use_telegram is True
 
 
+def test_api_ffmpeg(api_client):
+    client, _, _ = api_client
+    response = client.get("/api/ffmpeg")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["path"] == "/usr/bin/ffmpeg"
+    assert payload["source"] in {"vendor", "system", "custom", "missing"}
+
+
 def test_api_record_now(api_client):
     client, _, _ = api_client
     response = client.post("/api/record", json={"username": "beta"})

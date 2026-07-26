@@ -38,6 +38,7 @@ export const libraryState = {
 export const logState = {
   timer: null,
   stickToBottom: true,
+  lastText: "",
 };
 
 export function setLatestStatus(status) {

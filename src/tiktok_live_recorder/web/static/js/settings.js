@@ -7,29 +7,50 @@ import { refreshStatus } from "./status.js";
 const settingsModalId = "settings-modal";
 const settingsToggle = document.getElementById("settings-toggle");
 
+export async function loadFfmpegInfo() {
+  try {
+    const ffmpeg = await api("/api/ffmpeg");
+    syncFfmpegInfo(ffmpeg);
+    return ffmpeg;
+  } catch (error) {
+    console.warn("FFmpeg info fetch failed", error);
+    if (latestStatus?.ffmpeg?.path) {
+      syncFfmpegInfo(latestStatus.ffmpeg);
+      return latestStatus.ffmpeg;
+    }
+    return null;
+  }
+}
+
 export async function loadSettings() {
-  const [cookies, telegram, runtime] = await Promise.all([
+  const [cookiesResult, telegramResult, runtimeResult] = await Promise.allSettled([
     api("/api/settings/cookies"),
     api("/api/settings/telegram"),
     api("/api/settings/runtime"),
   ]);
+
   const cookiesEditor = document.getElementById("cookies-editor");
   const telegramEditor = document.getElementById("telegram-editor");
   const intervalInput = document.getElementById("interval-input");
   const telegramEnabled = document.getElementById("telegram-enabled");
-  if (cookiesEditor) {
-    cookiesEditor.value = JSON.stringify(cookies.cookies || {}, null, 2);
+
+  if (cookiesResult.status === "fulfilled" && cookiesEditor) {
+    cookiesEditor.value = JSON.stringify(cookiesResult.value.cookies || {}, null, 2);
   }
-  if (telegramEditor) {
-    telegramEditor.value = JSON.stringify(telegram.telegram || {}, null, 2);
+  if (telegramResult.status === "fulfilled" && telegramEditor) {
+    telegramEditor.value = JSON.stringify(telegramResult.value.telegram || {}, null, 2);
   }
-  if (intervalInput) {
-    intervalInput.value = String(runtime.automatic_interval_minutes ?? 5);
+  if (runtimeResult.status === "fulfilled") {
+    const runtime = runtimeResult.value;
+    if (intervalInput) {
+      intervalInput.value = String(runtime.automatic_interval_minutes ?? 5);
+    }
+    if (telegramEnabled) {
+      telegramEnabled.checked = Boolean(runtime.use_telegram);
+    }
   }
-  if (telegramEnabled) {
-    telegramEnabled.checked = Boolean(runtime.use_telegram);
-  }
-  syncFfmpegInfo(runtime.ffmpeg);
+
+  await loadFfmpegInfo();
 }
 
 export function closeSettingsPanel() {
@@ -43,8 +64,12 @@ export async function openSettingsPanel() {
   openModal(settingsModalId);
   settingsToggle?.classList.add("is-active");
   try {
-    await Promise.all([loadSettings(), refreshStatus()]);
-    syncFfmpegInfo(latestStatus?.ffmpeg);
+    await Promise.allSettled([loadSettings(), refreshStatus()]);
+    if (latestStatus?.ffmpeg?.path) {
+      syncFfmpegInfo(latestStatus.ffmpeg);
+    } else {
+      await loadFfmpegInfo();
+    }
   } catch (error) {
     showToast(error.message);
   }

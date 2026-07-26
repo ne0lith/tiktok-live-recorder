@@ -221,7 +221,10 @@ class TikTokRecorder:
 
     def get_ffmpeg_info(self) -> dict:
         """Return resolved FFmpeg metadata for the dashboard."""
-        if self.ffmpeg_path and not self._ffmpeg_info.get("path"):
+        cached = get_startup_ffmpeg_info()
+        if cached and cached.get("path"):
+            return cached
+        if self.ffmpeg_path:
             self._ffmpeg_info = describe_ffmpeg_binary(self.ffmpeg_path)
         return self._ffmpeg_info
 
