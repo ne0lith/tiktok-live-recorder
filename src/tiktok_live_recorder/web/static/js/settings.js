@@ -56,7 +56,22 @@ export function syncFfmpegInfo(ffmpeg) {
   pathEl.textContent = ffmpeg.path;
   pathEl.title = ffmpeg.path;
   versionEl.textContent = ffmpeg.version || "-";
-  hevcEl.textContent = ffmpeg.hevc_capable ? "Capable" : "Not capable";
+  const probe = ffmpeg.hevc_probe;
+  let hevcText = ffmpeg.hevc_capable ? "Capable" : "Not capable";
+  if (probe) {
+    const modes = [];
+    if (probe.legacy) modes.push("legacy");
+    if (probe.enhanced) modes.push("enhanced");
+    if (modes.length) {
+      hevcText += ` (${modes.join(" + ")})`;
+    } else if (ffmpeg.hevc_capable) {
+      hevcText = "Capable";
+    }
+  }
+  hevcEl.textContent = hevcText;
+  hevcEl.title = probe
+    ? `legacy codec-12 probe: ${probe.legacy ? "pass" : "fail"}; enhanced hvc1 probe: ${probe.enhanced ? "pass" : "fail"}`
+    : "";
   hevcEl.className = ffmpeg.hevc_capable
     ? "ffmpeg-hevc ffmpeg-hevc--ok"
     : "ffmpeg-hevc ffmpeg-hevc--bad";

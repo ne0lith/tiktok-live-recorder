@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.12.4] - 2026-07-26
+
+### Fixed
+
+- FFmpeg capability is now verified with real demux probes (not version/path assumptions): both legacy codec-12 and Enhanced `hvc1` synthetic FLV fixtures must pass `ffprobe`/`ffmpeg -i`, and paired `ffprobe` must execute
+- Vendor install logs which probes passed (`legacy` / `enhanced`); dashboard Settings shows probe results on the HEVC FLV field
+
+### Removed
+
+- Version-only trust for `.vendor/ffmpeg/` builds (8.12.3); incapable binaries are rejected again
+
 ## [8.12.3] - 2026-07-26
 
 ### Fixed
@@ -32,7 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Dashboard **FFmpeg** panel in Settings and summary chip: resolved binary path, source (vendor/system/custom), version, and HEVC FLV capability (`GET /api/status` → `ffmpeg`)
+- Dashboard **FFmpeg** panel in Settings and summary chip: resolved binary path, source (vendor/system/custom), version, and HEVC FLV capability (`GET /api/status` -> `ffmpeg`)
 
 ### Fixed
 
@@ -348,7 +359,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.12.3...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.12.4...HEAD
+[8.12.4]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.12.3...v8.12.4
 [8.12.3]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.12.2...v8.12.3
 [8.12.2]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.12.1...v8.12.2
 [8.12.1]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.12.0...v8.12.1

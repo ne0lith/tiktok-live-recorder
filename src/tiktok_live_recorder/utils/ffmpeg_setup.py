@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import platform
-import re
 import shutil
 import struct
 import subprocess
@@ -16,6 +15,7 @@ from urllib.parse import urlparse
 
 import requests
 
+from tiktok_live_recorder.utils.flv_hevc_rewrite import rewrite_legacy_hevc_video_body
 from tiktok_live_recorder.utils.logger_manager import logger
 
 BTBN_BASE = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest"
@@ -61,9 +61,8 @@ def _linux_arch_key() -> str | None:
     return None
 
 
-def build_legacy_hevc_probe_flv() -> bytes:
-    """Minimal FLV with legacy codec-id-12 HEVC sequence header for capability tests."""
-    # Tiny HVCC-like payload (invalid video, but enough for demuxer codec detection).
+def _legacy_hevc_sequence_body() -> bytes:
+    """Video tag body: legacy FLV codec id 12 + HVCC-like sequence header."""
     hvcc = bytes(
         [
             0x01,
@@ -134,8 +133,18 @@ def build_legacy_hevc_probe_flv() -> bytes:
             0x90,
         ]
     )
-    video_body = bytes([FLV_FRAME_KEY | FLV_CODECID_X_HEVC, 0x00, 0, 0, 0]) + hvcc
-    return _wrap_flv_video_tag(video_body)
+    return bytes([FLV_FRAME_KEY | FLV_CODECID_X_HEVC, 0x00, 0, 0, 0]) + hvcc
+
+
+def build_legacy_hevc_probe_flv() -> bytes:
+    """Minimal FLV with legacy codec-id-12 HEVC sequence header for capability tests."""
+    return _wrap_flv_video_tag(_legacy_hevc_sequence_body())
+
+
+def build_enhanced_hevc_probe_flv() -> bytes:
+    """FLV after legacy codec-12 -> Enhanced hvc1 rewrite (salvage conversion path)."""
+    body = rewrite_legacy_hevc_video_body(_legacy_hevc_sequence_body())
+    return _wrap_flv_video_tag(body)
 
 
 def _wrap_flv_video_tag(video_body: bytes) -> bytes:
@@ -217,20 +226,45 @@ def _ffmpeg_inspect_legacy_hevc(flv_path: str, ffmpeg_cmd: str) -> bool:
         return False
     if "unknown codec" in lower:
         return False
+    if (
+        "invalid data found when processing input" in lower
+        and "video: hevc" not in lower
+    ):
+        return False
     return "video: hevc" in lower
 
 
-def ffmpeg_supports_legacy_hevc_flv(ffmpeg_path: str) -> bool:
-    """Return True when ffmpeg can demux TikTok legacy FLV HEVC (codec id 12)."""
-    if not shutil.which(ffmpeg_path) and not Path(ffmpeg_path).is_file():
+def _binary_runs(binary_path: str) -> bool:
+    path = Path(binary_path)
+    if not path.is_file() and not shutil.which(binary_path):
+        return False
+    try:
+        result = subprocess.run(
+            [binary_path, "-version"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+        return result.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
         return False
 
-    probe = ffprobe_for(ffmpeg_path)
+
+def _ffmpeg_install_sane(ffmpeg_path: str) -> bool:
+    """ffmpeg and paired ffprobe must exist and execute."""
+    if not _binary_runs(ffmpeg_path):
+        return False
+    return _binary_runs(ffprobe_for(ffmpeg_path))
+
+
+def _probe_flv_bytes(ffmpeg_path: str, flv_bytes: bytes) -> bool:
     with tempfile.NamedTemporaryFile(suffix=".flv", delete=False) as tmp:
-        tmp.write(build_legacy_hevc_probe_flv())
+        tmp.write(flv_bytes)
         tmp_path = tmp.name
 
     try:
+        probe = ffprobe_for(ffmpeg_path)
         if _ffprobe_legacy_hevc(tmp_path, probe):
             return True
         return _ffmpeg_inspect_legacy_hevc(tmp_path, ffmpeg_path)
@@ -238,6 +272,36 @@ def ffmpeg_supports_legacy_hevc_flv(ffmpeg_path: str) -> bool:
         return False
     finally:
         Path(tmp_path).unlink(missing_ok=True)
+
+
+def probe_ffmpeg_hevc_flv(ffmpeg_path: str) -> dict[str, bool]:
+    """
+    Run real demux probes against synthetic legacy and Enhanced hvc1 FLV fixtures.
+
+    Capable for TikTok salvage when either probe detects HEVC without an
+    unsupported-codec error.
+    """
+    if not _ffmpeg_install_sane(ffmpeg_path):
+        return {"legacy": False, "enhanced": False}
+    return {
+        "legacy": _probe_flv_bytes(ffmpeg_path, build_legacy_hevc_probe_flv()),
+        "enhanced": _probe_flv_bytes(ffmpeg_path, build_enhanced_hevc_probe_flv()),
+    }
+
+
+def ffmpeg_supports_legacy_hevc_flv(ffmpeg_path: str) -> bool:
+    """Return True when ffmpeg can demux the legacy codec-id-12 probe FLV."""
+    if not shutil.which(ffmpeg_path) and not Path(ffmpeg_path).is_file():
+        return False
+    if not _ffmpeg_install_sane(ffmpeg_path):
+        return False
+    return _probe_flv_bytes(ffmpeg_path, build_legacy_hevc_probe_flv())
+
+
+def ffmpeg_hevc_capable(ffmpeg_path: str) -> bool:
+    """Return True when ffmpeg can demux legacy or Enhanced hvc1 HEVC-in-FLV."""
+    probes = probe_ffmpeg_hevc_flv(ffmpeg_path)
+    return probes["legacy"] or probes["enhanced"]
 
 
 def ffmpeg_version_line(ffmpeg_path: str) -> str:
@@ -255,19 +319,6 @@ def ffmpeg_version_line(ffmpeg_path: str) -> str:
         return "unknown"
 
 
-def ffmpeg_major_version(ffmpeg_path: str) -> int | None:
-    line = ffmpeg_version_line(ffmpeg_path)
-    if line == "unknown":
-        return None
-    match = re.search(r"ffmpeg version (\d+)", line)
-    if match:
-        return int(match.group(1))
-    match = re.search(r"version n(\d+)", line, re.IGNORECASE)
-    if match:
-        return int(match.group(1))
-    return None
-
-
 def is_vendor_ffmpeg_path(ffmpeg_path: str) -> bool:
     try:
         parts = Path(ffmpeg_path).resolve().parts
@@ -276,23 +327,6 @@ def is_vendor_ffmpeg_path(ffmpeg_path: str) -> bool:
     if ".vendor" not in parts or "ffmpeg" not in parts:
         return False
     return any(part.startswith(f"{FFMPEG_PIN}-") for part in parts)
-
-
-def vendor_ffmpeg_trusted(ffmpeg_path: str) -> bool:
-    """Pinned BtbN vendor builds are trusted when FFmpeg 8+ and the binary runs."""
-    if not is_vendor_ffmpeg_path(ffmpeg_path):
-        return False
-    if not Path(ffmpeg_path).is_file():
-        return False
-    major = ffmpeg_major_version(ffmpeg_path)
-    return major is not None and major >= 8
-
-
-def ffmpeg_hevc_capable(ffmpeg_path: str) -> bool:
-    """Return True when ffmpeg can handle TikTok legacy HEVC-in-FLV."""
-    if vendor_ffmpeg_trusted(ffmpeg_path):
-        return True
-    return ffmpeg_supports_legacy_hevc_flv(ffmpeg_path)
 
 
 def _parse_checksums(text: str) -> dict[str, str]:
@@ -375,12 +409,18 @@ def install_linux_vendor_ffmpeg(arch_key: str) -> str:
         else:
             logger.warning(f"No checksum entry for {asset}; skipping SHA-256 verify")
 
-        ffmpeg_bin, _ffprobe_bin = _extract_ffmpeg_tree(archive_path, install_dir)
-        if not ffmpeg_hevc_capable(str(ffmpeg_bin)):
+        ffmpeg_bin, ffprobe_bin = _extract_ffmpeg_tree(archive_path, install_dir)
+        probes = probe_ffmpeg_hevc_flv(str(ffmpeg_bin))
+        if not (probes["legacy"] or probes["enhanced"]):
             raise RuntimeError(
-                f"Installed FFmpeg at {ffmpeg_bin} still cannot demux legacy HEVC FLV"
+                f"Installed FFmpeg at {ffmpeg_bin} failed HEVC FLV verification "
+                f"(legacy={probes['legacy']}, enhanced={probes['enhanced']}, "
+                f"ffprobe={ffprobe_bin.is_file()})"
             )
-        logger.info(f"Installed capable FFmpeg: {ffmpeg_bin}")
+        logger.info(
+            f"Installed capable FFmpeg: {ffmpeg_bin} "
+            f"(HEVC probe legacy={probes['legacy']} enhanced={probes['enhanced']})"
+        )
         return str(ffmpeg_bin)
 
 
@@ -437,12 +477,16 @@ def resolve_ffmpeg_path(ffmpeg_path: str | None = None) -> str:
 
 def log_ffmpeg_status(ffmpeg_path: str) -> None:
     info = describe_ffmpeg_binary(ffmpeg_path)
+    probes = info.get("hevc_probe") or {}
     status = (
         "capable for TikTok HEVC FLV"
         if info["hevc_capable"]
         else "NOT capable for TikTok HEVC FLV"
     )
-    logger.info(f"FFmpeg: {info['path']} ({info['version']}) — {status}")
+    logger.info(
+        f"FFmpeg: {info['path']} ({info['version']}) — {status} "
+        f"[probe legacy={probes.get('legacy')} enhanced={probes.get('enhanced')}]"
+    )
 
 
 def describe_ffmpeg_binary(ffmpeg_path: str | None) -> dict[str, Any]:
@@ -453,6 +497,7 @@ def describe_ffmpeg_binary(ffmpeg_path: str | None) -> dict[str, Any]:
             "source": "missing",
             "version": None,
             "hevc_capable": False,
+            "hevc_probe": {"legacy": False, "enhanced": False},
         }
 
     path = Path(ffmpeg_path)
@@ -478,11 +523,20 @@ def describe_ffmpeg_binary(ffmpeg_path: str | None) -> dict[str, Any]:
         pass
 
     exists = path.is_file() or bool(shutil.which(ffmpeg_path))
-    capable = ffmpeg_hevc_capable(ffmpeg_path) if exists else False
+    probes = (
+        probe_ffmpeg_hevc_flv(ffmpeg_path)
+        if exists
+        else {
+            "legacy": False,
+            "enhanced": False,
+        }
+    )
+    capable = probes["legacy"] or probes["enhanced"]
 
     return {
         "path": resolved,
         "source": source,
         "version": ffmpeg_version_line(ffmpeg_path) if exists else None,
         "hevc_capable": capable,
+        "hevc_probe": probes,
     }

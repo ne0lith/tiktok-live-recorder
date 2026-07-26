@@ -1,8 +1,9 @@
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from tiktok_live_recorder.utils.ffmpeg_setup import (
     ARCH_ASSETS,
+    build_enhanced_hevc_probe_flv,
     build_legacy_hevc_probe_flv,
     normalize_cdn_url,
     vendor_ffmpeg_dir,
@@ -71,9 +72,15 @@ def test_scan_media_library_marks_needs_convert(tmp_path):
     "tiktok_live_recorder.utils.ffmpeg_setup.shutil.which",
     return_value="/usr/bin/ffmpeg",
 )
-@patch("tiktok_live_recorder.utils.ffmpeg_setup.subprocess.run")
-def test_ffmpeg_supports_legacy_hevc_flv_true(mock_run, _mock_which):
-    mock_run.return_value = MagicMock(returncode=0, stdout="hevc\n", stderr="")
+@patch(
+    "tiktok_live_recorder.utils.ffmpeg_setup._ffmpeg_install_sane",
+    return_value=True,
+)
+@patch(
+    "tiktok_live_recorder.utils.ffmpeg_setup._probe_flv_bytes",
+    return_value=True,
+)
+def test_ffmpeg_supports_legacy_hevc_flv_true(_mock_probe, _mock_sane, _mock_which):
     from tiktok_live_recorder.utils.ffmpeg_setup import ffmpeg_supports_legacy_hevc_flv
 
     assert ffmpeg_supports_legacy_hevc_flv("/usr/bin/ffmpeg") is True
@@ -83,44 +90,39 @@ def test_ffmpeg_supports_legacy_hevc_flv_true(mock_run, _mock_which):
     "tiktok_live_recorder.utils.ffmpeg_setup.shutil.which",
     return_value="/usr/bin/ffmpeg",
 )
-@patch("tiktok_live_recorder.utils.ffmpeg_setup.subprocess.run")
-def test_ffmpeg_supports_legacy_hevc_flv_false(mock_run, _mock_which):
-    mock_run.side_effect = [
-        MagicMock(
-            returncode=1,
-            stdout="",
-            stderr="Video codec (c) is not implemented",
-        ),
-        MagicMock(
-            returncode=1,
-            stdout="",
-            stderr="Video codec (c) is not implemented",
-        ),
-    ]
+@patch(
+    "tiktok_live_recorder.utils.ffmpeg_setup._ffmpeg_install_sane",
+    return_value=True,
+)
+@patch(
+    "tiktok_live_recorder.utils.ffmpeg_setup._probe_flv_bytes",
+    return_value=False,
+)
+def test_ffmpeg_supports_legacy_hevc_flv_false(_mock_probe, _mock_sane, _mock_which):
     from tiktok_live_recorder.utils.ffmpeg_setup import ffmpeg_supports_legacy_hevc_flv
 
     assert ffmpeg_supports_legacy_hevc_flv("/usr/bin/ffmpeg") is False
-    assert mock_run.call_count == 2
 
 
 @patch(
     "tiktok_live_recorder.utils.ffmpeg_setup.shutil.which",
     return_value="/usr/bin/ffmpeg",
 )
-@patch("tiktok_live_recorder.utils.ffmpeg_setup.subprocess.run")
-def test_ffmpeg_supports_legacy_hevc_flv_ffmpeg_inspect_fallback(mock_run, _mock_which):
-    mock_run.side_effect = [
-        MagicMock(returncode=1, stdout="", stderr=""),
-        MagicMock(
-            returncode=0,
-            stdout="",
-            stderr="Input #0, flv, from 'x':\n  Stream #0:0: Video: hevc (Main)",
-        ),
-    ]
-    from tiktok_live_recorder.utils.ffmpeg_setup import ffmpeg_supports_legacy_hevc_flv
+@patch(
+    "tiktok_live_recorder.utils.ffmpeg_setup._ffmpeg_install_sane",
+    return_value=True,
+)
+@patch("tiktok_live_recorder.utils.ffmpeg_setup._probe_flv_bytes")
+def test_ffmpeg_supports_legacy_hevc_flv_ffmpeg_inspect_fallback(
+    mock_probe, _mock_sane, _mock_which
+):
+    from tiktok_live_recorder.utils.ffmpeg_setup import (
+        build_legacy_hevc_probe_flv,
+        ffmpeg_supports_legacy_hevc_flv,
+    )
 
+    mock_probe.side_effect = lambda _ffmpeg, flv: flv == build_legacy_hevc_probe_flv()
     assert ffmpeg_supports_legacy_hevc_flv("/usr/bin/ffmpeg") is True
-    assert mock_run.call_count == 2
 
 
 def test_btbN_asset_names_are_n81_gpl():
@@ -134,55 +136,50 @@ def test_vendor_ffmpeg_dir_under_repo():
     assert path.parts[-3:] == (".vendor", "ffmpeg", "n8.1-linux64")
 
 
-@patch(
-    "tiktok_live_recorder.utils.ffmpeg_setup.ffmpeg_version_line",
-    return_value="ffmpeg version 8.1 Copyright",
-)
-def test_vendor_ffmpeg_trusted_accepts_pinned_n81_build(_mock_version, tmp_path):
-    from tiktok_live_recorder.utils.ffmpeg_setup import vendor_ffmpeg_trusted
-
-    vendor_root = tmp_path / ".vendor" / "ffmpeg" / "n8.1-linux64" / "bin"
-    vendor_root.mkdir(parents=True)
-    ffmpeg_bin = vendor_root / "ffmpeg"
-    ffmpeg_bin.write_text("", encoding="utf-8")
-
-    assert vendor_ffmpeg_trusted(str(ffmpeg_bin)) is True
+def test_build_enhanced_hevc_probe_flv_uses_hvc1_fourcc():
+    legacy = build_legacy_hevc_probe_flv()
+    enhanced = build_enhanced_hevc_probe_flv()
+    assert legacy != enhanced
+    assert b"hvc1" in enhanced
+    assert b"hvc1" not in legacy
 
 
 @patch(
-    "tiktok_live_recorder.utils.ffmpeg_setup.ffmpeg_supports_legacy_hevc_flv",
-    return_value=False,
+    "tiktok_live_recorder.utils.ffmpeg_setup._ffmpeg_install_sane",
+    return_value=True,
 )
-@patch(
-    "tiktok_live_recorder.utils.ffmpeg_setup.ffmpeg_version_line",
-    return_value="ffmpeg version 8.1 Copyright",
-)
-def test_ffmpeg_hevc_capable_trusts_vendor_without_probe(
-    _mock_version, _mock_probe, tmp_path
-):
+@patch("tiktok_live_recorder.utils.ffmpeg_setup._probe_flv_bytes")
+def test_ffmpeg_hevc_capable_accepts_enhanced_probe_only(mock_probe, _mock_sane):
     from tiktok_live_recorder.utils.ffmpeg_setup import ffmpeg_hevc_capable
 
-    vendor_root = tmp_path / ".vendor" / "ffmpeg" / "n8.1-linux64" / "bin"
-    vendor_root.mkdir(parents=True)
-    ffmpeg_bin = vendor_root / "ffmpeg"
-    ffmpeg_bin.write_text("", encoding="utf-8")
-
-    assert ffmpeg_hevc_capable(str(ffmpeg_bin)) is True
+    mock_probe.side_effect = lambda _ffmpeg, flv: flv == build_enhanced_hevc_probe_flv()
+    assert ffmpeg_hevc_capable("/usr/bin/ffmpeg") is True
 
 
 @patch(
-    "tiktok_live_recorder.utils.ffmpeg_setup.ffmpeg_version_line",
-    return_value="ffmpeg version 7.1.5",
+    "tiktok_live_recorder.utils.ffmpeg_setup._ffmpeg_install_sane",
+    return_value=True,
 )
-def test_vendor_ffmpeg_trusted_rejects_ffmpeg_7(_mock_version, tmp_path):
-    from tiktok_live_recorder.utils.ffmpeg_setup import vendor_ffmpeg_trusted
+@patch("tiktok_live_recorder.utils.ffmpeg_setup._probe_flv_bytes", return_value=False)
+def test_ffmpeg_hevc_capable_rejects_when_both_probes_fail(_mock_probe, _mock_sane):
+    from tiktok_live_recorder.utils.ffmpeg_setup import ffmpeg_hevc_capable
 
-    vendor_root = tmp_path / ".vendor" / "ffmpeg" / "n8.1-linux64" / "bin"
-    vendor_root.mkdir(parents=True)
-    ffmpeg_bin = vendor_root / "ffmpeg"
-    ffmpeg_bin.write_text("", encoding="utf-8")
+    assert ffmpeg_hevc_capable("/usr/bin/ffmpeg") is False
 
-    assert vendor_ffmpeg_trusted(str(ffmpeg_bin)) is False
+
+@patch(
+    "tiktok_live_recorder.utils.ffmpeg_setup._binary_runs",
+    return_value=True,
+)
+@patch("tiktok_live_recorder.utils.ffmpeg_setup._probe_flv_bytes")
+def test_probe_ffmpeg_hevc_flv_reports_legacy_and_enhanced(mock_probe, _mock_runs):
+    from tiktok_live_recorder.utils.ffmpeg_setup import probe_ffmpeg_hevc_flv
+
+    mock_probe.side_effect = lambda _ffmpeg, flv: flv == build_legacy_hevc_probe_flv()
+    assert probe_ffmpeg_hevc_flv("/repo/.vendor/ffmpeg/n8.1-linux64/bin/ffmpeg") == {
+        "legacy": True,
+        "enhanced": False,
+    }
 
 
 def test_pick_next_stream_url_uses_normalized_identity():
@@ -280,15 +277,15 @@ def test_describe_ffmpeg_binary_detects_vendor_path():
 
 
 @patch(
-    "tiktok_live_recorder.utils.ffmpeg_setup.ffmpeg_hevc_capable",
-    return_value=True,
+    "tiktok_live_recorder.utils.ffmpeg_setup.probe_ffmpeg_hevc_flv",
+    return_value={"legacy": True, "enhanced": True},
 )
 @patch(
     "tiktok_live_recorder.utils.ffmpeg_setup.ffmpeg_version_line",
     return_value="ffmpeg version 8.1",
 )
 def test_describe_ffmpeg_binary_reports_capability(
-    _mock_version, _mock_capable, tmp_path
+    _mock_version, _mock_probe, tmp_path
 ):
     from tiktok_live_recorder.utils.ffmpeg_setup import describe_ffmpeg_binary
 
@@ -296,6 +293,7 @@ def test_describe_ffmpeg_binary_reports_capability(
     ffmpeg_bin.write_text("", encoding="utf-8")
     info = describe_ffmpeg_binary(str(ffmpeg_bin))
     assert info["hevc_capable"] is True
+    assert info["hevc_probe"] == {"legacy": True, "enhanced": True}
     assert info["version"] == "ffmpeg version 8.1"
     assert info["source"] == "custom"
 
