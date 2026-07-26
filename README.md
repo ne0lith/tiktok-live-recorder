@@ -21,6 +21,7 @@ Forked from [Michele0303/tiktok-live-recorder](https://github.com/Michele0303/ti
 - [What's Different in This Fork](#whats-different-in-this-fork)
 - [Installation](#installation)
 - [Command-Line Usage](#command-line-usage)
+  - [Web dashboard](#web-dashboard)
 - [Configuration](#configuration)
 - [Recording Behavior](#recording-behavior)
 - [Troubleshooting](#troubleshooting)
@@ -50,15 +51,13 @@ On first run, the recorder creates blank config files from the committed `*.exam
 uv run tiktok-live-recorder -mode watchlist
 ```
 
-Recordings are saved to `output/<username>/` by default.
-
-Open the web dashboard at **http://localhost:8787** while watchlist or followers mode is running.
+Recordings are saved to `output/<username>/` by default. The [web dashboard](docs/GUIDE.md#web-dashboard) opens automatically in watchlist, followers, and automatic mode.
 
 ## What's Different in This Fork
 
 This fork adds reliability and workflow improvements on top of the upstream project:
 
-- **Web dashboard** - live status, media library, watchlist controls, and settings UI (watchlist/followers modes; default port `8787`)
+- **Web dashboard** - operator UI on port `8787` ([details](docs/GUIDE.md#web-dashboard))
 - **Watchlist mode** - poll many users in one process; each live user records in a background thread
 - **`config/` directory** - secrets and watchlists live outside `src/` with committed `.example` templates
 - **WAF / restricted-live fallback** - when the API returns `4003110`, stream URLs are scraped from the live page HTML
@@ -153,7 +152,7 @@ docker run \
   -mode watchlist
 ```
 
-The image ships only `config/*.example` templates. Mount `./config` so your real `cookies.json`, `users.json`, and `telegram.json` persist on the host. The dashboard listens on port **8787** (no authentication - firewall it yourself).
+The image ships only `config/*.example` templates. Mount `./config` so your real `cookies.json`, `users.json`, and `telegram.json` persist on the host. Expose port **8787** for the dashboard (see [Web dashboard](docs/GUIDE.md#web-dashboard)).
 
 </details>
 
@@ -180,10 +179,10 @@ uv run python -m tiktok_live_recorder [options]
 | `-proxy <URL>` | HTTP proxy to bypass regional restrictions. |
 | `-bitrate <BITRATE>` | Output bitrate for post-processing (e.g. `1M`, `1000k`). |
 | `-ffmpeg-path <PATH>` | Path to a custom FFmpeg binary (default: `ffmpeg` on `PATH`). |
-| `-telegram` | Upload the recording to Telegram when done. Requires `config/telegram.json`. |
+| `-telegram` | Upload finished recordings to Telegram. Requires `config/telegram.json`. Can also be toggled from the dashboard. |
 | `-no-update-check` | Skip the automatic update check on startup. |
-| `-web-host <HOST>` | Dashboard bind address for watchlist/followers (default: `0.0.0.0`). |
-| `-web-port <PORT>` | Dashboard port for watchlist/followers (default: `8787`). |
+| `-web-host <HOST>` | Dashboard bind address (default: `0.0.0.0`). Available in watchlist, followers, and automatic modes. |
+| `-web-port <PORT>` | Dashboard port (default: `8787`). |
 | `-no-web` | Disable the built-in web dashboard. |
 | `--version`, `-V` | Print the installed version and exit. |
 
@@ -227,6 +226,16 @@ Change the poll interval to 10 minutes:
 uv run tiktok-live-recorder -mode automatic -user creator1 -automatic_interval 10
 ```
 
+The dashboard is available in automatic mode so you can adjust the poll interval or trigger **Record now** without restarting.
+
+### Followers Examples
+
+Poll accounts you follow (requires `config/cookies.json`):
+
+```powershell
+uv run tiktok-live-recorder -mode followers
+```
+
 ### Watchlist Examples
 
 Edit `config/users.json`:
@@ -257,20 +266,15 @@ uv run tiktok-live-recorder -mode watchlist -automatic_interval 3
 
 Each poll cycle logs every user's status (`offline`, `recording`, `live -> starting`). When multiple streams run at once, log lines are prefixed with `[@username]`.
 
-When using `config/users.json` or `-users-file`, edits to the watchlist are picked up on the next poll cycle - no restart needed. Users removed from the file stop being polled; any active recording for them finishes first. A CLI `-user` list is fixed for that run and is not reloaded.
+See [Watchlist file reload](#watchlist-file-reload) for live edits to `config/users.json`.
 
 ### Web dashboard
 
-In **watchlist** and **followers** mode, a built-in dashboard starts automatically at `http://0.0.0.0:8787` (open `http://localhost:8787` on the same machine). There is **no authentication** - restrict access with your firewall or reverse proxy.
+Runs in **watchlist**, **followers**, and **automatic** mode at `http://localhost:8787` by default (`-web-host` / `-web-port` to change). **No authentication** - restrict access on shared networks.
 
-From the dashboard you can:
+Use it to monitor live status, manage recordings, and adjust runtime settings without editing files by hand. Full feature list, mode comparison table, and workflow notes: **[Web dashboard guide](docs/GUIDE.md#web-dashboard)**.
 
-- See who is recording, offline, paused, or errored (elapsed time, file size, room ID)
-- Browse and play finished recordings grouped by username
-- Add/remove watchlist users, pause/resume users, force an immediate poll, and stop a recording gracefully
-- Edit `cookies.json` and `telegram.json`
-
-Paused users are stored in auto-managed `config/watchlist_state.json` - your existing `users.json` format is not changed. Disable the dashboard with `-no-web` or change the bind address with `-web-host` / `-web-port`.
+Disable with `-no-web`.
 
 ## Configuration
 
@@ -280,11 +284,12 @@ User-specific files live in [`config/`](config/):
 |------|---------|
 | `cookies.json` | TikTok session cookies (gitignored) |
 | `users.json` | Watchlist usernames (gitignored) |
+| `watchlist_state.json` | Paused users - auto-managed by the dashboard (gitignored) |
 | `telegram.json` | Telegram upload credentials (gitignored) |
 
 Committed `*.example` templates are copied automatically on first use. Override the config directory with the `TIKTOK_RECORDER_CONFIG_DIR` environment variable.
 
-See [docs/GUIDE.md](docs/GUIDE.md) for step-by-step setup instructions.
+Step-by-step setup: [docs/GUIDE.md](docs/GUIDE.md).
 
 ## Recording Behavior
 
@@ -301,7 +306,7 @@ When a recording ends, the watchlist is rechecked immediately instead of waiting
 
 ### Watchlist file reload
 
-If the watchlist comes from `config/users.json` or `-users-file`, you can edit that file while the recorder is running. The next poll cycle reloads the list automatically. Users passed via `-user` on the command line are not reloaded.
+If the watchlist comes from `config/users.json` or `-users-file`, you can edit that file while the recorder is running. The next poll cycle reloads the list automatically. In watchlist mode you can also add or remove users from the [dashboard](docs/GUIDE.md#web-dashboard). Users passed via `-user` on the command line are not reloaded.
 
 ### Instance lock
 
@@ -345,6 +350,7 @@ Install FFmpeg and ensure it is on your `PATH`, or pass `-ffmpeg-path` with the 
 
 ## Guide
 
+- [Web dashboard](docs/GUIDE.md#web-dashboard)
 - [How to set cookies](docs/GUIDE.md#how-to-set-cookies)
 - [How to set up the watchlist](docs/GUIDE.md#how-to-set-up-the-watchlist)
 - [How to get room_id](docs/GUIDE.md#how-to-get-room_id)

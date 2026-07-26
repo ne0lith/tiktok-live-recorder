@@ -1,128 +1,13 @@
 # Guide
 
-## How To Set Cookies
-
-Login-required, private, and age-restricted lives need TikTok session cookies.
-
-1. Go to https://www.tiktok.com/ and log in.
-2. Open Developer Tools - `Ctrl+Shift+I` (Windows/Linux) or `Cmd+Option+I` (macOS).
-3. Switch to the **Application** tab.
-
-![image](https://github.com/user-attachments/assets/7a7cb64b-41fe-49ed-9d85-bc00d451b9ef)
-
-4. Copy the **values** of these cookies from Application -> Cookies -> `https://www.tiktok.com`:
-   - `sessionid`
-   - `sessionid_ss`
-   - `tt-target-idc` (e.g. `useast2a`, `useast1a`)
-
-5. Paste them into `config/cookies.json` (created automatically from `config/cookies.json.example` on first run):
-
-```json
-{
-  "sessionid": "your_sessionid_value",
-  "sessionid_ss": "your_sessionid_ss_value",
-  "tt-target-idc": "useast2a"
-}
-```
-
-For restricted or age-gated lives, `sessionid` is often required in addition to `sessionid_ss`. If you still get WAF/4003110 errors, export more browser cookies (e.g. `msToken`, `sid_tt`) into the same file.
-
-Cookies are required for **followers** mode and for recording private or restricted accounts.
-
-## How To Set Up the Watchlist
-
-Watchlist mode polls multiple creators in one process and records each one that goes live.
-
-1. Edit `config/users.json` (created from `config/users.json.example` on first run):
-
-```json
-{
-  "users": [
-    "creator1",
-    "creator2",
-    "creator3"
-  ]
-}
-```
-
-You can also use a plain JSON array:
-
-```json
-["creator1", "creator2"]
-```
-
-2. Run watchlist mode:
-
-```bash
-uv run tiktok-live-recorder -mode watchlist
-```
-
-3. (Optional) Change the poll interval in minutes (default 5):
-
-```bash
-uv run tiktok-live-recorder -mode watchlist -automatic_interval 3
-```
-
-**Alternatives to editing the file:**
-
-```bash
-# Comma-separated usernames
-uv run tiktok-live-recorder -mode watchlist -user creator1,creator2
-
-# Custom watchlist file
-uv run tiktok-live-recorder -mode watchlist -users-file /path/to/my-list.json
-```
-
-When a recording ends, the watchlist is rechecked immediately instead of waiting for the next poll interval.
-
-**Live reload:** if you use `config/users.json` or `-users-file`, you can add or remove usernames while the recorder is running. Changes apply on the next poll cycle. Removed users are no longer checked for new lives, but an in-progress recording for them is allowed to finish.
-
-## How To Get Room_ID
-
-1. Go to https://www.tiktok.com/@username/live
-2. Open Developer Tools - `Ctrl+Shift+I` (Windows/Linux) or `Cmd+Option+I` (macOS)
-3. Search for `room_id` with `Ctrl+F`
-
-![image](https://user-images.githubusercontent.com/31160531/202849647-922d75d6-570c-43fe-a4b3-fcb795d39f92.png)
-
-Then record with:
-
-```bash
-uv run tiktok-live-recorder -room_id <ROOM_ID>
-```
-
-## How to Enable Upload To Telegram
-
-1. Go to https://my.telegram.org
-2. Log in with your Telegram number in the format `+{country code}{your_number}`
-
-   ![image](https://github.com/user-attachments/assets/f591b9d2-4189-4bfe-9180-f4484625eea2)
-
-3. Click **API Development Tools**
-
-   ![image](https://github.com/user-attachments/assets/89900d60-851e-4c6c-a20a-892dd99f7e24)
-
-4. Create a new app (skip if you already have one)
-
-   ![image](https://github.com/user-attachments/assets/3e61e39d-81d9-4c93-ae26-c6bccf6a509c)
-
-5. Copy `api_id` and `api_hash` into `config/telegram.json` (created from `config/telegram.json.example` on first run):
-
-```json
-{
-  "api_id": "your_api_id",
-  "api_hash": "your_api_hash",
-  "chat_id": "me"
-}
-```
-
-   ![image](https://github.com/user-attachments/assets/b0a7fe9a-cb9b-413f-a5bf-2434146c63b3)
-
-6. Record with the `-telegram` flag:
-
-```bash
-uv run tiktok-live-recorder -user creator1 -telegram
-```
+- [Configuration directory](#configuration-directory)
+- [How to set cookies](#how-to-set-cookies)
+- [How to set up the watchlist](#how-to-set-up-the-watchlist)
+- [How to get room_id](#how-to-get-room_id)
+- [How to enable upload to Telegram](#how-to-enable-upload-to-telegram)
+- [Web dashboard](#web-dashboard)
+- [Restricted countries](#restricted-countries)
+- [Unrestricted countries](#unrestricted-countries)
 
 ## Configuration Directory
 
@@ -141,15 +26,173 @@ On first use, the recorder copies the matching `.example` file if the real file 
 
 Override the config location with the `TIKTOK_RECORDER_CONFIG_DIR` environment variable.
 
+## How To Set Cookies
+
+Login-required, private, and age-restricted lives need TikTok session cookies.
+
+1. Go to https://www.tiktok.com/ and log in.
+2. Open Developer Tools - `Ctrl+Shift+I` (Windows/Linux) or `Cmd+Option+I` (macOS).
+3. Switch to the **Application** tab.
+
+![image](https://github.com/user-attachments/assets/7a7cb64b-41fe-49ed-9d85-bc00d451b9ef)
+
+4. Copy the **values** of these cookies from Application -> Cookies -> `https://www.tiktok.com`:
+   - `sessionid`
+   - `sessionid_ss`
+   - `tt-target-idc` (e.g. `useast2a`, `useast1a`)
+
+5. Paste them into `config/cookies.json`:
+
+```json
+{
+  "sessionid": "your_sessionid_value",
+  "sessionid_ss": "your_sessionid_ss_value",
+  "tt-target-idc": "useast2a"
+}
+```
+
+For restricted or age-gated lives, `sessionid` is often required in addition to `sessionid_ss`. If you still get WAF/4003110 errors, export more browser cookies (e.g. `msToken`, `sid_tt`) into the same file.
+
+Cookies are required for **followers** mode and for recording private or restricted accounts. You can also edit `cookies.json` from the dashboard **Settings** panel while the recorder is running.
+
+## How To Set Up the Watchlist
+
+Watchlist mode polls multiple creators in one process and records each one that goes live.
+
+1. Edit `config/users.json`:
+
+```json
+{
+  "users": [
+    "creator1",
+    "creator2",
+    "creator3"
+  ]
+}
+```
+
+A plain JSON array also works: `["creator1", "creator2"]`.
+
+2. Start watchlist mode:
+
+```bash
+uv run tiktok-live-recorder -mode watchlist
+```
+
+3. (Optional) Set the poll interval in minutes (default 5):
+
+```bash
+uv run tiktok-live-recorder -mode watchlist -automatic_interval 3
+```
+
+**CLI alternatives** (fixed for that run - not live-reloaded):
+
+```bash
+uv run tiktok-live-recorder -mode watchlist -user creator1,creator2
+uv run tiktok-live-recorder -mode watchlist -users-file /path/to/my-list.json
+```
+
+**While running:** edits to `config/users.json` or a `-users-file` path are picked up on the next poll cycle. Removed users stop being polled; any in-progress recording for them finishes first. You can also add/remove users and pause/resume from the [web dashboard](#web-dashboard) in watchlist mode.
+
+When a recording ends, the watchlist is rechecked immediately instead of waiting for the full poll interval.
+
+## How To Get Room_ID
+
+1. Go to https://www.tiktok.com/@username/live
+2. Open Developer Tools - `Ctrl+Shift+I` (Windows/Linux) or `Cmd+Option+I` (macOS)
+3. Search for `room_id` with `Ctrl+F`
+
+![image](https://user-images.githubusercontent.com/31160531/202849647-922d75d6-570c-43fe-a4b3-fcb795d39f92.png)
+
+Record from the CLI:
+
+```bash
+uv run tiktok-live-recorder -room_id <ROOM_ID>
+```
+
+Or use **Settings -> Record now** in the [web dashboard](#web-dashboard) with a username and/or room ID when the user is live.
+
+## How to Enable Upload To Telegram
+
+1. Go to https://my.telegram.org and log in with your number (`+{country code}{number}`).
+
+   ![image](https://github.com/user-attachments/assets/f591b9d2-4189-4bfe-9180-f4484625eea2)
+
+2. Open **API Development Tools** and create an app if needed.
+
+   ![image](https://github.com/user-attachments/assets/89900d60-851e-4c6c-a20a-892dd99f7e24)
+
+   ![image](https://github.com/user-attachments/assets/3e61e39d-81d9-4c93-ae26-c6bccf6a509c)
+
+3. Copy `api_id` and `api_hash` into `config/telegram.json`:
+
+```json
+{
+  "api_id": "your_api_id",
+  "api_hash": "your_api_hash",
+  "chat_id": "me"
+}
+```
+
+   ![image](https://github.com/user-attachments/assets/b0a7fe9a-cb9b-413f-a5bf-2434146c63b3)
+
+4. Enable uploads:
+
+| Method | How |
+|--------|-----|
+| CLI | Pass `-telegram` when recording: `uv run tiktok-live-recorder -user creator1 -telegram` |
+| Dashboard | **Settings -> Runtime** -> enable **Upload finished recordings to Telegram** -> save |
+
+Credentials live in `telegram.json` (editable in the dashboard **Settings** panel). When uploads are enabled, finished MP4s are sent after conversion; recent status appears under **Settings**.
+
 ## Web Dashboard
 
-In **watchlist** and **followers** mode, the recorder starts a web dashboard on port **8787** by default (`http://localhost:8787`). There is no login - protect it with your firewall if the host is reachable from other machines.
+The dashboard starts automatically in **watchlist**, **followers**, and **automatic** mode at `http://localhost:8787` (default bind `0.0.0.0:8787`). It is **not** available in **manual** mode.
 
-The dashboard shows live recording status, lets you add/remove users, pause/resume recording, force an immediate poll, stop a recording gracefully, play back saved MP4s by username, and edit cookies/telegram settings.
+There is no login. If the host is reachable from other machines, protect it with a firewall or reverse proxy.
 
-Paused users are stored in `config/watchlist_state.json` (created automatically). You do not need to change the format of `users.json`.
+| Flag | Purpose |
+|------|---------|
+| `-no-web` | Disable the dashboard |
+| `-web-host` | Bind address (default `0.0.0.0`) |
+| `-web-port` | Port (default `8787`) |
 
-Disable the dashboard with `-no-web`, or change bind/port with `-web-host` and `-web-port`.
+### Live status
+
+- Per-user state (recording, offline, paused, error, …), room ID, elapsed time, file size, and active output path
+- Last-poll summary: finished, skipped, and errors from the most recent check
+- **Force check** - poll immediately
+- **Stop** - graceful shutdown for an active recording
+- **Watchlist only:** add/remove users; pause/resume (pause state in `config/watchlist_state.json`)
+
+### User profiles
+
+Click a `@handle` to filter status and recordings to that user. Each profile includes a TikTok link and a shareable URL: `http://localhost:8787/#user/<username>`. Use **<- All users** to clear the filter.
+
+### Media library
+
+- MP4s grouped by username (includes `output/<username>/legacy/`)
+- Search, collapsible sections, shared in-browser player
+- Download or delete files (delete requires confirmation)
+
+### Settings
+
+Opens under the top bar:
+
+- **Runtime** - poll interval (minutes) and Telegram upload on/off (no restart)
+- **Record now** - start recording by username and/or room ID
+- **Cookies / Telegram** - edit `cookies.json` and `telegram.json` in the browser
+- **Recent Telegram uploads** - when uploads are enabled
+
+### Mode comparison
+
+| Feature | Watchlist | Followers | Automatic | Manual |
+|---------|-----------|-----------|-----------|--------|
+| Dashboard | Yes | Yes | Yes | No |
+| Add/remove users | Yes | No | No | - |
+| Pause/resume | Yes | Yes | Yes | - |
+| Force check | Yes | Yes | Yes | - |
+| Record now | Yes | Yes | Yes | - |
 
 ## Restricted Countries
 
