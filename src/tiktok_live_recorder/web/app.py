@@ -321,7 +321,7 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
         users_path = _ensure_users_file(recorder)
         users = add_user_to_file(users_path, username)
         recorder.users = users
-        recorder.force_poll()
+        recorder.poll_user_now(username)
         return {"users": users}
 
     @app.delete("/api/users/{username}")
@@ -360,6 +360,19 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
         write_paused_users(paused)
         recorder.force_poll()
         return {"paused": sorted(paused)}
+
+    @app.post("/api/users/{username}/poll")
+    def poll_user(username: str) -> dict[str, str]:
+        if recorder.mode not in (Mode.WATCHLIST,):
+            raise HTTPException(
+                status_code=400,
+                detail="Per-user poll is only supported in watchlist mode",
+            )
+        username = _normalize_username(username)
+        if not username:
+            raise HTTPException(status_code=400, detail="Username is required")
+        recorder.poll_user_now(username)
+        return {"status": "poll_requested", "username": username}
 
     @app.post("/api/poll")
     def force_poll() -> dict[str, str]:

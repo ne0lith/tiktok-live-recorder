@@ -258,6 +258,10 @@ class StubRecorder:
     def force_poll(self):
         self.polls = getattr(self, "polls", 0) + 1
 
+    def poll_user_now(self, username):
+        self.partial_polls = getattr(self, "partial_polls", [])
+        self.partial_polls.append(username)
+
     def stop_user(self, username):
         return username == "alpha"
 
@@ -353,10 +357,21 @@ def test_api_add_remove_user(api_client):
     assert json.loads((tmp_path / "users.json").read_text(encoding="utf-8")) == {
         "users": ["alpha", "beta"]
     }
+    assert recorder.partial_polls == ["beta"]
+    assert getattr(recorder, "polls", 0) == 0
 
     response = client.delete("/api/users/beta")
     assert response.status_code == 200
     assert recorder.polls >= 1
+
+
+def test_api_poll_single_user(api_client):
+    client, recorder, _ = api_client
+    response = client.post("/api/users/alpha/poll")
+    assert response.status_code == 200
+    assert response.json() == {"status": "poll_requested", "username": "alpha"}
+    assert recorder.partial_polls == ["alpha"]
+    assert getattr(recorder, "polls", 0) == 0
 
 
 def test_api_pause_poll_and_stop(api_client, monkeypatch):

@@ -396,10 +396,38 @@ def test_wait_for_next_poll_wakes_early(monkeypatch):
     monkeypatch.setattr(
         "tiktok_live_recorder.core.tiktok_recorder.time.sleep", lambda *_: None
     )
-    recorder._wait_for_next_poll(300)
+    recorder._wait_for_next_poll(300, label="Watchlist")
     elapsed = time.time() - start
 
     assert elapsed < 1.0
+
+
+def test_poll_user_now_partial_wake_checks_only_new_user(monkeypatch):
+    recorder = TikTokRecorder(
+        RecorderConfig(mode=Mode.WATCHLIST, users=["alpha"], cookies={})
+    )
+    recorder.tiktok = PollFakeTikTokAPI()
+    polled: list[list[str]] = []
+
+    monkeypatch.setattr(
+        recorder,
+        "_poll_users_once",
+        lambda users, active, label: polled.append(list(users)) or active,
+    )
+    stop_after_partial = {"done": False}
+    monkeypatch.setattr(recorder, "_should_stop", lambda: stop_after_partial["done"])
+
+    original_partial = recorder._run_partial_poll_cycle
+
+    def partial_then_stop(users, label):
+        original_partial(users, label)
+        stop_after_partial["done"] = True
+
+    monkeypatch.setattr(recorder, "_run_partial_poll_cycle", partial_then_stop)
+    recorder.poll_user_now("beta")
+    recorder._wait_for_next_poll(300, label="Watchlist")
+
+    assert polled == [["beta"]]
 
 
 def test_poll_users_once_starts_recording_for_live_user(monkeypatch):

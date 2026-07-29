@@ -265,6 +265,9 @@ function renderStatusActions(row, status) {
   );
   if (isWatchlist) {
     buttons.push(
+      `<button class="btn btn-ghost btn-small" data-action="check" data-user="${row.username}" title="Check if this user is live now">Check</button>`,
+    );
+    buttons.push(
       `<button class="btn btn-ghost btn-small" data-action="remove" data-user="${row.username}">Remove</button>`,
     );
   }
@@ -480,6 +483,9 @@ async function handleStatusAction(event) {
     } else if (action === "resume") {
       await api(`/api/users/${encodeURIComponent(user)}/resume`, { method: "POST" });
       showToast(`Resumed @${user}`);
+    } else if (action === "check") {
+      await api(`/api/users/${encodeURIComponent(user)}/poll`, { method: "POST" });
+      showToast(`Checking @${user}`);
     } else if (action === "remove") {
       if (!confirm(`Remove @${user} from the watchlist?`)) return;
       await api(`/api/users/${encodeURIComponent(user)}`, { method: "DELETE" });

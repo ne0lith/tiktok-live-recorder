@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.15.5] - 2026-07-29
+
+### Added
+
+- **Watchlist**: per-user **Check** button in the live status table runs a priority poll for that user only (full **Force check** still polls everyone)
+- **Watchlist**: adding a user from the dashboard checks only that user instead of triggering a full watchlist poll
+
 ## [8.15.4] - 2026-07-29
 
 ### Changed
@@ -502,7 +509,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.15.4...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.15.5...HEAD
+[8.15.5]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.15.4...v8.15.5
 [8.15.4]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.15.3...v8.15.4
 [8.15.3]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.15.2...v8.15.3
 [8.15.2]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.15.1...v8.15.2

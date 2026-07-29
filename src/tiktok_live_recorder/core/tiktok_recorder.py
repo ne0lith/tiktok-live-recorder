@@ -77,18 +77,47 @@ class TikTokRecorder:
         self._max_telegram_upload_history = 20
         self._poll_in_progress = False
         self._activity: deque[dict] = deque(maxlen=50)
+        self._poll_wake_reason: str | None = None
+        self._partial_poll_users: list[str] = []
 
     def request_stop(self):
         """Signal all loops/threads to finish and finalize open recordings."""
         self._stop.set()
         self._poll_wake.set()
 
-    def _wake_poll_loop(self):
-        """Interrupt the watchlist/followers sleep so we recheck after a recording ends."""
+    def _wake_poll_loop(self, *, reason: str | None = None):
+        """Interrupt the poll sleep so the watchlist can be checked."""
+        if reason is not None:
+            self._set_poll_wake_reason(reason)
         self._poll_wake.set()
 
-    def _wait_for_next_poll(self, seconds: float):
-        """Sleep until the poll interval elapses, or wake early when a recording ends."""
+    def _set_poll_wake_reason(self, reason: str) -> None:
+        with self._state_lock:
+            self._poll_wake_reason = reason
+
+    def _take_poll_wake_reason(self) -> str:
+        with self._state_lock:
+            reason = self._poll_wake_reason or "full"
+            self._poll_wake_reason = None
+            return reason
+
+    def _queue_partial_poll_users(self, usernames: list[str]) -> None:
+        with self._state_lock:
+            for name in usernames:
+                normalized = name.lstrip("@").strip()
+                if not normalized:
+                    continue
+                if normalized not in self._partial_poll_users:
+                    self._partial_poll_users.append(normalized)
+
+    def _take_partial_poll_users(self) -> list[str]:
+        with self._state_lock:
+            users = list(self._partial_poll_users)
+            self._partial_poll_users.clear()
+            return users
+
+    def _wait_for_next_poll(self, seconds: float, *, label: str):
+        """Sleep until the poll interval elapses, handling priority single-user polls."""
         deadline = time.time() + seconds
         while not self._should_stop():
             remaining = deadline - time.time()
@@ -96,6 +125,13 @@ class TikTokRecorder:
                 return
             if self._poll_wake.wait(timeout=min(remaining, 1.0)):
                 self._poll_wake.clear()
+                reason = self._take_poll_wake_reason()
+                if reason == "partial":
+                    partial_users = self._take_partial_poll_users()
+                    if partial_users:
+                        self._run_partial_poll_cycle(partial_users, label)
+                    continue
+                self._take_partial_poll_users()
                 logger.info("Recording ended — rechecking watchlist early")
                 return
 
@@ -109,9 +145,22 @@ class TikTokRecorder:
         return bool(stop_event and stop_event.is_set())
 
     def force_poll(self) -> None:
-        """Interrupt the poll sleep so the watchlist is checked immediately."""
+        """Interrupt the poll sleep so the full watchlist is checked immediately."""
         self.record_activity("poll", "Manual poll requested")
-        self._wake_poll_loop()
+        self._wake_poll_loop(reason="full")
+
+    def poll_user_now(self, username: str) -> None:
+        """Check one user now without resetting the full watchlist poll schedule."""
+        username = username.lstrip("@").strip()
+        if not username:
+            return
+        self._queue_partial_poll_users([username])
+        self.record_activity(
+            "poll",
+            f"Priority check for @{username}",
+            username=username,
+        )
+        self._wake_poll_loop(reason="partial")
 
     def record_activity(
         self,
@@ -701,38 +750,65 @@ class TikTokRecorder:
 
         return active_recordings
 
+    def _run_poll_cycle(self, users: list[str], label: str) -> None:
+        self._set_poll_in_progress(True)
+        self.record_activity("poll", f"{label} poll started")
+        try:
+            self._active_recordings = self._poll_users_once(
+                users, self._active_recordings, label
+            )
+        finally:
+            self._set_poll_in_progress(False)
+            self.record_activity("poll", f"{label} poll finished")
+
+    def _run_partial_poll_cycle(self, users: list[str], label: str) -> None:
+        if not users:
+            return
+        if len(users) == 1:
+            logger.info(f"{label} priority poll: checking @{users[0]}")
+        else:
+            logger.info(f"{label} priority poll: checking {len(users)} users")
+        self._set_poll_in_progress(True)
+        self.record_activity("poll", f"Priority check for {len(users)} user(s)")
+        try:
+            self._active_recordings = self._poll_users_once(
+                users, self._active_recordings, label
+            )
+        finally:
+            self._set_poll_in_progress(False)
+
     def _poll_users_loop(self, get_users, label):
         self._active_recordings = {}
 
         while not self._should_stop():
             try:
-                users = get_users()
-                self._set_poll_in_progress(True)
-                self.record_activity("poll", f"{label} poll started")
-                try:
-                    self._active_recordings = self._poll_users_once(
-                        users, self._active_recordings, label
-                    )
-                finally:
-                    self._set_poll_in_progress(False)
-                    self.record_activity("poll", f"{label} poll finished")
+                self._run_poll_cycle(get_users(), label)
 
                 if self._should_stop():
                     break
 
                 logger.info(f"Waiting {self.automatic_interval} min · next check")
-                self._wait_for_next_poll(self.automatic_interval * TimeOut.ONE_MINUTE)
+                self._wait_for_next_poll(
+                    self.automatic_interval * TimeOut.ONE_MINUTE,
+                    label=label,
+                )
 
             except (UserLiveError, LiveNotFound) as ex:
                 logger.info(ex)
                 logger.info(
                     f"Waiting {self.automatic_interval} minutes before recheck\n"
                 )
-                self._wait_for_next_poll(self.automatic_interval * TimeOut.ONE_MINUTE)
+                self._wait_for_next_poll(
+                    self.automatic_interval * TimeOut.ONE_MINUTE,
+                    label=label,
+                )
 
             except (ConnectionError, RequestException, HTTPException):
                 logger.error(Error.CONNECTION_CLOSED_AUTOMATIC)
-                self._wait_for_next_poll(TimeOut.CONNECTION_CLOSED * TimeOut.ONE_MINUTE)
+                self._wait_for_next_poll(
+                    TimeOut.CONNECTION_CLOSED * TimeOut.ONE_MINUTE,
+                    label=label,
+                )
 
     def _shutdown_recordings(self, timeout: float = 300.0):
         """Wait for recording threads to flush + convert after a stop request."""
