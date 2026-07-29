@@ -69,6 +69,26 @@ def test_scan_media_library_marks_needs_convert(tmp_path):
     assert entry["in_progress"] is False
 
 
+def test_scan_media_library_hides_in_progress(tmp_path):
+    user_dir = tmp_path / "alpha"
+    user_dir.mkdir()
+    finished = user_dir / "TK_alpha_2026.01.01_12-00-00.mp4"
+    finished.write_bytes(b"done")
+    active_flv = user_dir / "TK_alpha_2026.01.01_13-00-00_flv.mp4"
+    active_flv.write_bytes(b"partial")
+    orphan_flv = user_dir / "TK_alpha_2026.01.01_14-00-00_flv.mp4"
+    orphan_flv.write_bytes(b"orphan")
+
+    media = scan_media_library(
+        tmp_path, None, active_output_paths={str(active_flv.resolve())}
+    )
+
+    filenames = {entry["filename"] for entry in media["alpha"]}
+    assert finished.name in filenames
+    assert orphan_flv.name in filenames
+    assert active_flv.name not in filenames
+
+
 @patch(
     "tiktok_live_recorder.utils.ffmpeg_setup.shutil.which",
     return_value="/usr/bin/ffmpeg",

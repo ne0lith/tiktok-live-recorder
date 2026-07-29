@@ -72,8 +72,7 @@ function shouldDeferMediaRender() {
 
 function mediaItemMeta(item) {
   const statusBits = [];
-  if (item.in_progress) statusBits.push("in progress");
-  else if (item.needs_convert) statusBits.push("needs convert");
+  if (item.needs_convert) statusBits.push("needs convert");
   const statusSuffix = statusBits.length ? ` · ${statusBits.join(", ")}` : "";
   return `${formatBytes(item.size)} · ${formatTimestamp(item.modified_at)}${statusSuffix}${
     item.source === "legacy" ? " · legacy" : ""
@@ -146,9 +145,6 @@ export function flattenAndSortMedia(media) {
 
   const sortMode = libraryState.sortMode;
   rows.sort((a, b) => {
-    if (a.item.in_progress !== b.item.in_progress) {
-      return a.item.in_progress ? -1 : 1;
-    }
     if (sortMode === "oldest") {
       return (a.item.modified_at || 0) - (b.item.modified_at || 0);
     }
@@ -209,15 +205,7 @@ function createMediaRow(item, username) {
   const main = document.createElement("button");
   main.type = "button";
   main.className = "media-row-main";
-
-  if (!item.in_progress) {
-    main.append(createMediaThumb(item));
-  } else {
-    const thumb = document.createElement("span");
-    thumb.className = "media-thumb media-thumb--live";
-    thumb.textContent = "●";
-    main.append(thumb);
-  }
+  main.append(createMediaThumb(item));
 
   const body = document.createElement("span");
   body.className = "media-row-body";
@@ -268,7 +256,6 @@ function createMediaRow(item, username) {
   actions.append(download, deleteBtn);
   row.append(main, actions);
 
-  if (item.in_progress) row.classList.add("media-row--in-progress");
   if (item.needs_convert) row.classList.add("media-row--needs-convert");
   if (item.url === libraryState.playingUrl) row.classList.add("is-active");
   return row;

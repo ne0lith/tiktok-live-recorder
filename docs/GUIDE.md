@@ -232,7 +232,7 @@ Click a `@handle` to filter status and the media library to that user. Each prof
 - Sort: Newest, Oldest, Largest, A-Z user (preference saved in `localStorage`)
 - Search by username or filename (`/` focuses search)
 - Thumbnail previews for finished recordings (server-generated `*.thumb.jpg` cache, lazy-loaded in the browser)
-- In-progress recordings and orphan `*_flv.mp4` files pinned and styled (`in progress`, `needs convert`); legacy items show a `legacy` tag when visible
+- Orphan `*_flv.mp4` files pinned and styled (`needs convert`); legacy items show a `legacy` tag when visible. Active recordings are hidden until finalized (see Live status).
 - Docked in-browser player above the scrollable list (playback is not interrupted by library refreshes)
 - Download or delete files (delete requires confirmation)
 - **Convert leftover FLV** - convert orphan `*_flv.mp4` files that were never finalized (badge shows count). Skips files that belong to an active recording. See [Salvaging leftover recordings](#salvaging-leftover-recordings).

@@ -57,21 +57,37 @@ def _media_entry(
     return entry
 
 
+def _append_library_entry(
+    entries: list[dict],
+    path: Path,
+    username: str,
+    *,
+    subdir: str | None = None,
+    active_paths: set[str] | None = None,
+) -> None:
+    entry = _media_entry(path, username, subdir=subdir, active_paths=active_paths)
+    if entry["in_progress"]:
+        return
+    entries.append(entry)
+
+
 def _collect_user_media(
     user_dir: Path, username: str, *, active_paths: set[str] | None = None
 ) -> list[dict]:
     entries: list[dict] = []
     for path in user_dir.glob("TK_*.mp4"):
         if path.is_file():
-            entries.append(_media_entry(path, username, active_paths=active_paths))
+            _append_library_entry(entries, path, username, active_paths=active_paths)
     legacy_dir = user_dir / LEGACY_SUBDIR
     if legacy_dir.is_dir():
         for path in legacy_dir.glob("*.mp4"):
             if path.is_file():
-                entries.append(
-                    _media_entry(
-                        path, username, subdir=LEGACY_SUBDIR, active_paths=active_paths
-                    )
+                _append_library_entry(
+                    entries,
+                    path,
+                    username,
+                    subdir=LEGACY_SUBDIR,
+                    active_paths=active_paths,
                 )
     return entries
 
@@ -157,9 +173,8 @@ def scan_media_library(
                 continue
             match = MEDIA_PATTERN.match(path.name)
             username = match.group("username") if match else "unknown"
-            grouped.setdefault(username, []).append(
-                _media_entry(path, username, active_paths=active_paths)
-            )
+            bucket = grouped.setdefault(username, [])
+            _append_library_entry(bucket, path, username, active_paths=active_paths)
     else:
         if not output_base.is_dir():
             return grouped

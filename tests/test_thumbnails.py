@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 from unittest.mock import patch
 
 from tiktok_live_recorder.web.thumbnails import (
@@ -30,9 +31,7 @@ def test_thumbnail_url_paths():
 
 def test_temp_thumbnail_path_keeps_jpg_extension():
     thumb = Path("/output/user/TK_alpha.thumb.jpg")
-    assert _temp_thumbnail_path(thumb) == Path(
-        "/output/user/TK_alpha.thumb.tmp.jpg"
-    )
+    assert _temp_thumbnail_path(thumb) == Path("/output/user/TK_alpha.thumb.tmp.jpg")
 
 
 def test_thumbnail_is_fresh(tmp_path):
@@ -42,9 +41,12 @@ def test_thumbnail_is_fresh(tmp_path):
     assert thumbnail_is_fresh(video, thumb) is False
 
     thumb.write_bytes(b"jpeg")
+    os.utime(thumb, (1_000_000, 1_000_000))
+    os.utime(video, (900_000, 900_000))
     assert thumbnail_is_fresh(video, thumb) is True
 
     video.write_bytes(b"updated-video")
+    os.utime(video, (1_100_000, 1_100_000))
     assert thumbnail_is_fresh(video, thumb) is False
 
 

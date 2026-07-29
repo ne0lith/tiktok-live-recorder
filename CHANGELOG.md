@@ -7,7 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [Unreleased]
+## [8.15.2] - 2026-07-29
+
+### Changed
+
+- **Media library**: active in-progress recordings are hidden from the library; orphan `*_flv.mp4` files still appear as `needs convert`
 
 ## [8.15.1] - 2026-07-26
 
@@ -484,6 +488,7 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - Expanded recorder, API, and CLI validation test coverage
 
 [Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.15.1...HEAD
+[8.15.2]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.15.1...v8.15.2
 [8.15.1]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.15.0...v8.15.1
 [8.15.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.14.5...v8.15.0
 [8.14.5]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.14.4...v8.14.5
