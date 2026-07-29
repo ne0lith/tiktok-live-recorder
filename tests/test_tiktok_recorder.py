@@ -647,6 +647,66 @@ def test_404_after_data_finalizes_then_poll_can_start_again(tmp_path, monkeypatc
     assert len(list(tmp_path.glob("TK_alpha_*_flv.mp4"))) >= 1
 
 
+def test_poll_user_order_shuffles_multi_user_list(monkeypatch):
+    recorder = TikTokRecorder(
+        RecorderConfig(
+            mode=Mode.WATCHLIST, users=["alpha", "beta", "gamma"], cookies={}
+        )
+    )
+    monkeypatch.setattr(
+        "tiktok_live_recorder.core.tiktok_recorder.random.shuffle",
+        lambda items: items.reverse(),
+    )
+
+    assert recorder._poll_user_order(["alpha", "beta", "gamma"]) == [
+        "gamma",
+        "beta",
+        "alpha",
+    ]
+    assert recorder._poll_user_order(["solo"]) == ["solo"]
+
+
+def test_poll_users_once_spaces_checks_and_logs_plan(monkeypatch, caplog):
+    import logging
+
+    recorder = TikTokRecorder(
+        RecorderConfig(
+            mode=Mode.WATCHLIST, users=["alpha", "beta", "gamma"], cookies={}
+        )
+    )
+    recorder.tiktok = PollFakeTikTokAPI()
+    sleeps: list[float] = []
+    monkeypatch.setattr(
+        "tiktok_live_recorder.core.tiktok_recorder.time.sleep",
+        lambda seconds: sleeps.append(seconds),
+    )
+    monkeypatch.setattr(
+        "tiktok_live_recorder.core.tiktok_recorder.random.shuffle",
+        lambda items: items.reverse(),
+    )
+
+    with caplog.at_level(logging.DEBUG):
+        recorder._poll_users_once(
+            ["alpha", "beta", "gamma"],
+            {},
+            label="Watchlist",
+        )
+
+    assert recorder.tiktok.calls == [
+        "get_room_id_from_user:gamma",
+        "is_room_alive:room-gamma",
+        "get_room_id_from_user:beta",
+        "is_room_alive:room-beta",
+        "get_room_id_from_user:alpha",
+        "is_room_alive:room-alpha",
+    ]
+    from tiktok_live_recorder.core.tiktok_recorder import POLL_USER_DELAY_SECONDS
+
+    assert sleeps == [POLL_USER_DELAY_SECONDS, POLL_USER_DELAY_SECONDS]
+    assert "Watchlist poll: checking 3 users in shuffled order" in caplog.text
+    assert "Watchlist poll order: @gamma, @beta, @alpha" in caplog.text
+
+
 def test_request_stop_ends_recording_and_finalizes(tmp_path, monkeypatch):
     recorder = TikTokRecorder(
         RecorderConfig(

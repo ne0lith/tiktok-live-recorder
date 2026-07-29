@@ -1,3 +1,4 @@
+import random
 import signal
 import time
 from collections import deque
@@ -23,6 +24,9 @@ from tiktok_live_recorder.utils.custom_exceptions import (
     TikTokRecorderError,
 )
 from tiktok_live_recorder.utils.enums import Mode, Error, TimeOut, TikTokError
+
+# Pause between watchlist/followers poll steps to avoid bursting TikTok/tikrec APIs.
+POLL_USER_DELAY_SECONDS = 0.5
 
 
 def _is_stream_url_gone(exc: BaseException) -> bool:
@@ -522,6 +526,26 @@ class TikTokRecorder:
                 raise
         return None
 
+    def _poll_user_order(self, users: list[str]) -> list[str]:
+        """Return a shuffled copy so poll order varies each cycle."""
+        ordered = list(users)
+        if len(ordered) > 1:
+            random.shuffle(ordered)
+        return ordered
+
+    def _log_poll_plan(self, label: str, poll_users: list[str]) -> None:
+        count = len(poll_users)
+        if count == 0:
+            return
+        if count == 1:
+            logger.debug(f"{label} poll: checking @{poll_users[0]}")
+            return
+        logger.info(
+            f"{label} poll: checking {count} users in shuffled order "
+            f"({POLL_USER_DELAY_SECONDS}s spacing between users)"
+        )
+        logger.debug(f"{label} poll order: {', '.join(f'@{u}' for u in poll_users)}")
+
     def _poll_users_once(self, users, active_recordings, label):
         from tiktok_live_recorder.utils.utils import read_paused_users
 
@@ -558,7 +582,17 @@ class TikTokRecorder:
                 counts["error"] += 1
             del active_recordings[username]
 
-        for username in users:
+        poll_users = self._poll_user_order(users)
+        self._log_poll_plan(label, poll_users)
+
+        for poll_index, username in enumerate(poll_users):
+            if (
+                poll_index > 0
+                and not self._should_stop()
+                and POLL_USER_DELAY_SECONDS > 0
+            ):
+                time.sleep(POLL_USER_DELAY_SECONDS)
+
             if username in active_recordings:
                 entry = active_recordings[username]
                 thread = entry["thread"]

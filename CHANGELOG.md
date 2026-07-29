@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.15.4] - 2026-07-29
+
+### Changed
+
+- **Watchlist poll**: shuffle user order each cycle and wait 0.5s between users to reduce API burst load; poll plan logged at INFO (count, spacing) and full order at DEBUG
+
 ## [8.15.3] - 2026-07-29
 
 ### Fixed
@@ -496,7 +502,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.15.3...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.15.4...HEAD
+[8.15.4]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.15.3...v8.15.4
 [8.15.3]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.15.2...v8.15.3
 [8.15.2]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.15.1...v8.15.2
 [8.15.1]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.15.0...v8.15.1
