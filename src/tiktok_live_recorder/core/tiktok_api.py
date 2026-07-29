@@ -382,6 +382,7 @@ class TikTokAPI:
         self.TIKREC_API = "https://tikrec.com"
         self._cookies = cookies
         self._http_lock = threading.Lock()
+        self._tikrec_warned_this_cycle = False
 
         self.http_client = HttpClient(proxy, cookies).req
         self._http_client_stream = HttpClient(proxy, cookies).req_stream
@@ -568,7 +569,20 @@ class TikTokAPI:
 
         return user, room_id
 
-    def _old_get_room_id_from_user(self, user: str) -> str:
+    def reset_tikrec_warn_flag(self) -> None:
+        """Allow one tikrec-unavailable warning per watchlist poll cycle."""
+        self._tikrec_warned_this_cycle = False
+
+    def _log_tikrec_unavailable(self, error: TikRecUnavailableError) -> None:
+        if self._tikrec_warned_this_cycle:
+            return
+        self._tikrec_warned_this_cycle = True
+        logger.warning(
+            f"[!] tikrec is unavailable ({error}). "
+            "Falling back to unsigned API — recording continues but may be less reliable."
+        )
+
+    def _old_get_room_id_from_user(self, user: str) -> str | None:
         params = {"uniqueId": user, "giftInfo": "false"}
 
         response = self._api_get(
@@ -584,7 +598,7 @@ class TikTokAPI:
 
         room_id = data.get("data", {}).get("room_info", {}).get("id")
         if not room_id:
-            raise UserLiveError(TikTokError.ROOM_ID_ERROR)
+            return None
 
         return room_id
 
@@ -622,13 +636,14 @@ class TikTokAPI:
         try:
             signed_url = self._tikrec_get_room_id_signed_url(user)
         except TikRecUnavailableError as e:
-            logger.warning(
-                f"[!] tikrec is unavailable ({e}). "
-                "Falling back to unsigned API — recording continues but may be less reliable."
-            )
+            self._log_tikrec_unavailable(e)
             return self._old_get_room_id_from_user(user)
 
-        response = self._api_get(signed_url)
+        try:
+            response = self._api_get(signed_url)
+        except requests.RequestException:
+            return self._old_get_room_id_from_user(user)
+
         content = response.text
 
         if not content or "Please wait" in content:

@@ -119,6 +119,9 @@ class PollFakeTikTokAPI:
         self.live_users = set(live_users or [])
         self.calls = []
 
+    def reset_tikrec_warn_flag(self):
+        return None
+
     def get_room_id_from_user(self, user):
         self.calls.append(f"get_room_id_from_user:{user}")
         return f"room-{user}"
@@ -249,6 +252,9 @@ def test_poll_users_once_handles_network_error_per_user():
     )
 
     class FailingTikTokAPI:
+        def reset_tikrec_warn_flag(self):
+            return None
+
         def get_room_id_from_user(self, user):
             raise __import__("requests").ConnectionError("dns down")
 
@@ -259,7 +265,49 @@ def test_poll_users_once_handles_network_error_per_user():
     snapshot = recorder._poll_users_once(["alpha"], {}, label="Watchlist")
 
     assert snapshot == {}
-    assert recorder._last_poll_snapshot["errors"] == ["alpha"]
+    assert recorder._last_poll_snapshot["errors"] == ["alpha (network error)"]
+
+
+def test_poll_users_once_retries_transient_network_error(monkeypatch):
+    recorder = TikTokRecorder(
+        RecorderConfig(mode=Mode.WATCHLIST, users=["alpha"], cookies={})
+    )
+    attempts = {"count": 0}
+
+    class FlakyTikTokAPI:
+        def reset_tikrec_warn_flag(self):
+            return None
+
+        def get_room_id_from_user(self, user):
+            attempts["count"] += 1
+            if attempts["count"] == 1:
+                raise __import__("requests").ConnectionError("timeout")
+            return "room-alpha"
+
+        def is_room_alive(self, room_id, user=None):
+            return True
+
+    recorder.tiktok = FlakyTikTokAPI()
+    monkeypatch.setattr(
+        "tiktok_live_recorder.core.tiktok_recorder.time.sleep", lambda *_: None
+    )
+    recorder._spawn_recording_thread = lambda user, room_id: (
+        recorder._active_recordings.__setitem__(
+            user,
+            {
+                "thread": MagicMock(is_alive=MagicMock(return_value=True)),
+                "room_id": room_id,
+            },
+        )
+    )
+
+    recorder._poll_users_once(["alpha"], {}, label="Watchlist")
+
+    assert attempts["count"] == 2
+    assert recorder._last_poll_snapshot["starting"] == [
+        {"username": "alpha", "room_id": "room-alpha"}
+    ]
+    assert recorder._last_poll_snapshot["errors"] == []
 
 
 def test_poll_users_once_cleans_failed_thread_as_error():

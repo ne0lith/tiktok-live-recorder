@@ -97,6 +97,7 @@ class LoggerManager:
         if self.logger is None:
             self.logger = logging.getLogger("logger")
             self.logger.setLevel(logging.DEBUG)
+            self.logger.propagate = False
 
             fmt_datefmt = "%Y-%m-%d %H:%M:%S"
 

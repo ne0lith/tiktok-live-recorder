@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.15.3] - 2026-07-29
+
+### Fixed
+
+- **Watchlist poll**: euler fallback treats offline users as offline (not Room ID errors); retries transient network failures; falls back when signed TikTok fetch fails; logs one tikrec-unavailable warning per poll cycle
+- **Watchlist poll**: network errors are labeled `(network error)` in the poll summary
+- **Thumbnails**: skip `*_flv.mp4` recordings; ffprobe pre-check with negative cache for corrupt/incomplete MP4s (avoids repeated `moov atom not found` warnings)
+- **Logging**: disable logger propagation to avoid duplicate console lines when a parent handler is present
+
 ## [8.15.2] - 2026-07-29
 
 ### Changed
@@ -487,7 +496,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.15.2...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.15.3...HEAD
+[8.15.3]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.15.2...v8.15.3
 [8.15.2]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.15.1...v8.15.2
 [8.15.1]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.15.0...v8.15.1
 [8.15.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.14.5...v8.15.0

@@ -1,8 +1,13 @@
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
+
+import requests
 
 from tiktok_live_recorder.core.tiktok_api import TikTokAPI
-from tiktok_live_recorder.utils.custom_exceptions import UserLiveError
+from tiktok_live_recorder.utils.custom_exceptions import (
+    TikRecUnavailableError,
+    UserLiveError,
+)
 
 
 class FakeResponse:
@@ -230,3 +235,59 @@ def test_get_room_id_from_user_uses_api_timeout():
 
     assert api.get_room_id_from_user("creator") == "123"
     assert seen["timeout"] == (10, 20)
+
+
+def test_old_get_room_id_from_user_returns_none_when_offline():
+    api = TikTokAPI.__new__(TikTokAPI)
+    api.EULER_API = "https://tiktok.eulerstream.com"
+    api._http_lock = __import__("threading").Lock()
+    response = MagicMock()
+    response.status_code = 200
+    response.json.return_value = {"data": {"room_info": {}}}
+    api._api_get = MagicMock(return_value=response)
+
+    assert api._old_get_room_id_from_user("creator") is None
+
+
+def test_get_room_id_from_user_falls_back_when_signed_fetch_fails():
+    api = TikTokAPI.__new__(TikTokAPI)
+    api._http_lock = __import__("threading").Lock()
+    api._tikrec_warned_this_cycle = False
+    api._tikrec_get_room_id_signed_url = lambda user: "https://www.tiktok.com/signed"
+    api._api_get = MagicMock(
+        side_effect=requests.ConnectionError("connection reset"),
+    )
+    api._old_get_room_id_from_user = MagicMock(return_value="room-99")
+
+    assert api.get_room_id_from_user("creator") == "room-99"
+    api._old_get_room_id_from_user.assert_called_once_with("creator")
+
+
+def test_get_room_id_from_user_logs_tikrec_warning_once_per_cycle():
+    api = TikTokAPI.__new__(TikTokAPI)
+    api._http_lock = __import__("threading").Lock()
+    api._tikrec_warned_this_cycle = False
+    api._old_get_room_id_from_user = MagicMock(return_value=None)
+
+    def fail_sign(_user):
+        raise TikRecUnavailableError("503")
+
+    api._tikrec_get_room_id_signed_url = fail_sign
+
+    with patch("tiktok_live_recorder.core.tiktok_api.logger") as mock_logger:
+        api.get_room_id_from_user("alpha")
+        api.get_room_id_from_user("beta")
+
+    assert mock_logger.warning.call_count == 1
+
+
+def test_get_room_id_from_user_euler_non_200_raises_room_id_error():
+    api = TikTokAPI.__new__(TikTokAPI)
+    api.EULER_API = "https://tiktok.eulerstream.com"
+    api._http_lock = __import__("threading").Lock()
+    response = MagicMock()
+    response.status_code = 500
+    api._api_get = MagicMock(return_value=response)
+
+    with pytest.raises(UserLiveError, match="Error extracting RoomID"):
+        api._old_get_room_id_from_user("creator")

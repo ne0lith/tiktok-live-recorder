@@ -67,6 +67,7 @@ def test_scan_media_library_marks_needs_convert(tmp_path):
     entry = media["creator"][0]
     assert entry["needs_convert"] is True
     assert entry["in_progress"] is False
+    assert "thumb_url" not in entry
 
 
 def test_scan_media_library_hides_in_progress(tmp_path):

@@ -52,7 +52,7 @@ def _media_entry(
         "url": url,
         "path": resolved,
     }
-    if not entry["in_progress"]:
+    if not entry["in_progress"] and not is_flv:
         entry["thumb_url"] = thumbnail_url(username, path.name, subdir=subdir)
     return entry
 

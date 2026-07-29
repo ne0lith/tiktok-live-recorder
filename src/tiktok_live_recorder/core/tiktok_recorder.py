@@ -507,9 +507,27 @@ class TikTokRecorder:
             label="Followers",
         )
 
+    def _check_user_live(self, username: str) -> str | None:
+        """Return room_id when the user is live, or None when offline."""
+        for attempt in range(2):
+            try:
+                room_id = self.tiktok.get_room_id_from_user(username)
+                if not room_id or not self.tiktok.is_room_alive(room_id, user=username):
+                    return None
+                return room_id
+            except RequestException:
+                if attempt == 0:
+                    time.sleep(1.5)
+                    continue
+                raise
+        return None
+
     def _poll_users_once(self, users, active_recordings, label):
         from tiktok_live_recorder.utils.utils import read_paused_users
 
+        reset_warn = getattr(self.tiktok, "reset_tikrec_warn_flag", None)
+        if callable(reset_warn):
+            reset_warn()
         paused_users = read_paused_users()
         counts = {"recording": 0, "offline": 0, "started": 0, "error": 0, "skipped": 0}
         groups = {
@@ -566,9 +584,9 @@ class TikTokRecorder:
                 continue
 
             try:
-                room_id = self.tiktok.get_room_id_from_user(username)
+                room_id = self._check_user_live(username)
 
-                if not room_id or not self.tiktok.is_room_alive(room_id, user=username):
+                if room_id is None:
                     groups["offline"].append(username)
                     counts["offline"] += 1
                     continue
@@ -595,12 +613,12 @@ class TikTokRecorder:
 
             except RequestException as e:
                 logger.warning(f"  @{username}: network error during poll: {e}")
-                groups["errors"].append(username)
+                groups["errors"].append(f"{username} (network error)")
                 counts["error"] += 1
 
             except Exception as e:
                 logger.error(f"  @{username}: {e}", exc_info=True)
-                groups["errors"].append(username)
+                groups["errors"].append(f"{username} (unexpected error)")
                 counts["error"] += 1
 
         logger.info(f"--- {label} ({len(users)} users) ---")
