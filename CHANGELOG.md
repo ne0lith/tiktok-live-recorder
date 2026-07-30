@@ -7,7 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [8.16.0] - 2026-07-30
+## [8.17.0] - 2026-07-30
+
+### Added
+
+- **Scripts**: `scripts/fix-mp4s.ps1` batch re-encode for dashboard-playable H.264 (NVENC by default)
+- **Scripts**: `scripts/resolve-fix-mp4s-paths.ps1` shared `-InputDir` / `-OutputDir` prompting and validation
+- **Dev tooling**: `poethepoet` tasks `fix-mp4s` and `delete-verified-sources` (`uv run poe <task> …`)
+
+### Changed
+
+- **Scripts**: `fix-mp4s` and `delete-verified-sources` use `-InputDir` / `-OutputDir` (replacing `-Dir` / `-OutRoot`)
+- **Scripts**: `delete-verified-sources` uses shared routing/path helpers; no hardcoded drive paths
+
 
 ### Added
 
@@ -17,7 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Media player**: Close button stays inside the player panel; username is the primary heading with a subtler “Now playing” label
+- **Media player**: Close button stays inside the player panel; username is the primary heading with a subtler "Now playing" label
 - **Media library**: centered empty-state message when a profile filter has no recordings
 
 ## [8.15.5] - 2026-07-29
@@ -523,6 +535,7 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - Expanded recorder, API, and CLI validation test coverage
 
 [Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.16.0...HEAD
+[8.17.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.16.0...v8.17.0
 [8.16.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.15.5...v8.16.0
 [8.15.5]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.15.4...v8.15.5
 [8.15.4]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.15.3...v8.15.4
