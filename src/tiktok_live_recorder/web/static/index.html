@@ -104,21 +104,21 @@
         </div>
         <div class="library-body" id="library-body">
           <aside id="media-player" class="media-player hidden" aria-label="Now playing">
-            <button
-              id="player-close"
-              class="media-player-close btn btn-ghost btn-small"
-              type="button"
-              aria-label="Close player"
-            >
-              Close
-            </button>
             <div class="media-player-head">
-              <div>
-                <p class="eyebrow">Now playing</p>
+              <div class="media-player-head-text">
+                <p class="player-eyebrow">Now playing</p>
                 <h3 id="player-username" class="player-username"></h3>
                 <p id="player-filename" class="player-filename"></p>
                 <p id="player-meta" class="meta"></p>
               </div>
+              <button
+                id="player-close"
+                class="media-player-close btn btn-ghost btn-small"
+                type="button"
+                aria-label="Close player"
+              >
+                Close
+              </button>
             </div>
             <video id="media-player-video" controls preload="metadata" playsinline></video>
           </aside>

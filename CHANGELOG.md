@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.16.0] - 2026-07-30
+
+### Added
+
+- **Media library**: card grid layout with portrait thumbnails so more recordings fit on screen
+- **Live status**: watchlist rows show finalized library size per user (excludes in-progress and orphan FLV)
+- **Scripts**: shared `fix-mp4s` output routing for TikTok (`TK_*`) and phone export (`*_IMG_*`) filenames, plus verified-source cleanup helper
+
+### Changed
+
+- **Media player**: Close button stays inside the player panel; username is the primary heading with a subtler “Now playing” label
+- **Media library**: centered empty-state message when a profile filter has no recordings
+
 ## [8.15.5] - 2026-07-29
 
 ### Added
@@ -509,7 +522,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.15.5...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.16.0...HEAD
+[8.16.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.15.5...v8.16.0
 [8.15.5]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.15.4...v8.15.5
 [8.15.4]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.15.3...v8.15.4
 [8.15.3]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.15.2...v8.15.3

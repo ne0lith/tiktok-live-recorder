@@ -145,3 +145,5 @@ dmypy.json
 
 output/
 config/*.json
+
+fix-mp4s.ps1

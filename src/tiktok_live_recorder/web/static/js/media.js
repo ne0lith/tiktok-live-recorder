@@ -83,6 +83,21 @@ function sumMediaSize(items) {
   return items.reduce((total, item) => total + (item.size || 0), 0);
 }
 
+export function mediaItemsForUser(username, media = latestMedia) {
+  for (const [key, items] of Object.entries(media || {})) {
+    if (usernamesMatch(key, username)) return items;
+  }
+  return [];
+}
+
+export function sumLibraryBytesForUser(username, media = latestMedia) {
+  return sumMediaSize(
+    mediaItemsForUser(username, media).filter(
+      (item) => !item.in_progress && !item.needs_convert,
+    ),
+  );
+}
+
 function filterMedia(media, query) {
   const needle = query.trim().toLowerCase();
   if (!needle) return media;
@@ -191,43 +206,43 @@ export function closePlayer() {
 }
 
 function highlightActiveRow() {
-  mediaLibrary?.querySelectorAll(".media-row").forEach((row) => {
-    row.classList.toggle("is-active", row.dataset.url === libraryState.playingUrl);
+  mediaLibrary?.querySelectorAll(".media-card").forEach((card) => {
+    card.classList.toggle("is-active", card.dataset.url === libraryState.playingUrl);
   });
 }
 
-function createMediaRow(item, username) {
-  const row = document.createElement("article");
-  row.className = "media-row";
-  row.dataset.url = item.url;
-  row.dataset.username = username;
+function createMediaCard(item, username) {
+  const card = document.createElement("article");
+  card.className = "media-card";
+  card.dataset.url = item.url;
+  card.dataset.username = username;
 
   const main = document.createElement("button");
   main.type = "button";
-  main.className = "media-row-main";
-  main.append(createMediaThumb(item));
+  main.className = "media-card-main";
+  main.setAttribute("aria-label", `Play ${item.filename}`);
+
+  const thumbWrap = document.createElement("span");
+  thumbWrap.className = "media-card-thumb";
+  thumbWrap.append(createMediaThumb(item));
 
   const body = document.createElement("span");
-  body.className = "media-row-body";
+  body.className = "media-card-body";
   const name = document.createElement("span");
-  name.className = "media-row-name";
+  name.className = "media-card-name";
   name.title = item.filename;
   name.textContent = item.filename;
 
   const meta = document.createElement("span");
-  meta.className = "media-row-meta";
+  meta.className = "media-card-meta";
   meta.textContent = `@${username} · ${mediaItemMeta(item)}`;
 
-  const play = document.createElement("span");
-  play.className = "media-row-play";
-  play.textContent = "Play";
-
   body.append(name, meta);
-  main.append(body, play);
+  main.append(thumbWrap, body);
   main.addEventListener("click", () => playMedia(item, username));
 
   const actions = document.createElement("div");
-  actions.className = "media-row-actions";
+  actions.className = "media-card-actions";
 
   const download = document.createElement("a");
   download.className = "btn btn-ghost btn-small";
@@ -254,11 +269,11 @@ function createMediaRow(item, username) {
   });
 
   actions.append(download, deleteBtn);
-  row.append(main, actions);
+  card.append(main, actions);
 
-  if (item.needs_convert) row.classList.add("media-row--needs-convert");
-  if (item.url === libraryState.playingUrl) row.classList.add("is-active");
-  return row;
+  if (item.needs_convert) card.classList.add("media-card--needs-convert");
+  if (item.url === libraryState.playingUrl) card.classList.add("is-active");
+  return card;
 }
 
 async function deleteMediaItem(username, item) {
@@ -289,12 +304,12 @@ function renderMediaList(rows) {
       label.textContent = `@${username} · ${userRows.length} recording${userRows.length === 1 ? "" : "s"} · ${formatBytes(sumMediaSize(userRows.map((entry) => entry.item)))}`;
       list.append(label);
       for (const { item } of userRows) {
-        list.append(createMediaRow(item, username));
+        list.append(createMediaCard(item, username));
       }
     }
   } else {
     for (const { item, username } of rows) {
-      list.append(createMediaRow(item, username));
+      list.append(createMediaCard(item, username));
     }
   }
 
@@ -341,10 +356,12 @@ export function applyMediaUpdate(media, { force = false } = {}) {
     setPendingMedia(media);
     setLatestMedia(media || {});
     updateLibrarySummary(applyLibraryFilters(latestMedia, mediaSearch?.value || ""));
+    window.dispatchEvent(new CustomEvent("ttlr:media-updated"));
     return false;
   }
   setPendingMedia(null);
   renderMedia(media);
+  window.dispatchEvent(new CustomEvent("ttlr:media-updated"));
   return true;
 }
 

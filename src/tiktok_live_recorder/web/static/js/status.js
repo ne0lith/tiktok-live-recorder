@@ -18,7 +18,7 @@ import {
   setStatusFilter,
   statusFilter,
 } from "./state.js";
-import { refreshPendingConvertCount, renderMedia, syncConvertJobUi } from "./media.js";
+import { refreshPendingConvertCount, renderMedia, sumLibraryBytesForUser, syncConvertJobUi } from "./media.js";
 import { renderTelegramUploads, syncRuntimeControls } from "./runtime-ui.js";
 
 const statusBoard = document.getElementById("status-board");
@@ -328,6 +328,11 @@ function renderStatusLine(row, status) {
     if (elapsed && elapsed !== "-") details.push(elapsed);
     const size = formatBytes(row.bytes_written);
     if (size && size !== "-") details.push(size);
+  } else {
+    const libraryBytes = sumLibraryBytesForUser(row.username);
+    if (libraryBytes > 0) {
+      details.push(`${formatBytes(libraryBytes)} library`);
+    }
   }
   const detailMarkup = details.length
     ? `<p class="status-line-detail">${details.join(" · ")}</p>`
@@ -460,6 +465,10 @@ export function initStatusInteractions() {
   });
 
   statusBoard?.addEventListener("click", handleStatusAction);
+
+  window.addEventListener("ttlr:media-updated", () => {
+    if (latestStatus) renderStatus(latestStatus);
+  });
 }
 
 async function handleStatusAction(event) {
