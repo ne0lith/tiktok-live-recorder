@@ -346,6 +346,6 @@ class VideoManagement:
 
         logger.error(
             f"Conversion failed; left raw recording at {Path(file).resolve()}. "
-            "Use the dashboard 'Convert leftover FLV' action to retry."
+            "Use the dashboard 'Move leftover FLVs' action to retry."
         )
         return False

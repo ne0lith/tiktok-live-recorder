@@ -1,4 +1,5 @@
 import re
+import shutil
 from pathlib import Path
 
 from tiktok_live_recorder.web.thumbnails import thumbnail_url
@@ -153,6 +154,72 @@ def find_orphan_flv_files(
         )
     orphans.sort(key=lambda item: item["modified_at"], reverse=True)
     return orphans
+
+
+def move_orphan_flv_files(
+    output_base: Path,
+    custom_output: str | Path | None,
+    active_output_paths: set[str] | None,
+    dest_dir: Path,
+) -> dict:
+    """Move leftover *_flv.mp4 files into dest_dir (flat, no username subdirs)."""
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    active_paths = _normalize_active_paths(active_output_paths)
+    orphans = find_orphan_flv_files(output_base, custom_output, active_paths)
+    moved = 0
+    failed = 0
+    files: list[dict] = []
+    for item in orphans:
+        src = Path(item["path"])
+        dest = dest_dir / item["filename"]
+        try:
+            resolved = str(src.resolve())
+        except OSError:
+            resolved = str(src)
+        if resolved in active_paths:
+            failed += 1
+            files.append(
+                {
+                    "filename": item["filename"],
+                    "username": item["username"],
+                    "ok": False,
+                    "error": "skipped (recording in progress)",
+                }
+            )
+            continue
+        if dest.exists():
+            failed += 1
+            files.append(
+                {
+                    "filename": item["filename"],
+                    "username": item["username"],
+                    "ok": False,
+                    "error": "destination already exists",
+                }
+            )
+            continue
+        try:
+            shutil.move(str(src), str(dest))
+            moved += 1
+            files.append(
+                {
+                    "filename": item["filename"],
+                    "username": item["username"],
+                    "ok": True,
+                    "error": None,
+                }
+            )
+        except OSError as exc:
+            failed += 1
+            files.append(
+                {
+                    "filename": item["filename"],
+                    "username": item["username"],
+                    "ok": False,
+                    "error": str(exc),
+                }
+            )
+    return {"moved": moved, "failed": failed, "files": files}
 
 
 def scan_media_library(

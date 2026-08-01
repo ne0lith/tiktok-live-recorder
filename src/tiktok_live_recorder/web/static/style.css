@@ -455,6 +455,12 @@ body.modal-open {
   color: var(--accent);
 }
 
+.summary-chip--toggle:not(.is-active) {
+  color: var(--muted);
+  border-color: var(--line);
+  background: transparent;
+}
+
 .summary-chip--polling {
   color: var(--accent);
   animation: pulse-poll 1.2s ease-in-out infinite;
@@ -803,6 +809,18 @@ body.modal-open {
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   overflow: hidden;
+}
+
+.media-card-meta .profile-link {
+  display: inline;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 500;
+  vertical-align: baseline;
+}
+
+.media-card-meta .media-card-meta-sep {
+  color: var(--muted);
 }
 
 .media-card--needs-convert .media-card-name {
@@ -1228,6 +1246,28 @@ td.col-room {
 
 .media-player-head .meta {
   margin-top: 0.35rem;
+}
+
+.media-player-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.media-player-actions .status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+#player-username .profile-link {
+  font-family: var(--font-serif);
+  font-size: 1.35rem;
+  font-weight: 600;
+  line-height: 1.2;
 }
 
 .media-player video {

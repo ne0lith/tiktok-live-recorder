@@ -13,7 +13,11 @@ from tiktok_live_recorder.utils.flv_hevc_rewrite import (
     file_needs_legacy_hevc_rewrite,
     rewrite_legacy_hevc_video_body,
 )
-from tiktok_live_recorder.web.media import find_orphan_flv_files, scan_media_library
+from tiktok_live_recorder.web.media import (
+    find_orphan_flv_files,
+    move_orphan_flv_files,
+    scan_media_library,
+)
 
 
 def test_normalize_cdn_url_strips_signed_query():
@@ -88,6 +92,29 @@ def test_scan_media_library_hides_in_progress(tmp_path):
     assert finished.name in filenames
     assert orphan_flv.name in filenames
     assert active_flv.name not in filenames
+
+
+def test_move_orphan_flv_files_moves_to_flat_dir(tmp_path):
+    user_dir = tmp_path / "output" / "alpha"
+    user_dir.mkdir(parents=True)
+    orphan = user_dir / "TK_alpha_2026.01.01_14-00-00_flv.mp4"
+    orphan.write_bytes(b"orphan")
+    active_flv = user_dir / "TK_alpha_2026.01.01_13-00-00_flv.mp4"
+    active_flv.write_bytes(b"partial")
+    to_fix = tmp_path / "to_fix"
+
+    result = move_orphan_flv_files(
+        tmp_path / "output",
+        None,
+        {str(active_flv.resolve())},
+        to_fix,
+    )
+
+    assert result["moved"] == 1
+    assert result["failed"] == 0
+    assert not orphan.exists()
+    assert (to_fix / orphan.name).is_file()
+    assert active_flv.exists()
 
 
 @patch(

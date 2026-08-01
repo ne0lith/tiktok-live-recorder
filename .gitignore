@@ -144,4 +144,5 @@ dmypy.json
 .vscode/
 
 output/
+to_fix/
 config/*.json

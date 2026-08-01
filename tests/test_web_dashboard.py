@@ -75,7 +75,7 @@ def test_poll_users_once_skips_paused_users(monkeypatch):
         "tiktok_live_recorder.core.tiktok_recorder.time.sleep", lambda *_: None
     )
 
-    active = recorder._poll_users_once(["alpha", "beta"], {}, label="Watchlist")
+    active, _ = recorder._poll_users_once(["alpha", "beta"], {}, label="Watchlist")
 
     assert "alpha" not in active
     assert recorder._last_poll_snapshot["paused"] == ["alpha"]
@@ -240,8 +240,19 @@ class StubRecorder:
     def active_recording_output_paths(self):
         return set(getattr(self, "_active_paths", ()))
 
-    def get_convert_job(self):
-        return None
+    def move_leftover_flvs(self):
+        from tiktok_live_recorder.utils.utils import (
+            default_output_base,
+            default_to_fix_dir,
+        )
+        from tiktok_live_recorder.web.media import move_orphan_flv_files
+
+        return move_orphan_flv_files(
+            default_output_base(),
+            getattr(self, "output", None),
+            self.active_recording_output_paths(),
+            default_to_fix_dir(),
+        )
 
     def get_ffmpeg_info(self):
         return {
@@ -251,9 +262,6 @@ class StubRecorder:
             "hevc_capable": True,
             "hevc_probe": {"legacy": False, "enhanced": False, "roundtrip": True},
         }
-
-    def start_pending_flv_converts(self):
-        return {"running": False, "total": 0, "completed": 0, "failed": 0}
 
     def force_poll(self):
         self.polls = getattr(self, "polls", 0) + 1
@@ -327,6 +335,8 @@ def test_dashboard_index_cache_busts_assets(api_client):
     assert 'id="logs-modal"' in response.text
     assert 'id="activity-feed"' in response.text
     assert 'id="connection-banner"' in response.text
+    assert 'id="player-actions"' in response.text
+    assert 'id="player-delete"' in response.text
     assert 'id="status-filter"' not in response.text
     assert 'id="startup-ffmpeg-data"' in response.text
     assert '"path":"/usr/bin/ffmpeg"' in response.text.replace(" ", "")
@@ -531,3 +541,50 @@ def test_api_delete_media(tmp_path):
     response = client.delete("/api/media/alpha/TK_alpha_2026.01.01_13-00-00_flv.mp4")
     assert response.status_code == 400
     assert in_progress.exists()
+
+
+def test_api_leftover_flv_and_move(tmp_path, monkeypatch):
+    output_base = tmp_path / "output"
+    to_fix = tmp_path / "to_fix"
+    user_dir = output_base / "alpha"
+    user_dir.mkdir(parents=True)
+    orphan = user_dir / "TK_alpha_2026.01.01_14-00-00_flv.mp4"
+    orphan.write_bytes(b"orphan")
+    active_flv = user_dir / "TK_alpha_2026.01.01_13-00-00_flv.mp4"
+    active_flv.write_bytes(b"partial")
+
+    monkeypatch.setattr(
+        "tiktok_live_recorder.utils.utils.default_output_base",
+        lambda: output_base,
+    )
+    monkeypatch.setattr(
+        "tiktok_live_recorder.web.app.default_output_base",
+        lambda: output_base,
+    )
+    monkeypatch.setattr(
+        "tiktok_live_recorder.utils.utils.default_to_fix_dir",
+        lambda: to_fix,
+    )
+
+    recorder = StubRecorder()
+    recorder._active_paths = {str(active_flv.resolve())}
+    config = RecorderConfig(mode=Mode.WATCHLIST, users=["alpha"], cookies={})
+    client = TestClient(create_app(recorder, config))
+
+    response = client.get("/api/media/leftover-flv")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["count"] == 1
+    assert payload["files"][0]["filename"] == orphan.name
+
+    response = client.post("/api/media/move-leftover-flv")
+    assert response.status_code == 200
+    result = response.json()
+    assert result["moved"] == 1
+    assert result["failed"] == 0
+    assert not orphan.exists()
+    assert (to_fix / orphan.name).is_file()
+    assert active_flv.exists()
+
+    response = client.get("/api/media/leftover-flv")
+    assert response.json()["count"] == 0

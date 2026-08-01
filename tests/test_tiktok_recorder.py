@@ -262,9 +262,9 @@ def test_poll_users_once_handles_network_error_per_user():
             return True
 
     recorder.tiktok = FailingTikTokAPI()
-    snapshot = recorder._poll_users_once(["alpha"], {}, label="Watchlist")
+    active_recordings, _ = recorder._poll_users_once(["alpha"], {}, label="Watchlist")
 
-    assert snapshot == {}
+    assert active_recordings == {}
     assert recorder._last_poll_snapshot["errors"] == ["alpha (network error)"]
 
 
@@ -412,7 +412,7 @@ def test_poll_user_now_partial_wake_checks_only_new_user(monkeypatch):
     monkeypatch.setattr(
         recorder,
         "_poll_users_once",
-        lambda users, active, label: polled.append(list(users)) or active,
+        lambda users, active, label: (polled.append(list(users)) or active, False),
     )
     stop_after_partial = {"done": False}
     monkeypatch.setattr(recorder, "_should_stop", lambda: stop_after_partial["done"])
@@ -428,6 +428,175 @@ def test_poll_user_now_partial_wake_checks_only_new_user(monkeypatch):
     recorder._wait_for_next_poll(300, label="Watchlist")
 
     assert polled == [["beta"]]
+
+
+def test_poll_user_now_during_active_full_poll(monkeypatch):
+    recorder = TikTokRecorder(
+        RecorderConfig(
+            mode=Mode.WATCHLIST,
+            users=["alpha", "beta", "gamma"],
+            cookies={},
+        )
+    )
+    recorder.tiktok = PollFakeTikTokAPI()
+    checked: list[str] = []
+
+    def check_user(username):
+        checked.append(username)
+        if username == "alpha":
+            recorder.poll_user_now("newuser")
+        return None
+
+    monkeypatch.setattr(recorder, "_check_user_live", check_user)
+    monkeypatch.setattr(recorder, "_poll_user_order", lambda users: list(users))
+    monkeypatch.setattr(
+        "tiktok_live_recorder.core.tiktok_recorder.time.sleep", lambda *_: None
+    )
+
+    _, aborted = recorder._poll_users_once(
+        ["alpha", "beta", "gamma"],
+        {},
+        label="Watchlist",
+    )
+
+    assert aborted is False
+    assert "newuser" in checked
+    assert checked.index("newuser") < checked.index("gamma")
+
+
+def test_force_poll_during_active_full_poll_aborts_remaining(monkeypatch):
+    recorder = TikTokRecorder(
+        RecorderConfig(
+            mode=Mode.WATCHLIST,
+            users=["alpha", "beta", "gamma"],
+            cookies={},
+        )
+    )
+    recorder.tiktok = PollFakeTikTokAPI()
+    checked: list[str] = []
+
+    def check_user(username):
+        checked.append(username)
+        if username == "alpha":
+            recorder.force_poll()
+        return None
+
+    monkeypatch.setattr(recorder, "_check_user_live", check_user)
+    monkeypatch.setattr(recorder, "_poll_user_order", lambda users: list(users))
+    monkeypatch.setattr(
+        "tiktok_live_recorder.core.tiktok_recorder.time.sleep", lambda *_: None
+    )
+
+    _, aborted = recorder._poll_users_once(
+        ["alpha", "beta", "gamma"],
+        {},
+        label="Watchlist",
+    )
+
+    assert aborted is True
+    assert checked == ["alpha"]
+
+
+def test_poll_in_progress_stays_true_during_nested_partial(monkeypatch):
+    recorder = TikTokRecorder(
+        RecorderConfig(mode=Mode.WATCHLIST, users=["alpha", "gamma"], cookies={})
+    )
+    recorder.tiktok = PollFakeTikTokAPI()
+    poll_flags: list[bool] = []
+
+    original_partial = recorder._run_partial_poll_cycle
+
+    def track_partial(users, label):
+        poll_flags.append(recorder._poll_in_progress)
+        return original_partial(users, label)
+
+    monkeypatch.setattr(recorder, "_run_partial_poll_cycle", track_partial)
+
+    def check_user(username):
+        if username == "alpha":
+            recorder.poll_user_now("beta")
+        return None
+
+    monkeypatch.setattr(recorder, "_check_user_live", check_user)
+    monkeypatch.setattr(recorder, "_poll_user_order", lambda users: list(users))
+    monkeypatch.setattr(
+        "tiktok_live_recorder.core.tiktok_recorder.time.sleep", lambda *_: None
+    )
+
+    recorder._begin_poll()
+    try:
+        recorder._poll_users_once(["alpha", "gamma"], {}, label="Watchlist")
+    finally:
+        recorder._end_poll()
+
+    assert poll_flags == [True]
+
+
+def test_poll_users_loop_restarts_immediately_on_force_check(monkeypatch):
+    recorder = TikTokRecorder(
+        RecorderConfig(
+            mode=Mode.WATCHLIST,
+            users=["alpha", "beta", "gamma"],
+            cookies={},
+        )
+    )
+    recorder.tiktok = PollFakeTikTokAPI()
+    cycle_count = {"n": 0}
+    checked: list[tuple[int, str]] = []
+
+    def check_user(username):
+        checked.append((cycle_count["n"], username))
+        if cycle_count["n"] == 1 and username == "alpha":
+            recorder.force_poll()
+        return None
+
+    monkeypatch.setattr(recorder, "_check_user_live", check_user)
+    monkeypatch.setattr(recorder, "_poll_user_order", lambda users: list(users))
+    monkeypatch.setattr(
+        "tiktok_live_recorder.core.tiktok_recorder.time.sleep", lambda *_: None
+    )
+
+    original_run_cycle = recorder._run_poll_cycle
+
+    def tracked_run_cycle(users, label):
+        cycle_count["n"] += 1
+        return original_run_cycle(users, label)
+
+    monkeypatch.setattr(recorder, "_run_poll_cycle", tracked_run_cycle)
+
+    completed = 0
+    while completed < 2:
+        aborted = recorder._run_poll_cycle(["alpha", "beta", "gamma"], "Watchlist")
+        completed += 1
+        if not aborted:
+            break
+
+    assert completed == 2
+    assert checked[0] == (1, "alpha")
+    assert any(cycle == 2 for cycle, _ in checked)
+
+
+def test_checked_this_cycle_skips_duplicate_user(monkeypatch):
+    recorder = TikTokRecorder(
+        RecorderConfig(mode=Mode.WATCHLIST, users=["alpha", "beta"], cookies={})
+    )
+    recorder.tiktok = PollFakeTikTokAPI()
+    recorder._checked_this_cycle = {"beta"}
+    checked: list[str] = []
+
+    monkeypatch.setattr(
+        recorder,
+        "_check_user_live",
+        lambda username: checked.append(username) or None,
+    )
+    monkeypatch.setattr(recorder, "_poll_user_order", lambda users: list(users))
+    monkeypatch.setattr(
+        "tiktok_live_recorder.core.tiktok_recorder.time.sleep", lambda *_: None
+    )
+
+    recorder._poll_users_once(["alpha", "beta"], {}, label="Watchlist")
+
+    assert checked == ["alpha"]
 
 
 def test_poll_users_once_starts_recording_for_live_user(monkeypatch):
@@ -464,7 +633,7 @@ def test_poll_users_once_starts_recording_for_live_user(monkeypatch):
         "tiktok_live_recorder.core.tiktok_recorder.Thread", ImmediateThread
     )
 
-    active_recordings = recorder._poll_users_once(
+    active_recordings, _ = recorder._poll_users_once(
         ["alpha"],
         {},
         label="Watchlist",

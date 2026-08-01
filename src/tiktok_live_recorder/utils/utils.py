@@ -79,6 +79,10 @@ def default_output_base() -> Path:
     return repo_root_path() / "output"
 
 
+def default_to_fix_dir() -> Path:
+    return repo_root_path() / "to_fix"
+
+
 def output_dir_for_user(base: str | Path | None, username: str) -> Path:
     """Return (and create) the output directory for a recording."""
     if base is None:

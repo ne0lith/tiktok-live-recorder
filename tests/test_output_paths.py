@@ -4,6 +4,7 @@ import pytest
 
 from tiktok_live_recorder.utils.utils import (
     default_output_base,
+    default_to_fix_dir,
     output_dir_for_user,
     repo_root_path,
 )
@@ -20,6 +21,10 @@ def creator_output_dir():
 
 def test_default_output_base_is_repo_output():
     assert default_output_base() == repo_root_path() / "output"
+
+
+def test_default_to_fix_dir_is_repo_to_fix():
+    assert default_to_fix_dir() == repo_root_path() / "to_fix"
 
 
 def test_output_dir_for_user_uses_username_subfolder_when_base_omitted(

@@ -5,12 +5,18 @@ import {
   STORAGE_SHOW_LEGACY_KEY,
   STORAGE_SORT_KEY,
   latestMedia,
+  latestStatus,
   libraryState,
   pendingMedia,
   selectedProfile,
   setLatestMedia,
   setPendingMedia,
 } from "./state.js";
+import {
+  buildUserActionButtons,
+  profileLinkMarkup,
+  runUserAction,
+} from "./user-actions.js";
 
 const libraryBody = document.getElementById("library-body");
 const mediaLibrary = document.getElementById("media-library");
@@ -21,6 +27,8 @@ const mediaPlayerVideo = document.getElementById("media-player-video");
 const playerUsername = document.getElementById("player-username");
 const playerFilename = document.getElementById("player-filename");
 const playerMeta = document.getElementById("player-meta");
+const playerActions = document.getElementById("player-actions");
+const playerFileActions = document.getElementById("player-file-actions");
 
 export function loadLibraryPreferences() {
   const savedSort = localStorage.getItem(STORAGE_SORT_KEY);
@@ -179,13 +187,45 @@ export function flattenAndSortMedia(media) {
 function setPlayerOpen(open) {
   libraryBody?.classList.toggle("library-body--playing", open);
   mediaPlayer?.classList.toggle("hidden", !open);
+  playerFileActions?.classList.toggle("hidden", !open);
+}
+
+function renderPlayerHeader(username) {
+  if (!playerUsername) return;
+  if (!username || username.toLowerCase() === "unknown") {
+    playerUsername.textContent = `@${username}`;
+    return;
+  }
+  const active = usernamesMatch(username, selectedProfile);
+  playerUsername.innerHTML = profileLinkMarkup(username, { active });
+}
+
+function renderPlayerActions() {
+  if (!playerActions) return;
+  const username = libraryState.playingUsername;
+  if (!username) {
+    playerActions.classList.add("hidden");
+    playerActions.innerHTML = "";
+    return;
+  }
+  const markup = buildUserActionButtons(username, latestStatus, null, { context: "player" });
+  if (!markup) {
+    playerActions.classList.add("hidden");
+    playerActions.innerHTML = "";
+    return;
+  }
+  playerActions.innerHTML = markup;
+  playerActions.classList.remove("hidden");
 }
 
 export function playMedia(item, username) {
   libraryState.playingUrl = item.url;
-  if (playerUsername) playerUsername.textContent = `@${username}`;
+  libraryState.playingUsername = username;
+  libraryState.playingItem = item;
+  renderPlayerHeader(username);
   if (playerFilename) playerFilename.textContent = item.filename;
   if (playerMeta) playerMeta.textContent = mediaItemMeta(item);
+  renderPlayerActions();
   setPlayerOpen(true);
   const targetUrl = new URL(item.url, window.location.origin).href;
   if (mediaPlayerVideo && mediaPlayerVideo.src !== targetUrl) {
@@ -200,6 +240,12 @@ export function closePlayer() {
   mediaPlayerVideo?.removeAttribute("src");
   mediaPlayerVideo?.load();
   libraryState.playingUrl = null;
+  libraryState.playingUsername = null;
+  libraryState.playingItem = null;
+  if (playerActions) {
+    playerActions.classList.add("hidden");
+    playerActions.innerHTML = "";
+  }
   setPlayerOpen(false);
   highlightActiveRow();
   maybeApplyPendingMedia();
@@ -235,7 +281,17 @@ function createMediaCard(item, username) {
 
   const meta = document.createElement("span");
   meta.className = "media-card-meta";
-  meta.textContent = `@${username} · ${mediaItemMeta(item)}`;
+  if (username.toLowerCase() === "unknown") {
+    meta.textContent = `@${username} · ${mediaItemMeta(item)}`;
+  } else {
+    const profileActive = usernamesMatch(username, selectedProfile);
+    meta.innerHTML = `${profileLinkMarkup(username, { active: profileActive })}<span class="media-card-meta-sep"> · </span>${mediaItemMeta(item)}`;
+    meta.querySelector("[data-profile]")?.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      const { setSelectedProfile } = await import("./status.js");
+      setSelectedProfile(username);
+    });
+  }
 
   body.append(name, meta);
   main.append(thumbWrap, body);
@@ -365,59 +421,30 @@ export function applyMediaUpdate(media, { force = false } = {}) {
   return true;
 }
 
-export function updateConvertJobButton(job) {
-  const btn = document.getElementById("convert-pending-btn");
-  if (!btn || !job?.running) return;
-  const progress = job.current_progress?.percent;
-  const fileIndex = job.total ? Math.min(job.total, job.completed + 1) : null;
-  const batchLabel = job.total ? ` · file ${fileIndex}/${job.total}` : "";
-  if (progress != null) {
-    btn.textContent = `Converting FLV… ${progress}%${batchLabel}`;
-  } else {
-    btn.textContent = `Converting FLV…${batchLabel}`;
-  }
-}
-
-export function syncConvertJobUi(job) {
-  const btn = document.getElementById("convert-pending-btn");
-  const badge = document.getElementById("convert-pending-count");
+export async function refreshLeftoverFlvButton() {
+  const btn = document.getElementById("move-leftover-btn");
+  const badge = document.getElementById("move-leftover-count");
   if (!btn) return;
-  if (job?.running) {
-    btn.disabled = true;
-    updateConvertJobButton(job);
-    return;
-  }
-  btn.textContent = "Convert leftover FLV";
-}
-
-export async function refreshPendingConvertCount(jobFromStatus = null) {
-  const btn = document.getElementById("convert-pending-btn");
-  const badge = document.getElementById("convert-pending-count");
-  if (!btn) return;
-  if (jobFromStatus?.running) {
-    syncConvertJobUi(jobFromStatus);
-    return;
-  }
   try {
-    const payload = await api("/api/media/pending-convert");
+    const payload = await api("/api/media/leftover-flv");
     const count = payload.count || 0;
-    const job = payload.job;
-    const running = Boolean(job?.running);
-    btn.disabled = count === 0 || running;
-    if (running) {
-      updateConvertJobButton(job);
-    } else {
-      btn.textContent = "Convert leftover FLV";
-    }
-    if (badge) {
-      if (count > 0 && !running) {
+    if (count > 0) {
+      btn.classList.remove("hidden");
+      btn.disabled = false;
+      btn.textContent = "Move leftover FLVs";
+      if (badge) {
         badge.textContent = String(count);
         badge.classList.remove("hidden");
-      } else {
+      }
+    } else {
+      btn.classList.add("hidden");
+      btn.disabled = true;
+      if (badge) {
         badge.classList.add("hidden");
       }
     }
   } catch {
+    btn.classList.add("hidden");
     btn.disabled = true;
   }
 }
@@ -425,37 +452,34 @@ export async function refreshPendingConvertCount(jobFromStatus = null) {
 export async function refreshMedia({ force = false } = {}) {
   const media = await api("/api/media");
   applyMediaUpdate(media, { force });
-  await refreshPendingConvertCount();
+  await refreshLeftoverFlvButton();
 }
 
 export function initMediaInteractions() {
-  document.getElementById("convert-pending-btn")?.addEventListener("click", async () => {
+  document.getElementById("move-leftover-btn")?.addEventListener("click", async () => {
+    const btn = document.getElementById("move-leftover-btn");
     try {
-      const pending = await api("/api/media/pending-convert");
+      const pending = await api("/api/media/leftover-flv");
       const count = pending.count || 0;
       if (!count) {
-        showToast("No leftover FLV files to convert");
+        showToast("No leftover FLV files to move");
         return;
       }
-      if (!confirm(`Convert ${count} leftover FLV recording${count === 1 ? "" : "s"}?`)) {
+      if (!confirm(`Move ${count} leftover FLV recording${count === 1 ? "" : "s"} to to_fix/?`)) {
         return;
       }
-      await api("/api/media/convert-pending", { method: "POST" });
-      showToast("Conversion started - check logs for progress");
-      await refreshPendingConvertCount();
-      const poll = setInterval(async () => {
-        const status = await api("/api/media/pending-convert");
-        await refreshPendingConvertCount();
-        if (!status.job?.running) {
-          clearInterval(poll);
-          await refreshMedia({ force: true });
-          const failed = status.job?.failed || 0;
-          const completed = status.job?.completed || 0;
-          showToast(`Convert finished: ${completed} ok, ${failed} failed`);
-        }
-      }, 3000);
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = "Moving…";
+      }
+      const result = await api("/api/media/move-leftover-flv", { method: "POST" });
+      const moved = result.moved || 0;
+      const failed = result.failed || 0;
+      showToast(`Moved ${moved} file${moved === 1 ? "" : "s"}${failed ? `, ${failed} failed` : ""}`);
+      await refreshMedia({ force: true });
     } catch (error) {
       showToast(error.message);
+      await refreshLeftoverFlvButton();
     }
   });
 
@@ -478,6 +502,57 @@ export function initMediaInteractions() {
   });
 
   document.getElementById("player-close")?.addEventListener("click", closePlayer);
+
+  document.getElementById("player-delete")?.addEventListener("click", async () => {
+    const item = libraryState.playingItem;
+    const username = libraryState.playingUsername;
+    if (!item || !username) return;
+    if (!confirm(`Delete ${item.filename}?`)) return;
+    try {
+      await deleteMediaItem(username, item);
+      showToast(`Deleted ${item.filename}`);
+      closePlayer();
+      await refreshMedia({ force: true });
+    } catch (error) {
+      showToast(error.message);
+    }
+  });
+
+  playerActions?.addEventListener("click", async (event) => {
+    const button = event.target.closest("button[data-action]");
+    if (!button) return;
+    event.preventDefault();
+    const { action, user } = button.dataset;
+    await runUserAction(action, user, {
+      onSuccess: async () => {
+        const { refreshStatus } = await import("./status.js");
+        await refreshStatus();
+        renderPlayerActions();
+      },
+    });
+  });
+
+  const handleProfileClick = async (event) => {
+    const profileButton = event.target.closest("button[data-profile]");
+    if (!profileButton) return;
+    event.stopPropagation();
+    event.preventDefault();
+    const { setSelectedProfile } = await import("./status.js");
+    setSelectedProfile(profileButton.dataset.profile);
+  };
+
+  mediaPlayer?.addEventListener("click", handleProfileClick);
+
+  window.addEventListener("ttlr:status-updated", () => {
+    if (libraryState.playingUsername) renderPlayerActions();
+  });
+
+  window.addEventListener("ttlr:profile-changed", () => {
+    if (libraryState.playingUsername) {
+      renderPlayerHeader(libraryState.playingUsername);
+    }
+  });
+
   mediaPlayerVideo?.addEventListener("pause", maybeApplyPendingMedia);
   mediaPlayerVideo?.addEventListener("ended", maybeApplyPendingMedia);
 

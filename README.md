@@ -61,7 +61,7 @@ This fork adds reliability and workflow improvements on top of the upstream proj
 - **Watchlist mode** - poll many users in one process; each live user records in a background thread
 - **`config/` directory** - secrets and watchlists live outside `src/` with committed `.example` templates
 - **TikTok HEVC FLV support** - startup FFmpeg capability probe; on Linux, automatic BtbN FFmpeg n8.1 install into `.vendor/ffmpeg/` when ffmpeg is missing or too old ([details](docs/GUIDE.md#ffmpeg-and-hevc))
-- **Salvage leftover FLVs** - dashboard action to convert orphan `*_flv.mp4` files that never finalized ([details](docs/GUIDE.md#salvaging-leftover-recordings))
+- **Salvage leftover FLVs** - dashboard action to move orphan `*_flv.mp4` files into `to_fix/` for external conversion with `fix-mp4s` ([details](docs/GUIDE.md#salvaging-leftover-recordings))
 - **WAF / restricted-live fallback** - when the API returns `4003110`, stream URLs are scraped from the live page HTML
 - **Recording reliability** - stale ended rooms are rejected, CDN URLs are retried (with signed-query normalization), and empty responses are skipped
 - **Instance lock** - prevents two recorder processes from writing to the same output directory
@@ -277,7 +277,7 @@ See [Watchlist file reload](#watchlist-file-reload) for live edits to `config/us
 
 Runs in **watchlist**, **followers**, and **automatic** mode at `http://localhost:8787` by default (`-web-host` / `-web-port` to change). **No authentication** - restrict access on shared networks.
 
-Use it to monitor live status, manage recordings, convert leftover FLVs, tail/clear logs, and adjust runtime settings without editing files by hand. Full feature list, keyboard shortcuts, FFmpeg notes, and workflow details: **[Web dashboard guide](docs/GUIDE.md#web-dashboard)**.
+Use it to monitor live status, manage recordings, move leftover FLVs to `to_fix/`, tail/clear logs, and adjust runtime settings without editing files by hand. Full feature list, keyboard shortcuts, FFmpeg notes, and workflow details: **[Web dashboard guide](docs/GUIDE.md#web-dashboard)**.
 
 Disable with `-no-web`.
 
@@ -304,7 +304,7 @@ Step-by-step setup: [docs/GUIDE.md](docs/GUIDE.md).
 - **Custom `-output`:** files are saved directly in that directory; the username is still included in the filename
 - **Legacy folder:** older recordings may live under `output/<username>/legacy/`; the dashboard hides them by default (**Settings -> Runtime -> Legacy recordings**)
 
-If conversion fails, the intermediate `*_flv.mp4` is kept and the user shows **`convert_failed`** in the dashboard until you fix FFmpeg or use **Convert leftover FLV** ([salvage guide](docs/GUIDE.md#salvaging-leftover-recordings)).
+If conversion fails, the intermediate `*_flv.mp4` is kept and the user shows **`convert_failed`** in the dashboard until you fix FFmpeg or use **Move leftover FLVs** ([salvage guide](docs/GUIDE.md#salvaging-leftover-recordings)).
 
 ### Watchlist threading
 
@@ -366,7 +366,7 @@ Many TikTok lives use **HEVC in legacy FLV** (codec id 12). Older distro FFmpeg 
 
 1. Restart the recorder and check startup logs for `capable for TikTok HEVC FLV` vs `NOT capable`.
 2. On Linux, let the automatic BtbN install complete (first run may pause while downloading).
-3. For leftover `*_flv.mp4` files, use the dashboard **Convert leftover FLV** button ([guide](docs/GUIDE.md#salvaging-leftover-recordings)).
+3. For leftover `*_flv.mp4` files, use the dashboard **Move leftover FLVs** button ([guide](docs/GUIDE.md#salvaging-leftover-recordings)), then run `fix-mp4s` against `to_fix/`.
 4. Or pass `-ffmpeg-path` to FFmpeg 8.0+ that supports legacy HEVC FLV.
 
 ### Log file growing large

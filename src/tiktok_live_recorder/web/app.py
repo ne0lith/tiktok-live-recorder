@@ -144,8 +144,8 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
     def api_media() -> dict[str, list[dict]]:
         return _scan_media(recorder, output_base, custom_output)
 
-    @app.get("/api/media/pending-convert")
-    def api_pending_convert() -> dict[str, Any]:
+    @app.get("/api/media/leftover-flv")
+    def api_leftover_flv() -> dict[str, Any]:
         pending = find_orphan_flv_files(
             output_base,
             custom_output,
@@ -154,13 +154,11 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
         return {
             "count": len(pending),
             "files": pending,
-            "job": recorder.get_convert_job(),
         }
 
-    @app.post("/api/media/convert-pending")
-    def api_convert_pending() -> dict[str, Any]:
-        job = recorder.start_pending_flv_converts()
-        return {"job": job}
+    @app.post("/api/media/move-leftover-flv")
+    def api_move_leftover_flv() -> dict[str, Any]:
+        return recorder.move_leftover_flvs()
 
     @app.get("/api/ffmpeg")
     def api_ffmpeg() -> dict[str, Any]:

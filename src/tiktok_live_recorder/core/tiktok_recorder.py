@@ -71,11 +71,11 @@ class TikTokRecorder:
         self._last_poll_at: float | None = None
         self._last_poll_snapshot: dict | None = None
         self._poll_label: str | None = None
-        self._convert_lock = Lock()
-        self._convert_job: dict | None = None
         self._telegram_uploads: list[dict] = []
         self._max_telegram_upload_history = 20
+        self._poll_in_progress_depth = 0
         self._poll_in_progress = False
+        self._checked_this_cycle: set[str] = set()
         self._activity: deque[dict] = deque(maxlen=50)
         self._poll_wake_reason: str | None = None
         self._partial_poll_users: list[str] = []
@@ -116,6 +116,21 @@ class TikTokRecorder:
             self._partial_poll_users.clear()
             return users
 
+    def _drain_poll_requests(self, label: str) -> bool:
+        """Handle pending poll wake requests. Returns True if the current cycle should abort."""
+        if not self._poll_wake.is_set():
+            return False
+        self._poll_wake.clear()
+        reason = self._take_poll_wake_reason()
+        if reason == "partial":
+            partial_users = self._take_partial_poll_users()
+            if partial_users:
+                if self._run_partial_poll_cycle(partial_users, label):
+                    return True
+            return False
+        self._take_partial_poll_users()
+        return True
+
     def _wait_for_next_poll(self, seconds: float, *, label: str):
         """Sleep until the poll interval elapses, handling priority single-user polls."""
         deadline = time.time() + seconds
@@ -124,16 +139,9 @@ class TikTokRecorder:
             if remaining <= 0:
                 return
             if self._poll_wake.wait(timeout=min(remaining, 1.0)):
-                self._poll_wake.clear()
-                reason = self._take_poll_wake_reason()
-                if reason == "partial":
-                    partial_users = self._take_partial_poll_users()
-                    if partial_users:
-                        self._run_partial_poll_cycle(partial_users, label)
-                    continue
-                self._take_partial_poll_users()
-                logger.info("Recording ended — rechecking watchlist early")
-                return
+                if self._drain_poll_requests(label):
+                    logger.info("Recording ended — rechecking watchlist early")
+                    return
 
     def _should_stop(self) -> bool:
         return self._stop.is_set()
@@ -179,9 +187,15 @@ class TikTokRecorder:
                 }
             )
 
-    def _set_poll_in_progress(self, value: bool) -> None:
+    def _begin_poll(self) -> None:
         with self._state_lock:
-            self._poll_in_progress = value
+            self._poll_in_progress_depth += 1
+            self._poll_in_progress = self._poll_in_progress_depth > 0
+
+    def _end_poll(self) -> None:
+        with self._state_lock:
+            self._poll_in_progress_depth = max(0, self._poll_in_progress_depth - 1)
+            self._poll_in_progress = self._poll_in_progress_depth > 0
 
     def stop_user(self, username: str) -> bool:
         """Request graceful stop for one active recording."""
@@ -268,7 +282,6 @@ class TikTokRecorder:
             "telegram_uploads": telegram_uploads,
             "poll_in_progress": poll_in_progress,
             "activity": activity,
-            "convert_job": self.get_convert_job(),
             "ffmpeg": self.get_ffmpeg_info(),
         }
 
@@ -634,6 +647,11 @@ class TikTokRecorder:
         poll_users = self._poll_user_order(users)
         self._log_poll_plan(label, poll_users)
 
+        aborted = False
+        if self._drain_poll_requests(label):
+            logger.info(f"{label} poll restarting early (force check)")
+            return active_recordings, True
+
         for poll_index, username in enumerate(poll_users):
             if (
                 poll_index > 0
@@ -641,6 +659,10 @@ class TikTokRecorder:
                 and POLL_USER_DELAY_SECONDS > 0
             ):
                 time.sleep(POLL_USER_DELAY_SECONDS)
+
+            if self._drain_poll_requests(label):
+                aborted = True
+                break
 
             if username in active_recordings:
                 entry = active_recordings[username]
@@ -666,8 +688,12 @@ class TikTokRecorder:
                 groups["paused"].append(username)
                 continue
 
+            if username in self._checked_this_cycle:
+                continue
+
             try:
                 room_id = self._check_user_live(username)
+                self._checked_this_cycle.add(username)
 
                 if room_id is None:
                     groups["offline"].append(username)
@@ -691,18 +717,25 @@ class TikTokRecorder:
                 counts["started"] += 1
 
             except TikTokRecorderError as e:
+                self._checked_this_cycle.add(username)
                 groups["errors"].append(f"{username} ({e})")
                 counts["error"] += 1
 
             except RequestException as e:
+                self._checked_this_cycle.add(username)
                 logger.warning(f"  @{username}: network error during poll: {e}")
                 groups["errors"].append(f"{username} (network error)")
                 counts["error"] += 1
 
             except Exception as e:
+                self._checked_this_cycle.add(username)
                 logger.error(f"  @{username}: {e}", exc_info=True)
                 groups["errors"].append(f"{username} (unexpected error)")
                 counts["error"] += 1
+
+        if aborted:
+            logger.info(f"{label} poll restarting early (force check)")
+            return active_recordings, True
 
         logger.info(f"--- {label} ({len(users)} users) ---")
         if groups["offline"]:
@@ -748,41 +781,54 @@ class TikTokRecorder:
             active_recordings[username] = self._active_recordings[username]
             time.sleep(2.5)
 
-        return active_recordings
+        return active_recordings, False
 
-    def _run_poll_cycle(self, users: list[str], label: str) -> None:
-        self._set_poll_in_progress(True)
+    def _run_poll_cycle(self, users: list[str], label: str) -> bool:
+        self._checked_this_cycle = set()
+        self._begin_poll()
         self.record_activity("poll", f"{label} poll started")
+        aborted = False
         try:
-            self._active_recordings = self._poll_users_once(
+            self._active_recordings, aborted = self._poll_users_once(
                 users, self._active_recordings, label
             )
         finally:
-            self._set_poll_in_progress(False)
-            self.record_activity("poll", f"{label} poll finished")
+            self._end_poll()
+            if not aborted:
+                self.record_activity("poll", f"{label} poll finished")
+        return aborted
 
-    def _run_partial_poll_cycle(self, users: list[str], label: str) -> None:
+    def _run_partial_poll_cycle(self, users: list[str], label: str) -> bool:
         if not users:
-            return
+            return False
         if len(users) == 1:
             logger.info(f"{label} priority poll: checking @{users[0]}")
         else:
             logger.info(f"{label} priority poll: checking {len(users)} users")
-        self._set_poll_in_progress(True)
+        with self._state_lock:
+            nested = self._poll_in_progress_depth > 0
+        if not nested:
+            self._begin_poll()
         self.record_activity("poll", f"Priority check for {len(users)} user(s)")
         try:
-            self._active_recordings = self._poll_users_once(
+            self._active_recordings, aborted = self._poll_users_once(
                 users, self._active_recordings, label
             )
+            return aborted
         finally:
-            self._set_poll_in_progress(False)
+            if not nested:
+                self._end_poll()
 
     def _poll_users_loop(self, get_users, label):
         self._active_recordings = {}
 
         while not self._should_stop():
             try:
-                self._run_poll_cycle(get_users(), label)
+                while True:
+                    aborted = self._run_poll_cycle(get_users(), label)
+                    if not aborted:
+                        break
+                    logger.info(f"{label} poll restarting immediately (force check)")
 
                 if self._should_stop():
                     break
@@ -1190,101 +1236,16 @@ class TikTokRecorder:
                         active.add(str(output_path))
         return active
 
-    def get_convert_job(self) -> dict | None:
-        with self._convert_lock:
-            return dict(self._convert_job) if self._convert_job else None
+    def move_leftover_flvs(self) -> dict:
+        from tiktok_live_recorder.utils.utils import default_to_fix_dir
+        from tiktok_live_recorder.web.media import move_orphan_flv_files
 
-    def start_pending_flv_converts(self) -> dict:
-        from tiktok_live_recorder.web.media import find_orphan_flv_files
-
-        with self._convert_lock:
-            if self._convert_job and self._convert_job.get("running"):
-                return dict(self._convert_job)
-
-            pending = find_orphan_flv_files(
-                self._output_base(),
-                self.output,
-                self.active_recording_output_paths(),
-            )
-            self._convert_job = {
-                "running": True,
-                "total": len(pending),
-                "completed": 0,
-                "failed": 0,
-                "current": None,
-                "current_progress": None,
-                "results": [],
-            }
-            job_snapshot = dict(self._convert_job)
-
-        if not pending:
-            with self._convert_lock:
-                self._convert_job = {
-                    "running": False,
-                    "total": 0,
-                    "completed": 0,
-                    "failed": 0,
-                    "current": None,
-                    "current_progress": None,
-                    "results": [],
-                }
-            return dict(self._convert_job)
-
-        def worker():
-            active_paths = self.active_recording_output_paths()
-            for item in pending:
-                path = Path(item["path"])
-                with self._convert_lock:
-                    if self._convert_job:
-                        self._convert_job["current"] = item["filename"]
-                        self._convert_job["current_progress"] = {
-                            "percent": 0,
-                            "phase": "starting",
-                        }
-
-                def on_convert_progress(progress: dict) -> None:
-                    with self._convert_lock:
-                        if self._convert_job:
-                            self._convert_job["current_progress"] = progress
-
-                if str(path.resolve()) in active_paths:
-                    result = {
-                        "filename": item["filename"],
-                        "username": item["username"],
-                        "ok": False,
-                        "error": "skipped (recording in progress)",
-                    }
-                else:
-                    ok = VideoManagement.convert_flv_to_mp4(
-                        str(path),
-                        self.bitrate,
-                        self.ffmpeg_path,
-                        on_progress=on_convert_progress,
-                    )
-                    mp4_path = str(path).replace("_flv.mp4", ".mp4")
-                    if ok and Path(mp4_path).is_file():
-                        self._maybe_upload_to_telegram(item["username"], mp4_path)
-                    result = {
-                        "filename": item["filename"],
-                        "username": item["username"],
-                        "ok": ok,
-                        "error": None if ok else "conversion failed",
-                    }
-                with self._convert_lock:
-                    if self._convert_job:
-                        self._convert_job["results"].append(result)
-                        if result["ok"]:
-                            self._convert_job["completed"] += 1
-                        else:
-                            self._convert_job["failed"] += 1
-            with self._convert_lock:
-                if self._convert_job:
-                    self._convert_job["running"] = False
-                    self._convert_job["current"] = None
-                    self._convert_job["current_progress"] = None
-
-        Thread(target=worker, daemon=True, name="convert-pending-flv").start()
-        return job_snapshot
+        return move_orphan_flv_files(
+            self._output_base(),
+            self.output,
+            self.active_recording_output_paths(),
+            default_to_fix_dir(),
+        )
 
     def _output_base(self) -> Path:
         from tiktok_live_recorder.utils.utils import default_output_base

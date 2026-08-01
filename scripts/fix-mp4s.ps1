@@ -206,7 +206,50 @@ $job = $work | ForEach-Object -Parallel {
     $durationSec = 0.0
     if ($durRaw -match '^[\d.]+$') { $durationSec = [double]$durRaw }
 
-    $vf = "scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2,setsar=1"
+    $srcVideo = & ffprobe -v error -select_streams v:0 `
+        -show_entries stream=codec_name,pix_fmt -of csv=p=0 -- $File.FullName 2>$null
+    $srcVideoParts = @("$srcVideo".Trim() -split ',')
+    $srcPixFmt = if ($srcVideoParts.Count -ge 2) { $srcVideoParts[1].Trim().ToLowerInvariant() } else { '' }
+
+    $srcAudio = & ffprobe -v error -select_streams a:0 `
+        -show_entries stream=codec_name -of csv=p=0 -- $File.FullName 2>$null
+    $srcAudioCodec = "$srcAudio".Trim().ToLowerInvariant()
+
+    # Always re-encode video at the requested quality. setpts resets broken timestamps.
+    $rangeFix = if ($srcPixFmt -eq 'yuvj420p') {
+        ',scale=in_range=full:out_range=limited'
+    } else {
+        ''
+    }
+    $vf = "scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2,format=yuv420p${rangeFix},setsar=1,setpts=PTS-STARTPTS"
+
+    $encodeTailArgs = @(
+        '-avoid_negative_ts', 'make_zero',
+        '-reset_timestamps', '1',
+        '-pix_fmt', 'yuv420p',
+        '-profile:v', 'high',
+        '-tag:v', 'avc1',
+        '-max_muxing_queue_size', '9999'
+    )
+
+    $nvencVideoArgs = @(
+        '-c:v', 'h264_nvenc', '-preset', 'p5', '-tune', 'hq',
+        '-rc', 'vbr', '-cq', "$NvencCq", '-b:v', '0',
+        '-spatial-aq', '1', '-temporal-aq', '1', '-bf', '2'
+    )
+
+    $x264VideoArgs = @(
+        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20',
+        '-threads', "$CpuThreads"
+    )
+
+    function Test-EncodedVideo([string] $Path) {
+        if (-not (Test-Path -LiteralPath $Path)) { return $false }
+        if ((Get-Item -LiteralPath $Path).Length -le 0) { return $false }
+        $v = & ffprobe -v error -select_streams v:0 `
+            -show_entries stream=codec_name -of csv=p=0 -- $Path 2>$null
+        return ("$v".Trim().ToLowerInvariant() -eq 'h264')
+    }
 
     function Test-DashPlayable([string] $Path) {
         if (-not (Test-Path -LiteralPath $Path)) { return $false }
@@ -220,39 +263,77 @@ $job = $work | ForEach-Object -Parallel {
                 $parts[1].Trim().ToLowerInvariant() -eq 'yuv420p')
     }
 
-    function Invoke-Encode([string[]] $VideoArgs, [string] $Phase) {
+    function Get-FfmpegErrTail([string] $ErrFile, [int] $MaxLines = 4, [int] $MaxChars = 240) {
+        if (-not (Test-Path -LiteralPath $ErrFile)) { return $null }
+        $lines = @(Get-Content -LiteralPath $ErrFile -ErrorAction SilentlyContinue |
+            ForEach-Object { "$_".Trim() } |
+            Where-Object { $_ })
+        if (-not $lines.Count) { return $null }
+        $tail = if ($lines.Count -gt $MaxLines) {
+            $lines[($lines.Count - $MaxLines)..($lines.Count - 1)]
+        } else {
+            $lines
+        }
+        $text = $tail -join ' | '
+        if ($text.Length -gt $MaxChars) {
+            $text = $text.Substring(0, $MaxChars - 3) + '...'
+        }
+        return $text
+    }
+
+    function Save-FfmpegFailureLog([string] $ErrFile, [string] $SourceName, [string] $Phase) {
+        $failDir = Join-Path $OutputDir '_fix-mp4s-failures'
+        New-Item -ItemType Directory -Force -Path $failDir | Out-Null
+        $safe = ($SourceName -replace '[^\w.\-]', '_')
+        $dest = Join-Path $failDir ("{0}.{1}.log" -f $safe, $Phase)
+        if (Test-Path -LiteralPath $ErrFile) {
+            Copy-Item -LiteralPath $ErrFile -Destination $dest -Force
+            return $dest
+        }
+        return $null
+    }
+
+    function Invoke-FfmpegJob {
+        param(
+            [string] $Phase,
+            [string[]] $MiddleArgs,
+            [string] $InputPath = $File.FullName,
+            [string] $OutputPath = $out,
+            [switch] $TrackProgress,
+            [switch] $VerifyDashboardPlayable
+        )
+
         $progFile = Join-Path $env:TEMP ("fix-mp4s-prog-{0}.txt" -f [guid]::NewGuid().ToString('n'))
         $errFile = Join-Path $env:TEMP ("fix-mp4s-err-{0}.txt" -f [guid]::NewGuid().ToString('n'))
         Remove-Item -LiteralPath $progFile, $errFile -Force -ErrorAction SilentlyContinue
-        if (Test-Path -LiteralPath $out) {
-            Remove-Item -LiteralPath $out -Force -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath $OutputPath) {
+            Remove-Item -LiteralPath $OutputPath -Force -ErrorAction SilentlyContinue
         }
 
         $argList = @(
-            '-hide_banner', '-y', '-nostats', '-loglevel', 'error',
-            '-progress', $progFile,
-            '-fflags', '+genpts+igndts+discardcorrupt',
-            '-err_detect', 'ignore_err',
-            '-i', $File.FullName,
-            '-map', '0:v:0?', '-map', '0:a:0?',
-            '-vf', $vf
-        ) + $VideoArgs + @(
-            '-c:a', 'aac', '-b:a', '160k', '-ac', '2',
-            '-movflags', '+faststart',
-            '-avoid_negative_ts', 'make_zero',
-            '-pix_fmt', 'yuv420p',
-            '-profile:v', 'high',
-            '-tag:v', 'avc1',
-            '-max_muxing_queue_size', '9999',
-            $out
+            '-hide_banner', '-y', '-nostats', '-loglevel', 'error'
         )
+        if ($TrackProgress) {
+            $argList += '-progress', $progFile
+        }
+        $argList += '-fflags', '+genpts+igndts+discardcorrupt'
+        $argList += '-err_detect', 'ignore_err'
+        if ($InputPath -ceq $File.FullName) {
+            $argList += '-ignore_editlist', '1'
+        }
+        $argList += '-i', $InputPath
+        $argList += $MiddleArgs
+        $argList += $OutputPath
 
-        $null = $Live.AddOrUpdate($File.Name, "0% $Phase", { param($k, $v) "0% $Phase" })
+        if ($TrackProgress) {
+            $null = $Live.AddOrUpdate($File.Name, "0% $Phase", { param($k, $v) "0% $Phase" })
+        }
         $proc = Start-Process -FilePath 'ffmpeg' -ArgumentList $argList `
             -WindowStyle Hidden -PassThru -RedirectStandardError $errFile
+        $code = -1
         try {
             while (-not $proc.HasExited) {
-                if (Test-Path -LiteralPath $progFile) {
+                if ($TrackProgress -and (Test-Path -LiteralPath $progFile)) {
                     $lines = @(Get-Content -LiteralPath $progFile -ErrorAction SilentlyContinue)
                     $outUs = $null
                     foreach ($line in $lines) {
@@ -274,31 +355,167 @@ $job = $work | ForEach-Object -Parallel {
             $proc.WaitForExit()
             $code = $proc.ExitCode
         } finally {
-            $null = $Live.TryRemove($File.Name, [ref]$null)
-            Remove-Item -LiteralPath $progFile, $errFile -Force -ErrorAction SilentlyContinue
+            if ($TrackProgress) {
+                $null = $Live.TryRemove($File.Name, [ref]$null)
+            }
         }
-        return ($code -eq 0 -and (Test-DashPlayable $out))
+
+        $verified = if ($VerifyDashboardPlayable) {
+            Test-DashPlayable $OutputPath
+        } else {
+            Test-EncodedVideo $OutputPath
+        }
+        $playable = ($code -eq 0) -and $verified
+        $reason = $null
+        $logFile = $null
+        if (-not $playable) {
+            $reason = Get-FfmpegErrTail -ErrFile $errFile
+            $logFile = Save-FfmpegFailureLog -ErrFile $errFile -SourceName $File.Name -Phase $Phase
+            if (-not $reason) {
+                if ($code -ne 0) {
+                    $reason = "ffmpeg exit $code"
+                } elseif (Test-Path -LiteralPath $OutputPath) {
+                    $reason = if ($VerifyDashboardPlayable) {
+                        'output failed ffprobe (not H.264/yuv420p)'
+                    } else {
+                        'intermediate encode missing H.264 video'
+                    }
+                } else {
+                    $reason = 'no output file produced'
+                }
+            }
+        }
+
+        Remove-Item -LiteralPath $progFile, $errFile -Force -ErrorAction SilentlyContinue
+        return [pscustomobject]@{
+            Ok       = $playable
+            Phase    = $Phase
+            ExitCode = $code
+            Reason   = $reason
+            LogFile  = $logFile
+        }
+    }
+
+    function Get-RemuxMapArgs([string] $InputPath) {
+        $hasAudio = & ffprobe -v error -select_streams a:0 `
+            -show_entries stream=codec_type -of csv=p=0 -- $InputPath 2>$null
+        if ("$hasAudio".Trim()) {
+            return @('-map', '0:v:0?', '-map', '0:a:0?')
+        }
+        return @('-map', '0:v:0?')
+    }
+
+    function Format-EncodeFailures([object[]] $Attempts, [bool] $NoCpuFallback) {
+        $parts = foreach ($a in $Attempts) {
+            $bit = $a.Phase
+            if ($a.ExitCode -ne 0) { $bit += " exit $($a.ExitCode)" }
+            if ($a.Reason) { $bit += ": $($a.Reason)" }
+            if ($a.LogFile) { $bit += " [log: $($a.LogFile)]" }
+            $bit
+        }
+        $head = if ($NoCpuFallback -and $Attempts.Count -eq 1 -and $Attempts[0].Phase -eq 'nvenc') {
+            'NVENC failed (no CPU fallback)'
+        } else {
+            'could not produce dashboard-playable H.264'
+        }
+        return "$head — " + ($parts -join '; ')
+    }
+
+    function Get-StreamMapArgs([string[]] $AudioArgs) {
+        if ($AudioArgs -contains '-an') {
+            return @('-map', '0:v:0?')
+        }
+        return @('-map', '0:v:0?', '-map', '0:a:0?')
+    }
+
+    function Get-AudioEncodeAttempts([string] $Codec) {
+        $aacReencode = @(
+            '-af', 'aresample=async=1:first_pts=0',
+            '-c:a', 'aac', '-b:a', '160k', '-ac', '2'
+        )
+        if ($Codec -eq 'aac') {
+            return @(
+                [pscustomobject]@{ Label = 'aac-copy'; Args = @('-c:a', 'copy') },
+                [pscustomobject]@{ Label = 'aac-re'; Args = $aacReencode },
+                [pscustomobject]@{ Label = 'an'; Args = @('-an') }
+            )
+        }
+        return @(
+            [pscustomobject]@{ Label = 'aac-re'; Args = $aacReencode },
+            [pscustomobject]@{ Label = 'an'; Args = @('-an') }
+        )
+    }
+
+    function Invoke-VideoEncode([string] $Phase, [string[]] $VideoArgs, [string[]] $AudioArgs) {
+        $tempMkv = Join-Path $env:TEMP ("fix-mp4s-{0}-{1}.mkv" -f [guid]::NewGuid().ToString('n'), $Phase)
+        try {
+            # Corrupt salvaged MP4s often fail the MP4 muxer during NVENC. Encode to MKV
+            # at the requested quality, then remux to dashboard MP4 without re-encoding.
+            $encodeMiddle = (Get-StreamMapArgs -AudioArgs $AudioArgs) + @(
+                '-vf', $vf
+            ) + $VideoArgs + $AudioArgs + $encodeTailArgs
+            $encode = Invoke-FfmpegJob -Phase $Phase -TrackProgress `
+                -OutputPath $tempMkv `
+                -MiddleArgs $encodeMiddle `
+                -VerifyDashboardPlayable:$false
+            if (-not $encode.Ok) {
+                return $encode
+            }
+
+            $remuxPhase = "$Phase+mp4"
+            $remuxMiddle = (Get-RemuxMapArgs -InputPath $tempMkv) + @(
+                '-c', 'copy',
+                '-movflags', '+faststart',
+                '-tag:v', 'avc1'
+            )
+            $remux = Invoke-FfmpegJob -Phase $remuxPhase `
+                -InputPath $tempMkv `
+                -OutputPath $out `
+                -MiddleArgs $remuxMiddle `
+                -VerifyDashboardPlayable
+            return $remux
+        } finally {
+            Remove-Item -LiteralPath $tempMkv -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    function Try-VideoEncode([string] $EncoderPhase, [string[]] $VideoArgs) {
+        $failed = @()
+        foreach ($audio in (Get-AudioEncodeAttempts -Codec $srcAudioCodec)) {
+            $phase = if ($audio.Label -eq 'aac-copy') { $EncoderPhase } else { "$EncoderPhase+$($audio.Label)" }
+            $enc = Invoke-VideoEncode -Phase $phase -VideoArgs $VideoArgs -AudioArgs $audio.Args
+            if ($enc.Ok) {
+                return [pscustomobject]@{ Result = $enc; Failures = $failed }
+            }
+            $failed += $enc
+        }
+        return [pscustomobject]@{ Result = $null; Failures = $failed }
     }
 
     $used = $null
     $ok = $false
+    $failures = @()
 
     if ($PreferNvenc) {
-        $ok = Invoke-Encode -VideoArgs @(
-            '-c:v', 'h264_nvenc', '-preset', 'p5', '-tune', 'hq',
-            '-rc', 'vbr', '-cq', "$NvencCq", '-b:v', '0',
-            '-spatial-aq', '1', '-temporal-aq', '1', '-bf', '2'
-        ) -Phase 'nvenc'
-        if ($ok) { $used = 'nvenc' }
+        $try = Try-VideoEncode -EncoderPhase 'nvenc' -VideoArgs $nvencVideoArgs
+        if ($try.Result) {
+            $ok = $true
+            $used = 'nvenc'
+        } else {
+            $failures = @($try.Failures)
+        }
     }
 
     # CPU only when Encoder=Cpu / NVENC unavailable, or -AllowCpuFallback.
     if (-not $ok -and (-not $PreferNvenc -or $AllowCpuFallback)) {
-        $ok = Invoke-Encode -VideoArgs @(
-            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20',
-            '-threads', "$CpuThreads"
-        ) -Phase ($PreferNvenc ? 'x264-fb' : 'x264')
-        if ($ok) { $used = $PreferNvenc ? 'x264-fallback' : 'x264' }
+        $cpuPhase = $PreferNvenc ? 'x264-fb' : 'x264'
+        $try = Try-VideoEncode -EncoderPhase $cpuPhase -VideoArgs $x264VideoArgs
+        if ($try.Result) {
+            $ok = $true
+            $used = $PreferNvenc ? 'x264-fallback' : 'x264'
+        } else {
+            $failures += $try.Failures
+        }
     }
 
     $result.Elapsed = $sw.Elapsed
@@ -316,9 +533,8 @@ $job = $work | ForEach-Object -Parallel {
         Remove-Item -LiteralPath $out -Force -ErrorAction SilentlyContinue
     }
     $result.Status = 'fail'
-    $result.Detail = ($PreferNvenc -and -not $AllowCpuFallback) ?
-        'NVENC failed (no CPU fallback)' :
-        'could not produce dashboard-playable H.264'
+    $noCpuFallback = $PreferNvenc -and -not $AllowCpuFallback
+    $result.Detail = Format-EncodeFailures -Attempts $failures -NoCpuFallback $noCpuFallback
     return [pscustomobject]$result
 } -ThrottleLimit $Parallel -AsJob
 
@@ -439,6 +655,9 @@ Write-Host '┌─ summary ─────────────────�
 Write-Host ("│ Done in {0}" -f (Format-Duration $swAll.Elapsed))
 Write-Host ("│ ok={0}  (nvenc={1}  fallback={2}  x264={3})  skip={4}  fail={5}" -f $ok, $nv, $fb, $cpu, $skip, $fail)
 Write-Host "│ -> $outputDir"
+if ($fail -gt 0) {
+    Write-Host "│ failure logs: $outputDir\_fix-mp4s-failures\"
+}
 Write-Host '│ OK files are ffprobe-verified H.264/yuv420p for the dashboard <video>.'
 Write-Host '└────────────────────────────────────────────────────' -ForegroundColor Cyan
 Write-Host ""

@@ -72,14 +72,13 @@
           </div>
           <div class="panel-head-actions">
             <button
-              id="convert-pending-btn"
-              class="btn btn-ghost"
+              id="move-leftover-btn"
+              class="btn btn-ghost hidden"
               type="button"
-              disabled
-              title="Convert leftover FLV recordings that failed to finalize"
+              title="Move leftover FLV recordings to to_fix/ for external conversion"
             >
-              Convert leftover FLV
-              <span id="convert-pending-count" class="badge badge-count hidden">0</span>
+              Move leftover FLVs
+              <span id="move-leftover-count" class="badge badge-count hidden">0</span>
             </button>
             <button id="refresh-media-btn" class="btn btn-ghost">Refresh</button>
           </div>
@@ -119,6 +118,10 @@
               >
                 Close
               </button>
+            </div>
+            <div id="player-actions" class="media-player-actions hidden" aria-label="User actions"></div>
+            <div id="player-file-actions" class="media-player-actions hidden" aria-label="File actions">
+              <button id="player-delete" class="btn btn-ghost btn-small" type="button">Delete</button>
             </div>
             <video id="media-player-video" controls preload="metadata" playsinline></video>
           </aside>

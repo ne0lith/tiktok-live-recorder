@@ -10,16 +10,24 @@ import {
 } from "./format.js";
 import {
   STATE_SORT_ORDER,
+  STORAGE_HIDE_PAUSED_KEY,
+  hidePausedUsers,
   latestMedia,
   latestStatus,
   selectedProfile,
+  setHidePausedUsers,
   setLatestStatus,
   setSelectedProfileValue,
   setStatusFilter,
   statusFilter,
 } from "./state.js";
-import { refreshPendingConvertCount, renderMedia, sumLibraryBytesForUser, syncConvertJobUi } from "./media.js";
+import { renderMedia, sumLibraryBytesForUser } from "./media.js";
 import { renderTelegramUploads, syncRuntimeControls } from "./runtime-ui.js";
+import {
+  buildUserActionButtons,
+  profileLinkMarkup,
+  runUserAction,
+} from "./user-actions.js";
 
 const statusBoard = document.getElementById("status-board");
 const statusMeta = document.getElementById("status-meta");
@@ -119,7 +127,12 @@ function countByState(rows) {
 }
 
 function rowMatchesFilter(row) {
-  if (statusFilter === "all") return true;
+  if (statusFilter === "all") {
+    if (hidePausedUsers && row.state === "paused") {
+      return usernamesMatch(row.username, selectedProfile);
+    }
+    return true;
+  }
   if (statusFilter === "live") return row.state === "live" || row.state === "starting";
   if (statusFilter === "recording") {
     return row.state === "recording" || row.state === "converting" || row.state === "stopping";
@@ -230,7 +243,9 @@ export function renderSummaryChips(status) {
     )
     .join("");
 
-  summaryChips.innerHTML = `${filterChips}${focusChip}<div class="summary-chips-meta">${metaChips.join("")}</div>`;
+  const hidePausedChip = `<button type="button" class="summary-chip summary-chip--toggle${hidePausedUsers ? " is-active" : ""}" data-toggle="hide-paused" title="Hide paused users from the All view">Hide paused</button>`;
+
+  summaryChips.innerHTML = `${filterChips}${hidePausedChip}${focusChip}<div class="summary-chips-meta">${metaChips.join("")}</div>`;
 }
 
 export function setStatusFilterValue(filter) {
@@ -238,41 +253,17 @@ export function setStatusFilterValue(filter) {
   if (latestStatus) renderStatus(latestStatus);
 }
 
-function profileLinkMarkup(username, { active = false } = {}) {
-  return `<button type="button" class="profile-link${active ? " is-active" : ""}" data-profile="${username}">@${username}</button>`;
+export function loadStatusPreferences() {
+  setHidePausedUsers(localStorage.getItem(STORAGE_HIDE_PAUSED_KEY) === "1");
+}
+
+export function saveHidePausedPreference(value) {
+  setHidePausedUsers(value);
+  localStorage.setItem(STORAGE_HIDE_PAUSED_KEY, value ? "1" : "0");
 }
 
 function renderStatusActions(row, status) {
-  const paused = (status.paused || [])
-    .map((u) => u.toLowerCase())
-    .includes(row.username.toLowerCase());
-  const isWatchlist = status.mode === "watchlist";
-  const canStop =
-    row.state === "recording" ||
-    row.state === "converting" ||
-    row.state === "stopping";
-  const buttons = [];
-
-  if (canStop) {
-    buttons.push(
-      `<button class="btn btn-danger btn-small" data-action="stop" data-user="${row.username}">Stop</button>`,
-    );
-  }
-  buttons.push(
-    paused
-      ? `<button class="btn btn-ghost btn-small" data-action="resume" data-user="${row.username}">Resume</button>`
-      : `<button class="btn btn-ghost btn-small" data-action="pause" data-user="${row.username}">Pause</button>`,
-  );
-  if (isWatchlist) {
-    buttons.push(
-      `<button class="btn btn-ghost btn-small" data-action="check" data-user="${row.username}" title="Check if this user is live now">Check</button>`,
-    );
-    buttons.push(
-      `<button class="btn btn-ghost btn-small" data-action="remove" data-user="${row.username}">Remove</button>`,
-    );
-  }
-
-  return `<div class="status-actions">${buttons.join("")}</div>`;
+  return buildUserActionButtons(row.username, status, row);
 }
 
 function formatStateLabel(row) {
@@ -405,6 +396,7 @@ export function setSelectedProfile(username) {
   if (selectedProfile) {
     requestAnimationFrame(() => scrollToFocusedUser());
   }
+  window.dispatchEvent(new CustomEvent("ttlr:profile-changed"));
 }
 
 export function readProfileFromHash() {
@@ -433,18 +425,17 @@ export function renderStatus(status) {
   renderActivityFeed(status.activity || []);
   renderTelegramUploads(status.telegram_uploads || []);
   syncRuntimeControls(status);
-  if (status.convert_job?.running) {
-    syncConvertJobUi(status.convert_job);
-  }
 
   if (!rows.length) {
     if (statusBoard) {
       statusBoard.innerHTML = `<p class="empty">${emptyUsersMessage(status)}</p>`;
     }
+    window.dispatchEvent(new CustomEvent("ttlr:status-updated"));
     return;
   }
 
   renderStatusBoard(rows, status);
+  window.dispatchEvent(new CustomEvent("ttlr:status-updated"));
 }
 
 export async function refreshStatus() {
@@ -453,10 +444,18 @@ export async function refreshStatus() {
 }
 
 export function initStatusInteractions() {
+  loadStatusPreferences();
+
   summaryChips?.addEventListener("click", (event) => {
     const clearFocus = event.target.closest("[data-clear-focus]");
     if (clearFocus) {
       setSelectedProfile(null);
+      return;
+    }
+    const toggle = event.target.closest("[data-toggle='hide-paused']");
+    if (toggle) {
+      saveHidePausedPreference(!hidePausedUsers);
+      if (latestStatus) renderStatus(latestStatus);
       return;
     }
     const chip = event.target.closest("[data-filter]");
@@ -481,29 +480,7 @@ async function handleStatusAction(event) {
   const button = event.target.closest("button[data-action]");
   if (!button) return;
   const { action, user } = button.dataset;
-  const { showToast } = await import("./api.js");
-  try {
-    if (action === "stop") {
-      await api(`/api/recordings/${encodeURIComponent(user)}/stop`, { method: "POST" });
-      showToast(`Stopping @${user}`);
-    } else if (action === "pause") {
-      await api(`/api/users/${encodeURIComponent(user)}/pause`, { method: "POST" });
-      showToast(`Paused @${user}`);
-    } else if (action === "resume") {
-      await api(`/api/users/${encodeURIComponent(user)}/resume`, { method: "POST" });
-      showToast(`Resumed @${user}`);
-    } else if (action === "check") {
-      await api(`/api/users/${encodeURIComponent(user)}/poll`, { method: "POST" });
-      showToast(`Checking @${user}`);
-    } else if (action === "remove") {
-      if (!confirm(`Remove @${user} from the watchlist?`)) return;
-      await api(`/api/users/${encodeURIComponent(user)}`, { method: "DELETE" });
-      showToast(`Removed @${user}`);
-    }
-    await refreshStatus();
-  } catch (error) {
-    showToast(error.message);
-  }
+  await runUserAction(action, user, { onSuccess: refreshStatus });
 }
 
 // noop kept for media.js import compatibility
