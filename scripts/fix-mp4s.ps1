@@ -418,7 +418,7 @@ $job = $work | ForEach-Object -Parallel {
         } else {
             'could not produce dashboard-playable H.264'
         }
-        return "$head — " + ($parts -join '; ')
+        return "$head - " + ($parts -join '; ')
     }
 
     function Get-StreamMapArgs([string[]] $AudioArgs) {

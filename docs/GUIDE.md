@@ -280,7 +280,7 @@ If conversion fails (common with old FFmpeg on HEVC streams), the `*_flv.mp4` re
 
 1. Open the dashboard **Media library**.
 2. Click **Move leftover FLVs** (button appears only when orphan files exist; badge shows count).
-3. Confirm — files are moved to `to_fix/` at the repo root (flat, no username subdirs).
+3. Confirm - files are moved to `to_fix/` at the repo root (flat, no username subdirs).
 4. Run `uv run poe fix-mp4s` (or `scripts/fix-mp4s.ps1`) with `-InputDir` pointing at `to_fix/`.
 
 Orphan files are `*_flv.mp4` on disk that are **not** the active output of a current recording. Active recordings are never touched.

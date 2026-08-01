@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.18.1] - 2026-08-01
+
+### Changed
+
+- **Docs/scripts**: use ASCII hyphens instead of em dashes in changelog, guide, and `fix-mp4s` failure output
+
 ## [8.18.0] - 2026-08-01
 
 ### Added
@@ -16,8 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Dashboard**: **Move leftover FLVs** replaces **Convert leftover FLV** — orphan `*_flv.mp4` files are moved to repo-root `to_fix/` (flat) instead of converted in-app; button is hidden when none are found. API: `GET /api/media/leftover-flv`, `POST /api/media/move-leftover-flv` (replaces `pending-convert` / `convert-pending`).
-- **Scripts**: `fix-mp4s` — timestamp reset, full-range JPEG (`yuvj420p`) handling, audio encode fallbacks, and failure logs under `_fix-mp4s-failures/`
+- **Dashboard**: **Move leftover FLVs** replaces **Convert leftover FLV** - orphan `*_flv.mp4` files are moved to repo-root `to_fix/` (flat) instead of converted in-app; button is hidden when none are found. API: `GET /api/media/leftover-flv`, `POST /api/media/move-leftover-flv` (replaces `pending-convert` / `convert-pending`).
+- **Scripts**: `fix-mp4s` - timestamp reset, full-range JPEG (`yuvj420p`) handling, audio encode fallbacks, and failure logs under `_fix-mp4s-failures/`
 
 ### Fixed
 
@@ -550,7 +556,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.18.0...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.18.1...HEAD
+[8.18.1]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.18.0...v8.18.1
 [8.18.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.17.0...v8.18.0
 [8.17.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.16.0...v8.17.0
 [8.16.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.15.5...v8.16.0
