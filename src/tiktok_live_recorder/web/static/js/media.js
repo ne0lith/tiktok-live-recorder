@@ -71,6 +71,26 @@ function hidePlayerRepairButton() {
   if (playerRepairBtn) playerRepairBtn.disabled = false;
 }
 
+export function syncPlayerRepairFromStatus(status) {
+  if (!playerRepairBtn || !libraryState.playingItem) return;
+  const item = libraryState.playingItem;
+  const jobs = status?.media_jobs || [];
+  const job = jobs.find(
+    (entry) => entry.filename === item.filename || (item.path && entry.path === item.path),
+  );
+  if (!job) return;
+  playerRepairBtn.classList.remove("hidden");
+  playerRepairBtn.disabled = true;
+  if (job.status === "converting") {
+    playerRepairBtn.textContent = item.needs_convert ? "Converting…" : "Fixing…";
+  } else {
+    playerRepairBtn.textContent =
+      job.queue_position && job.queue_position > 1
+        ? `Queued (#${job.queue_position})`
+        : "Queued…";
+  }
+}
+
 export function loadLibraryPreferences() {
   const savedSort = localStorage.getItem(STORAGE_SORT_KEY);
   if (savedSort) libraryState.sortMode = savedSort;
@@ -624,6 +644,7 @@ export function initMediaInteractions() {
 
   window.addEventListener("ttlr:status-updated", () => {
     if (libraryState.playingUsername) renderPlayerActions();
+    if (latestStatus) syncPlayerRepairFromStatus(latestStatus);
   });
 
   window.addEventListener("ttlr:profile-changed", () => {

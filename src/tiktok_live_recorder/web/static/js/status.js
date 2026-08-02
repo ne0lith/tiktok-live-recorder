@@ -32,6 +32,7 @@ import {
 const statusBoard = document.getElementById("status-board");
 const statusMeta = document.getElementById("status-meta");
 const pollSummary = document.getElementById("poll-summary");
+const convertQueueSummary = document.getElementById("convert-queue-summary");
 const summaryChips = document.getElementById("summary-chips");
 const addUserForm = document.getElementById("add-user-form");
 const forcePollBtn = document.getElementById("force-poll-btn");
@@ -208,6 +209,41 @@ function renderPollSummary(status) {
   pollSummary.innerHTML = `${label}${chunks}`;
 }
 
+function renderConvertQueueSummary(status) {
+  if (!convertQueueSummary) return;
+  const queue = status.convert_queue || {};
+  const jobs = status.media_jobs || [];
+  const pending = queue.pending || 0;
+  const active = queue.active || 0;
+  const max = queue.max_concurrent || 1;
+  const total = pending + active;
+
+  if (!total && !jobs.length) {
+    convertQueueSummary.classList.add("hidden");
+    convertQueueSummary.innerHTML = "";
+    document.body.classList.remove("convert-queue-active");
+    return;
+  }
+
+  document.body.classList.add("convert-queue-active");
+  const queueLine = total
+    ? `<span class="poll-label">Convert queue</span> ${active} active · ${pending} queued · max ${max}`
+    : "";
+  const jobLines = jobs
+    .map((job) => {
+      const state =
+        job.status === "converting"
+          ? "converting"
+          : `queued${job.queue_position ? ` (#${job.queue_position})` : ""}`;
+      const action = job.mode === "flv" ? "convert" : "repair";
+      return `<div class="poll-group"><span class="poll-group-label">@${job.username || "?"}</span> ${job.filename || "?"} · ${action} · ${state}</div>`;
+    })
+    .join("");
+
+  convertQueueSummary.classList.remove("hidden");
+  convertQueueSummary.innerHTML = `${queueLine}${jobLines}`;
+}
+
 export function renderSummaryChips(status) {
   if (!summaryChips) return;
   const rows = deriveRows(status);
@@ -225,6 +261,13 @@ export function renderSummaryChips(status) {
   const metaChips = [];
   if (status.poll_in_progress) {
     metaChips.push(`<span class="summary-chip summary-chip--meta summary-chip--polling">Poll running…</span>`);
+  }
+  const queue = status.convert_queue || {};
+  const queueBusy = (queue.pending || 0) + (queue.active || 0);
+  if (queueBusy > 0) {
+    metaChips.push(
+      `<span class="summary-chip summary-chip--meta summary-chip--polling">Convert ${queue.active || 0}/${queue.max_concurrent || 1} · ${queue.pending || 0} queued</span>`,
+    );
   }
   metaChips.push(`<span class="summary-chip summary-chip--meta">Last poll ${formatTimestamp(status.last_poll_at)}</span>`);
   metaChips.push(`<span class="summary-chip summary-chip--meta">Next ${formatNextPoll(status)}</span>`);
@@ -439,6 +482,7 @@ export function renderStatus(status) {
   }
 
   renderPollSummary(status);
+  renderConvertQueueSummary(status);
   renderSummaryChips(status);
   renderActivityFeed(status.activity || []);
   renderTelegramUploads(status.telegram_uploads || []);

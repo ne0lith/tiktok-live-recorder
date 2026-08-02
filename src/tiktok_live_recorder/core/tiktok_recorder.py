@@ -83,6 +83,7 @@ class TikTokRecorder:
         self._activity: deque[dict] = deque(maxlen=50)
         self._poll_wake_reason: str | None = None
         self._partial_poll_users: list[str] = []
+        self._media_jobs: dict[str, dict] = {}
         self._convert_queue = ConvertQueue(max_concurrent=self.max_concurrent_converts)
 
     @staticmethod
@@ -200,6 +201,31 @@ class TikTokRecorder:
                 }
             )
 
+    def _upsert_media_job(self, path: str, **fields) -> None:
+        with self._state_lock:
+            job = dict(self._media_jobs.get(path, {}))
+            job.update(fields)
+            self._media_jobs[path] = job
+
+    def _remove_media_job(self, path: str) -> None:
+        with self._state_lock:
+            self._media_jobs.pop(path, None)
+
+    def _media_jobs_snapshot(self) -> list[dict]:
+        with self._state_lock:
+            jobs = []
+            for path, job in self._media_jobs.items():
+                entry = dict(job)
+                entry["path"] = path
+                jobs.append(entry)
+            jobs.sort(
+                key=lambda item: (
+                    0 if item.get("status") == "converting" else 1,
+                    item.get("queued_at") or 0,
+                )
+            )
+            return jobs
+
     def _begin_poll(self) -> None:
         with self._state_lock:
             self._poll_in_progress_depth += 1
@@ -293,6 +319,7 @@ class TikTokRecorder:
             "use_telegram": self.use_telegram,
             "max_concurrent_converts": self.max_concurrent_converts,
             "convert_queue": convert_queue,
+            "media_jobs": self._media_jobs_snapshot(),
             "last_poll_at": self._last_poll_at,
             "poll_label": self._poll_label,
             "poll": snapshot,
@@ -1325,21 +1352,55 @@ class TikTokRecorder:
 
         is_flv = path.name.endswith("_flv.mp4")
         mode = "flv" if is_flv else "repair"
+        label = "convert" if is_flv else "repair"
+        media_key = str(path.resolve()) if path.exists() else str(path)
+
+        def on_start() -> None:
+            self._upsert_media_job(
+                media_key, status="converting", started_at=time.time()
+            )
+            self.record_activity(
+                "media",
+                f"Manual {label} started: {path.name}",
+                username=username,
+            )
+            logger.info("[@%s] Manual %s started: %s", username, label, path.name)
 
         def on_complete(success: bool, output: str) -> None:
-            label = "converted" if is_flv else "repaired"
+            self._remove_media_job(media_key)
             outcome = "succeeded" if success else "failed"
             self.record_activity(
                 "media",
                 f"Manual {label} {outcome}: {path.name}",
                 username=username,
             )
+            logger.info(
+                "[@%s] Manual %s %s: %s",
+                username,
+                label,
+                outcome,
+                path.name,
+            )
             if success and not is_flv:
-                from tiktok_live_recorder.web.thumbnails import delete_thumbnail
+                from tiktok_live_recorder.web.thumbnails import reset_thumbnail_state
 
-                delete_thumbnail(path)
+                reset_thumbnail_state(path)
             self._wake_poll_loop(reason="conversion-finished")
 
+        self._upsert_media_job(
+            media_key,
+            username=username,
+            filename=path.name,
+            mode=mode,
+            status="queued",
+            queued_at=time.time(),
+        )
+        self.record_activity(
+            "media",
+            f"Queued manual {label}: {path.name}",
+            username=username,
+        )
+        logger.info("[@%s] Queueing manual %s: %s", username, label, path.name)
         queue_position = self._convert_queue.enqueue(
             ConvertJob(
                 user=username,
@@ -1347,11 +1408,14 @@ class TikTokRecorder:
                 bitrate=self.bitrate,
                 ffmpeg_path=self.ffmpeg_path,
                 on_progress=None,
-                on_start=None,
+                on_start=on_start,
                 on_complete=on_complete,
                 mode=mode,
             )
         )
+        with self._state_lock:
+            if media_key in self._media_jobs:
+                self._media_jobs[media_key]["queue_position"] = queue_position
         return {"queued": True, "position": queue_position, "mode": mode}
 
     def move_leftover_flvs(self) -> dict:

@@ -6,6 +6,7 @@ const KIND_LABELS = {
   poll: "Poll",
   recording: "Recording",
   telegram: "Telegram",
+  media: "Media",
 };
 
 export function renderActivityFeed(events) {

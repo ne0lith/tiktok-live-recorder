@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.20.1] - 2026-08-02
+
+### Added
+
+- **Dashboard**: convert queue strip under Live status, summary chip, and **Media** activity entries when manual **Fix video** / **Convert** jobs are queued, started, and finished
+- **Status API**: `media_jobs` lists in-flight manual repair/convert jobs with queue position
+
+### Fixed
+
+- **Manual repair**: log queue/start/finish events; track jobs for the full queue lifecycle (not only on completion)
+- **Thumbnails**: clear unplayable-probe cache after a successful in-place MP4 repair so previews can regenerate
+
 ## [8.20.0] - 2026-08-02
 
 ### Added
@@ -582,7 +594,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.0...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.1...HEAD
+[8.20.1]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.0...v8.20.1
 [8.20.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.19.0...v8.20.0
 [8.19.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.18.1...v8.19.0
 [8.18.1]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.18.0...v8.18.1

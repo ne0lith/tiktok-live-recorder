@@ -38,14 +38,25 @@ def sync_convert_queue(monkeypatch):
             if job.on_start:
                 job.on_start()
             mp4_output = job.output_path.replace("_flv.mp4", ".mp4")
-            converted = VideoManagement.convert_flv_to_mp4(
-                job.output_path,
-                job.bitrate,
-                job.ffmpeg_path,
-                on_progress=job.on_progress,
+            if job.mode == "repair":
+                converted = VideoManagement.repair_mp4_file(
+                    job.output_path,
+                    job.bitrate,
+                    job.ffmpeg_path,
+                    on_progress=job.on_progress,
+                )
+                success = converted
+            else:
+                converted = VideoManagement.convert_flv_to_mp4(
+                    job.output_path,
+                    job.bitrate,
+                    job.ffmpeg_path,
+                    on_progress=job.on_progress,
+                )
+                success = converted and Path(mp4_output).is_file()
+            job.on_complete(
+                success, mp4_output if job.mode != "repair" else job.output_path
             )
-            success = converted and Path(mp4_output).is_file()
-            job.on_complete(success, mp4_output)
         except Exception:
             mp4_output = job.output_path.replace("_flv.mp4", ".mp4")
             job.on_complete(False, mp4_output)
@@ -714,6 +725,30 @@ def test_poll_users_once_skips_duplicate_room(monkeypatch):
     )
 
     recorder._recording_worker.assert_not_called()
+
+
+def test_enqueue_media_repair_tracks_job_and_activity(tmp_path, monkeypatch):
+    recorder = TikTokRecorder(
+        RecorderConfig(mode=Mode.WATCHLIST, users=["alpha"], cookies={})
+    )
+    broken = tmp_path / "TK_alpha_2026.01.01_12-00-00.mp4"
+    broken.write_bytes(b"broken")
+
+    monkeypatch.setattr(
+        "tiktok_live_recorder.utils.video_management.VideoManagement.repair_mp4_file",
+        lambda *_args, **_kwargs: True,
+    )
+
+    result = recorder.enqueue_media_repair("alpha", str(broken))
+    assert result["queued"] is True
+    assert result["mode"] == "repair"
+
+    status = recorder.get_status()
+    assert status["media_jobs"] == []
+    messages = [entry["message"] for entry in status["activity"]]
+    assert any("Queued manual repair" in message for message in messages)
+    assert any("Manual repair started" in message for message in messages)
+    assert any("Manual repair succeeded" in message for message in messages)
 
 
 def test_start_recording_enqueues_conversion(tmp_path, monkeypatch):

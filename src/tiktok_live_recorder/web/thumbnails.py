@@ -215,3 +215,13 @@ def ensure_thumbnail(
 
 def delete_thumbnail(video_path: Path) -> None:
     thumbnail_path_for(video_path).unlink(missing_ok=True)
+
+
+def reset_thumbnail_state(video_path: Path) -> None:
+    """Drop cached thumbnail and unplayable-probe state after a successful repair."""
+    delete_thumbnail(video_path)
+    key = _probe_cache_key(video_path)
+    if key is None:
+        return
+    with _thumb_probe_guard:
+        _thumb_probe_failures.pop(key, None)

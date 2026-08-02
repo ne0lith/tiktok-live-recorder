@@ -261,6 +261,7 @@ class StubRecorder:
             "use_telegram": self.use_telegram,
             "max_concurrent_converts": self.max_concurrent_converts,
             "convert_queue": {"pending": 0, "active": 0, "max_concurrent": 1},
+            "media_jobs": list(getattr(self, "media_jobs", [])),
             "telegram_uploads": list(self._telegram_uploads),
             "poll": {},
             "poll_label": None,
@@ -291,6 +292,17 @@ class StubRecorder:
         self.repair_requests.append((username, media_path))
         path = Path(media_path)
         mode = "flv" if path.name.endswith("_flv.mp4") else "repair"
+        self.media_jobs = getattr(self, "media_jobs", [])
+        self.media_jobs.append(
+            {
+                "path": media_path,
+                "username": username,
+                "filename": path.name,
+                "mode": mode,
+                "status": "queued",
+                "queue_position": 1,
+            }
+        )
         return {"queued": True, "position": 1, "mode": mode}
 
     def get_ffmpeg_info(self):
@@ -669,3 +681,6 @@ def test_api_repair_media(tmp_path, monkeypatch):
     recorder._active_paths = {str(flv.resolve())}
     response = client.post(f"/api/media/alpha/{flv.name}/repair")
     assert response.status_code == 400
+
+    status = client.get("/api/status").json()
+    assert len(status["media_jobs"]) == 2
