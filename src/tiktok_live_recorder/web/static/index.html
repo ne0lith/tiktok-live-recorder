@@ -237,6 +237,38 @@
             </section>
 
             <section class="settings-group">
+              <h3 class="settings-group-title">Application</h3>
+              <div class="settings-block settings-block--update">
+                <div class="settings-block-head">
+                  <h4>Updates</h4>
+                  <p class="meta">Check GitHub for new releases and apply updates safely.</p>
+                </div>
+                <dl class="update-info">
+                  <dt>Running</dt>
+                  <dd id="update-running-version">-</dd>
+                  <dt class="update-repo-label">On disk</dt>
+                  <dd id="update-repo-version" class="hidden">-</dd>
+                </dl>
+                <p id="update-not-updatable-hint" class="meta update-hint hidden">
+                  In-app updates require a git clone install with git and uv on PATH.
+                </p>
+                <p id="update-check-result" class="update-check-result hidden" aria-live="polite"></p>
+                <span id="update-scope-badge" class="update-scope-badge hidden" aria-hidden="true"></span>
+                <div id="update-progress" class="update-progress hidden" aria-live="polite">
+                  <p id="update-progress-message" class="meta"></p>
+                </div>
+                <div class="settings-block-footer update-actions">
+                  <button id="update-check-btn" class="btn btn-ghost btn-small" type="button">
+                    Check for updates
+                  </button>
+                  <button id="update-apply-btn" class="btn btn-primary btn-small hidden" type="button">
+                    Update now
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            <section class="settings-group">
               <h3 class="settings-group-title">Configuration files</h3>
               <div class="settings-row settings-row--2">
                 <div class="settings-block settings-block--editor">

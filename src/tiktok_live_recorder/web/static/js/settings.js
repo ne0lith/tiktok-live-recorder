@@ -1,6 +1,7 @@
 import { api, showToast } from "./api.js";
 import { closeModal, isModalOpen, openModal, registerModalCloseHandler } from "./modal.js";
 import { syncFfmpegInfo, syncStartupFfmpegFromDom } from "./runtime-ui.js";
+import { initUpdateInteractions, loadUpdateInfo } from "./update.js";
 import { latestMedia, latestStatus } from "./state.js";
 import { refreshStatus } from "./status.js";
 import { renderMedia, saveShowLegacyPreference, syncLibraryShowLegacyToggle } from "./media.js";
@@ -57,7 +58,7 @@ export async function loadSettings() {
 
   syncLibraryShowLegacyToggle();
 
-  await loadFfmpegInfo();
+  await Promise.allSettled([loadFfmpegInfo(), loadUpdateInfo()]);
 }
 
 export function closeSettingsPanel() {
@@ -173,4 +174,6 @@ export function initSettingsInteractions() {
       showToast(error.message);
     }
   });
+
+  initUpdateInteractions();
 }

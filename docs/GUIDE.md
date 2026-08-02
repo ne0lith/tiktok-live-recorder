@@ -9,6 +9,7 @@
 - [How to get room_id](#how-to-get-room_id)
 - [How to enable upload to Telegram](#how-to-enable-upload-to-telegram)
 - [Web dashboard](#web-dashboard)
+- [Updating the application](#updating-the-application)
 - [Salvaging leftover recordings](#salvaging-leftover-recordings)
 - [Log viewer](#log-viewer)
 - [Restricted countries](#restricted-countries)
@@ -271,7 +272,7 @@ The UI updates live via **Server-Sent Events** (`GET /api/events`) with polling 
 
 ### Summary strip and filters
 
-The sticky summary strip shows live/recording/offline/paused/error counts, poll timing, app version, and (when focused) the selected user. **Click a chip** to filter the status list (All / Live / Recording / Offline / Paused / Errors). **Hide paused** toggles paused users out of the All view (saved in `localStorage`; the focused profile still shows when paused). Recording users sort first; large watchlists show a **Show all users** control.
+The sticky summary strip shows live/recording/offline/paused/error counts, poll timing, app version (from on-disk `pyproject.toml` after hot updates), and (when focused) the selected user. **Click a chip** to filter the status list (All / Live / Recording / Offline / Paused / Errors). **Hide paused** toggles paused users out of the All view (saved in `localStorage`; the focused profile still shows when paused). Recording users sort first; large watchlists show a **Show all users** control.
 
 ### Live status
 
@@ -312,9 +313,11 @@ Click a `@handle` to filter status and the media library to that user. Each prof
 Opens in a modal overlay (shortcut **`s`**):
 
 - **Runtime** - poll interval (minutes), **max concurrent converts**, Telegram upload on/off (saved to `runtime_settings.json`; no restart), and **Legacy recordings** visibility in the media library (browser `localStorage`, off by default)
+- **Application -> Updates** - running version, check GitHub for new releases, and apply updates (git clone installs only; see [Updating the application](#updating-the-application))
 - **Record now** - start recording by username and/or room ID
 - **Cookies / Telegram** - edit `cookies.json` and `telegram.json` in the browser
 - **Recent Telegram uploads** - when uploads are enabled
+- **FFmpeg** - read-only panel showing the binary resolved at startup (path, version, HEVC capability)
 
 ### Keyboard shortcuts
 
@@ -338,6 +341,67 @@ Press **`?`** for the full list. Defaults:
 | Record now | Yes | Yes | Yes | - |
 | Move leftover FLVs | Yes | Yes | Yes | - |
 | Logs / Settings modals | Yes | Yes | Yes | - |
+
+## Updating the Application
+
+The recorder can check for new releases and apply updates without losing `config/` or `output/` data. This applies to **git clone installs** with **`git`** and **`uv`** on `PATH` and a writable repo directory.
+
+**Docker** and other non-git installs do not support in-app apply - rebuild the image or run `git pull` + `uv sync` manually, then restart the container or process.
+
+### Startup notification
+
+On each start (unless you pass `-no-update-check`), the CLI compares your installed version to the latest release on GitHub and prints upgrade hints when newer. That check is notify-only; it does not change files.
+
+### Dashboard updater
+
+Open **Settings** (`s`) -> **Application -> Updates**:
+
+| Control | Purpose |
+|---------|---------|
+| **Running** | Version loaded in the current process |
+| **On disk** | Version from `pyproject.toml` after a hot update (may differ until restart) |
+| **Check for updates** | Fetches from GitHub and shows whether an update is available and what scope it needs |
+| **Update now** | Applies the update (only shown when the install is updatable) |
+
+Progress during restart-scope updates appears in the settings panel and in the live status stream (`GET /api/events`).
+
+### Scope-aware apply
+
+Updates are classified by **whether backend Python code changes**, not by whether `pyproject.toml` or `uv.lock` changed (those files change on every release).
+
+| Scope | What changed | What happens | Recordings / converts |
+|-------|----------------|--------------|------------------------|
+| **Hot** (no restart) | Dashboard static files (`web/static/**`), docs, `pyproject.toml`, `uv.lock`, etc. - no non-static `.py` under `src/tiktok_live_recorder/` | `git pull`, optional `uv sync`, reload page if static files changed | **Uninterrupted** |
+| **Restart** | Any backend `.py` (recorder core, API routes, thumbnails, etc.) | Stop polling and new recordings, wait for active streams and all queued/active converts to finish, then `git pull`, `uv sync`, and relaunch the process with the same CLI arguments | Wait to finish |
+
+**Hot path notes:**
+
+- Dashboard HTML/JS/CSS is served from disk on each request, so static-only releases take effect after pull without restarting the recorder.
+- `uv sync` updates the virtualenv on disk; the running process keeps old Python imports in memory until a later restart. That is fine when only the dashboard changed.
+- If both static and backend files changed, the **restart** path is used.
+
+**Restart path notes:**
+
+- Polling and new recordings are blocked while waiting; in-flight recordings and ffmpeg converts are allowed to complete (up to a 300s timeout).
+- `config/*.json`, watchlist state, and files under `output/` are preserved on disk.
+- Active live captures are not resumed after restart - users must go live again.
+- The dashboard reconnects when the new process is up.
+
+### Manual upgrade
+
+If in-app apply is unavailable or you prefer the shell:
+
+```bash
+git pull
+uv sync
+# restart the recorder (stop the running process first)
+```
+
+On **Windows**, stop the existing recorder before `git pull` if files are locked. After `uv sync`, start again with the same command you normally use (e.g. `uv run tiktok-live-recorder -mode watchlist`).
+
+### Security
+
+The dashboard has **no authentication**. Update endpoints run `git pull` and `uv sync` with the same trust model as editing cookies from Settings. Restrict network access to port **8787** on shared or untrusted networks.
 
 ## Salvaging Leftover Recordings
 

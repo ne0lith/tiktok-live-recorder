@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.20.2] - 2026-08-02
+
+### Added
+
+- **Dashboard -> Settings -> Application**: in-app update check and apply for git clone installs (`git pull` + `uv sync`)
+- **Scope-aware updates**: dashboard-only changes hot-reload without restart; backend Python changes wait for recordings and converts to finish, then restart gracefully
+- **Update API**: `GET /api/update`, `POST /api/update/check`, `POST /api/update/apply`, `GET /api/update/status`; progress via existing SSE status stream
+
+### Changed
+
+- **Version display**: dashboard cache-busting uses on-disk `pyproject.toml` version (`get_repo_version`); API reports both running and repo versions
+- **Docs**: README and GUIDE cover in-app updates, Docker limitations, and Settings -> Application workflow
+
 ## [8.20.1] - 2026-08-02
 
 ### Added
@@ -594,7 +607,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.1...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.2...HEAD
+[8.20.2]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.1...v8.20.2
 [8.20.1]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.0...v8.20.1
 [8.20.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.19.0...v8.20.0
 [8.19.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.18.1...v8.19.0

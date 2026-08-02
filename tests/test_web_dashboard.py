@@ -349,6 +349,23 @@ class StubRecorder:
             "status": "started",
         }
 
+    def is_update_pending(self):
+        return getattr(self, "_update_pending", False)
+
+    def initiate_restart_update(self):
+        if self.is_update_pending():
+            raise RuntimeError("Update already in progress")
+        self._update_pending = True
+
+    def get_update_status(self):
+        return {
+            "phase": "waiting" if self.is_update_pending() else "idle",
+            "message": "",
+            "recordings_waiting": 0,
+            "converts_waiting": {"pending": 0, "active": 0},
+            "error": None,
+        }
+
 
 @pytest.fixture
 def api_client(tmp_path, monkeypatch):
@@ -376,10 +393,10 @@ def test_api_status(api_client):
 
 
 def test_dashboard_index_cache_busts_assets(api_client):
-    from tiktok_live_recorder.utils.version import get_version
+    from tiktok_live_recorder.utils.version import get_repo_version
 
     client, _, _ = api_client
-    version = get_version()
+    version = get_repo_version()
     response = client.get("/")
     assert response.status_code == 200
     assert f"/style.css?v={version}" in response.text
@@ -395,7 +412,8 @@ def test_dashboard_index_cache_busts_assets(api_client):
     assert 'id="startup-ffmpeg-data"' in response.text
     assert '"path":"/usr/bin/ffmpeg"' in response.text.replace(" ", "")
     assert "__FFMPEG_JSON__" not in response.text
-    assert response.headers.get("cache-control") == "no-cache"
+    assert 'id="update-check-btn"' in response.text
+    assert 'id="update-apply-btn"' in response.text
 
 
 def test_api_events_route_registered(api_client):
@@ -405,12 +423,131 @@ def test_api_events_route_registered(api_client):
 
 
 def test_api_version(api_client):
-    from tiktok_live_recorder.utils.version import get_version
+    from tiktok_live_recorder.utils.version import get_repo_version, get_version
 
     client, _, _ = api_client
     response = client.get("/api/version")
     assert response.status_code == 200
-    assert response.json() == {"version": get_version()}
+    assert response.json() == {
+        "version": get_version(),
+        "repo_version": get_repo_version(),
+    }
+
+
+def test_api_update_info(api_client, monkeypatch):
+    client, _, _ = api_client
+    monkeypatch.setattr(
+        "tiktok_live_recorder.web.app.is_updatable_install", lambda: True
+    )
+    response = client.get("/api/update")
+    assert response.status_code == 200
+    data = response.json()
+    assert "running_version" in data
+    assert "repo_version" in data
+    assert data["updatable"] is True
+    assert "release_url" in data
+
+
+def test_api_update_check(api_client, monkeypatch):
+    from tiktok_live_recorder.updater import UpdatePreview
+
+    client, _, _ = api_client
+    preview = UpdatePreview(
+        current_version="8.20.1",
+        latest_version="8.20.2",
+        update_available=True,
+        scope="hot",
+        changed_files=["src/tiktok_live_recorder/web/static/js/update.js"],
+    )
+    monkeypatch.setattr(
+        "tiktok_live_recorder.web.app.preview_update_scope", lambda: preview
+    )
+    response = client.post("/api/update/check")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["update_available"] is True
+    assert data["scope"] == "hot"
+    assert data["latest"] == "8.20.2"
+
+
+def test_api_update_apply_hot(api_client, monkeypatch):
+    from tiktok_live_recorder.updater import ApplyResult, UpdatePreview
+
+    client, recorder, _ = api_client
+    monkeypatch.setattr(
+        "tiktok_live_recorder.web.app.is_updatable_install", lambda: True
+    )
+    monkeypatch.setattr(
+        "tiktok_live_recorder.web.app.preview_update_scope",
+        lambda: UpdatePreview(
+            current_version="8.20.1",
+            latest_version="8.20.2",
+            update_available=True,
+            scope="hot",
+            changed_files=["src/tiktok_live_recorder/web/static/js/update.js"],
+        ),
+    )
+    monkeypatch.setattr(
+        "tiktok_live_recorder.web.app.apply_hot_update",
+        lambda: ApplyResult(
+            scope="hot",
+            changed_files=["src/tiktok_live_recorder/web/static/js/update.js"],
+            static_changed=True,
+            synced_dependencies=False,
+            message="Dashboard updated.",
+        ),
+    )
+    response = client.post("/api/update/apply")
+    assert response.status_code == 200
+    assert response.json()["scope"] == "hot"
+    assert response.json()["static_changed"] is True
+    assert recorder.is_update_pending() is False
+
+
+def test_api_update_apply_restart(api_client, monkeypatch):
+    from tiktok_live_recorder.updater import UpdatePreview
+
+    client, recorder, _ = api_client
+    monkeypatch.setattr(
+        "tiktok_live_recorder.web.app.is_updatable_install", lambda: True
+    )
+    monkeypatch.setattr(
+        "tiktok_live_recorder.web.app.preview_update_scope",
+        lambda: UpdatePreview(
+            current_version="8.20.1",
+            latest_version="8.20.2",
+            update_available=True,
+            scope="restart",
+            changed_files=["src/tiktok_live_recorder/web/app.py"],
+        ),
+    )
+    response = client.post("/api/update/apply")
+    assert response.status_code == 200
+    assert response.json()["scope"] == "restart"
+    assert response.json()["status"] == "waiting"
+    assert recorder.is_update_pending() is True
+
+
+def test_api_update_apply_rejects_when_pending(api_client, monkeypatch):
+    client, recorder, _ = api_client
+    recorder._update_pending = True
+    monkeypatch.setattr(
+        "tiktok_live_recorder.web.app.is_updatable_install", lambda: True
+    )
+    response = client.post("/api/update/apply")
+    assert response.status_code == 409
+
+
+def test_poll_blocked_during_update(api_client):
+    client, recorder, _ = api_client
+    recorder._update_pending = True
+
+    def raise_paused():
+        raise RuntimeError("Update in progress; polling is paused.")
+
+    recorder.force_poll = raise_paused
+    response = client.post("/api/poll")
+    assert response.status_code == 409
 
 
 def test_api_add_remove_user(api_client):

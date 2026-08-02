@@ -1357,6 +1357,76 @@ td.col-room {
   margin-top: 0.85rem;
 }
 
+.settings-block--update {
+  margin-top: 0;
+}
+
+.update-info {
+  display: grid;
+  grid-template-columns: 6.5rem minmax(0, 1fr);
+  gap: 0.35rem 0.75rem;
+  margin: 0 0 0.75rem;
+  align-items: baseline;
+}
+
+.update-info dt {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.update-info dd {
+  margin: 0;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.update-hint {
+  margin: 0 0 0.75rem;
+}
+
+.update-check-result {
+  margin: 0 0 0.5rem;
+  font-size: 0.86rem;
+  color: var(--text-secondary, var(--muted));
+}
+
+.update-scope-badge {
+  display: inline-block;
+  margin-bottom: 0.65rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--chip-bg, rgba(255, 255, 255, 0.08));
+  color: var(--muted);
+}
+
+.update-scope-badge[data-scope="hot"] {
+  color: var(--ok, #3dd68c);
+}
+
+.update-scope-badge[data-scope="restart"] {
+  color: var(--warn, #f5a623);
+}
+
+.update-progress {
+  margin-bottom: 0.65rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.45rem;
+  background: var(--chip-bg, rgba(255, 255, 255, 0.05));
+}
+
+.update-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 .ffmpeg-info {
   display: grid;
   grid-template-columns: 6.5rem minmax(0, 1fr);

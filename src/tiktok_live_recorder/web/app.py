@@ -12,7 +12,14 @@ from pydantic import BaseModel, Field
 
 from tiktok_live_recorder.utils.custom_exceptions import UserLiveError
 from tiktok_live_recorder.utils.enums import Mode
-from tiktok_live_recorder.utils.version import get_version
+from tiktok_live_recorder.utils.version import get_repo_version, get_version
+from tiktok_live_recorder.updater import (
+    GITHUB_RELEASES,
+    UpdateError,
+    apply_hot_update,
+    is_updatable_install,
+    preview_update_scope,
+)
 from tiktok_live_recorder.utils.utils import (
     add_user_to_file,
     cookies_file_path,
@@ -121,7 +128,7 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
     @app.get("/", include_in_schema=False)
     @app.get("/index.html", include_in_schema=False)
     def dashboard_index() -> HTMLResponse:
-        version = get_version()
+        version = get_repo_version()
         ffmpeg_json = json.dumps(recorder.get_ffmpeg_info())
         html = (
             INDEX_HTML.read_text(encoding="utf-8")
@@ -139,7 +146,83 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
 
     @app.get("/api/version")
     def api_version() -> dict[str, str]:
-        return {"version": get_version()}
+        return {
+            "version": get_version(),
+            "repo_version": get_repo_version(),
+        }
+
+    @app.get("/api/update")
+    def api_update_info() -> dict[str, Any]:
+        return {
+            "running_version": get_version(),
+            "repo_version": get_repo_version(),
+            "updatable": is_updatable_install(),
+            "release_url": GITHUB_RELEASES,
+        }
+
+    @app.post("/api/update/check")
+    def api_update_check() -> dict[str, Any]:
+        preview = preview_update_scope()
+        return {
+            "current": preview.current_version,
+            "latest": preview.latest_version,
+            "update_available": preview.update_available,
+            "scope": preview.scope,
+            "changed_files": preview.changed_files,
+            "release_notes_url": preview.release_notes_url,
+            "updatable": is_updatable_install(),
+        }
+
+    @app.post("/api/update/apply")
+    def api_update_apply() -> dict[str, Any]:
+        if not is_updatable_install():
+            raise HTTPException(
+                status_code=422,
+                detail="In-app updates require a git clone install with git and uv.",
+            )
+        if recorder.is_update_pending():
+            raise HTTPException(status_code=409, detail="Update already in progress")
+
+        preview = preview_update_scope()
+        if not preview.update_available and not preview.changed_files:
+            raise HTTPException(status_code=400, detail="Already up to date")
+
+        scope = preview.scope
+        if scope is None and preview.changed_files:
+            from tiktok_live_recorder.updater import classify_changed_files
+
+            scope = classify_changed_files(preview.changed_files)
+
+        if scope == "restart":
+            try:
+                recorder.initiate_restart_update()
+            except RuntimeError as ex:
+                raise HTTPException(status_code=409, detail=str(ex)) from ex
+            return {
+                "scope": "restart",
+                "status": "waiting",
+                "message": (
+                    "Stopping polling and waiting for recordings and converts "
+                    "to finish before restarting."
+                ),
+            }
+
+        try:
+            result = apply_hot_update()
+        except UpdateError as ex:
+            raise HTTPException(status_code=500, detail=str(ex)) from ex
+        return {
+            "scope": result.scope,
+            "status": "completed",
+            "message": result.message,
+            "static_changed": result.static_changed,
+            "synced_dependencies": result.synced_dependencies,
+            "changed_files": result.changed_files,
+        }
+
+    @app.get("/api/update/status")
+    def api_update_status() -> dict[str, Any]:
+        return recorder.get_update_status()
 
     @app.get("/api/media")
     def api_media() -> dict[str, list[dict]]:
@@ -357,7 +440,10 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
         users_path = _ensure_users_file(recorder)
         users = add_user_to_file(users_path, username)
         recorder.users = users
-        recorder.poll_user_now(username)
+        try:
+            recorder.poll_user_now(username)
+        except RuntimeError as ex:
+            raise HTTPException(status_code=409, detail=str(ex)) from ex
         return {"users": users}
 
     @app.delete("/api/users/{username}")
@@ -377,7 +463,10 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
             write_paused_users(paused)
 
         recorder.users = users
-        recorder.force_poll()
+        try:
+            recorder.force_poll()
+        except RuntimeError as ex:
+            raise HTTPException(status_code=409, detail=str(ex)) from ex
         return {"users": users}
 
     @app.post("/api/users/{username}/pause")
@@ -386,7 +475,10 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
         paused = read_paused_users()
         paused.add(username.lower())
         write_paused_users(paused)
-        recorder.force_poll()
+        try:
+            recorder.force_poll()
+        except RuntimeError as ex:
+            raise HTTPException(status_code=409, detail=str(ex)) from ex
         return {"paused": sorted(paused)}
 
     @app.post("/api/users/{username}/resume")
@@ -394,7 +486,10 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
         username = _normalize_username(username)
         paused = {u for u in read_paused_users() if u != username.lower()}
         write_paused_users(paused)
-        recorder.force_poll()
+        try:
+            recorder.force_poll()
+        except RuntimeError as ex:
+            raise HTTPException(status_code=409, detail=str(ex)) from ex
         return {"paused": sorted(paused)}
 
     @app.post("/api/users/{username}/poll")
@@ -407,12 +502,18 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
         username = _normalize_username(username)
         if not username:
             raise HTTPException(status_code=400, detail="Username is required")
-        recorder.poll_user_now(username)
+        try:
+            recorder.poll_user_now(username)
+        except RuntimeError as ex:
+            raise HTTPException(status_code=409, detail=str(ex)) from ex
         return {"status": "poll_requested", "username": username}
 
     @app.post("/api/poll")
     def force_poll() -> dict[str, str]:
-        recorder.force_poll()
+        try:
+            recorder.force_poll()
+        except RuntimeError as ex:
+            raise HTTPException(status_code=409, detail=str(ex)) from ex
         return {"status": "poll_requested"}
 
     @app.post("/api/recordings/{username}/stop")

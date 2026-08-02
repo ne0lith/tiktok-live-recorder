@@ -85,6 +85,11 @@ class TikTokRecorder:
         self._partial_poll_users: list[str] = []
         self._media_jobs: dict[str, dict] = {}
         self._convert_queue = ConvertQueue(max_concurrent=self.max_concurrent_converts)
+        self._update_lock = Lock()
+        self._update_pending = False
+        self._update_state = "idle"
+        self._update_error: str | None = None
+        self._restart_after_update = False
 
     @staticmethod
     def _entry_still_active(entry: dict) -> bool:
@@ -99,8 +104,76 @@ class TikTokRecorder:
         self._stop.set()
         self._poll_wake.set()
 
+    @property
+    def restart_after_update(self) -> bool:
+        return self._restart_after_update
+
+    def is_update_pending(self) -> bool:
+        return self._update_pending
+
+    def _should_accept_new_work(self) -> bool:
+        return not self._update_pending and not self._should_stop()
+
+    def initiate_restart_update(self) -> None:
+        """Begin graceful shutdown for a restart-scope in-app update."""
+        with self._update_lock:
+            if self._update_pending:
+                raise RuntimeError("Update already in progress")
+            self._update_pending = True
+            self._update_state = "waiting"
+            self._update_error = None
+        self.request_stop()
+
+    def get_update_status(self) -> dict:
+        with self._update_lock:
+            state = self._update_state
+            error = self._update_error
+
+        recordings_waiting = 0
+        for entry in self._active_recordings.values():
+            status = entry.get("status", "recording")
+            thread = entry.get("thread")
+            if status in _POST_RECORD_STATUSES or (
+                thread is not None and thread.is_alive()
+            ):
+                recordings_waiting += 1
+
+        converts = self._convert_queue.stats()
+        message = ""
+        if state == "waiting":
+            parts = []
+            if recordings_waiting:
+                parts.append(
+                    f"{recordings_waiting} recording"
+                    f"{'s' if recordings_waiting != 1 else ''}"
+                )
+            pending = converts.get("pending", 0)
+            active = converts.get("active", 0)
+            convert_total = pending + active
+            if convert_total:
+                parts.append(
+                    f"{convert_total} convert{'s' if convert_total != 1 else ''}"
+                )
+            if parts:
+                message = f"Waiting for {' and '.join(parts)}…"
+            else:
+                message = "Finalizing shutdown…"
+
+        return {
+            "phase": state,
+            "message": message,
+            "recordings_waiting": recordings_waiting,
+            "converts_waiting": {
+                "pending": converts.get("pending", 0),
+                "active": converts.get("active", 0),
+            },
+            "error": error,
+        }
+
     def _wake_poll_loop(self, *, reason: str | None = None):
         """Interrupt the poll sleep so the watchlist can be checked."""
+        if self._update_pending:
+            return
         if reason is not None:
             self._set_poll_wake_reason(reason)
         self._poll_wake.set()
@@ -168,11 +241,15 @@ class TikTokRecorder:
 
     def force_poll(self) -> None:
         """Interrupt the poll sleep so the full watchlist is checked immediately."""
+        if not self._should_accept_new_work():
+            raise RuntimeError("Update in progress; polling is paused.")
         self.record_activity("poll", "Manual poll requested")
         self._wake_poll_loop(reason="full")
 
     def poll_user_now(self, username: str) -> None:
         """Check one user now without resetting the full watchlist poll schedule."""
+        if not self._should_accept_new_work():
+            raise RuntimeError("Update in progress; polling is paused.")
         username = username.lstrip("@").strip()
         if not username:
             return
@@ -310,7 +387,7 @@ class TikTokRecorder:
 
         convert_queue = self._convert_queue.stats()
 
-        return {
+        status = {
             "mode": self.mode.name.lower(),
             "users": users,
             "paused": paused,
@@ -329,6 +406,9 @@ class TikTokRecorder:
             "activity": activity,
             "ffmpeg": self.get_ffmpeg_info(),
         }
+        if self._update_pending or self._update_state != "idle":
+            status["update"] = self.get_update_status()
+        return status
 
     def get_ffmpeg_info(self) -> dict:
         """Return resolved FFmpeg metadata for the dashboard."""
@@ -425,6 +505,8 @@ class TikTokRecorder:
         return None
 
     def _spawn_recording_thread(self, username: str, room_id: str) -> None:
+        if not self._should_accept_new_work():
+            return
         thread = Thread(
             target=self._recording_worker,
             args=(username, room_id),
@@ -455,6 +537,8 @@ class TikTokRecorder:
         username: str | None = None,
         room_id: str | None = None,
     ) -> dict:
+        if not self._should_accept_new_work():
+            raise RuntimeError("Update in progress; new recordings are paused.")
         if not username and not room_id:
             raise ValueError("username or room_id is required")
 
@@ -920,31 +1004,54 @@ class TikTokRecorder:
                     label=label,
                 )
 
+    def _wait_for_convert_queue(self, deadline: float) -> bool:
+        """Wait until convert queue is empty. Returns True if drained before deadline."""
+        while time.time() < deadline:
+            stats = self._convert_queue.stats()
+            if stats["pending"] == 0 and stats["active"] == 0:
+                return True
+            time.sleep(0.5)
+        return self._convert_queue.stats()["pending"] == 0 and (
+            self._convert_queue.stats()["active"] == 0
+        )
+
     def _shutdown_recordings(self, timeout: float = 300.0):
         """Wait for recording threads and queued conversions after a stop request."""
         self.request_stop()
         active = getattr(self, "_active_recordings", {}) or {}
-        if not active:
-            return
-
-        logger.info(
-            f"Waiting for {len(active)} recording(s) to finalize (Ctrl+C again to abandon)..."
-        )
         deadline = time.time() + timeout
-        for username, entry in list(active.items()):
-            thread = entry.get("thread")
-            if thread is None:
-                continue
-            remaining = max(0.0, deadline - time.time())
-            thread.join(timeout=remaining)
-            if thread.is_alive():
-                logger.warning(f"[@{username}] still finalizing after wait timeout")
 
-        while self._active_recordings and time.time() < deadline:
-            stats = self._convert_queue.stats()
-            if stats["pending"] == 0 and stats["active"] == 0:
-                break
-            time.sleep(0.5)
+        if active:
+            logger.info(
+                f"Waiting for {len(active)} recording(s) to finalize (Ctrl+C again to abandon)..."
+            )
+            for username, entry in list(active.items()):
+                thread = entry.get("thread")
+                if thread is None:
+                    continue
+                remaining = max(0.0, deadline - time.time())
+                thread.join(timeout=remaining)
+                if thread.is_alive():
+                    logger.warning(f"[@{username}] still finalizing after wait timeout")
+
+        if not self._wait_for_convert_queue(deadline):
+            if self._update_pending:
+                with self._update_lock:
+                    self._update_state = "error"
+                    self._update_error = (
+                        "Timed out waiting for conversions to finish. Update aborted."
+                    )
+                    self._update_pending = False
+                logger.error(self._update_error)
+                return
+
+        if self._update_pending:
+            self._convert_queue.shutdown(
+                wait=True, timeout=max(0.0, deadline - time.time())
+            )
+            with self._update_lock:
+                self._update_state = "applying"
+                self._restart_after_update = True
 
         for username in list(self._active_recordings):
             outcome = self._recording_results.pop(username, "ok")

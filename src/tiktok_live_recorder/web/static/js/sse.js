@@ -1,6 +1,7 @@
 import { setConnectionState } from "./connection.js";
 import { applyMediaUpdate } from "./media.js";
 import { renderStatus } from "./status.js";
+import { syncUpdateFromStatus } from "./update.js";
 
 let eventSource = null;
 let reconnectTimer = null;
@@ -37,6 +38,7 @@ export function connectEventStream() {
       const payload = JSON.parse(event.data);
       if (payload.type === "status" && payload.data) {
         renderStatus(payload.data);
+        syncUpdateFromStatus(payload.data);
       } else if (payload.type === "media" && payload.data) {
         applyMediaUpdate(payload.data);
       }

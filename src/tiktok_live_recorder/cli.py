@@ -2,12 +2,13 @@ import multiprocessing
 import sys
 
 
-def record_user(config):
+def record_user(config, instance_lock=None):
     from tiktok_live_recorder.core.tiktok_recorder import TikTokRecorder
     from tiktok_live_recorder.utils.enums import Mode
     from tiktok_live_recorder.utils.logger_manager import logger
 
     web_server = None
+    recorder = None
     try:
         recorder = TikTokRecorder(config)
         if (
@@ -23,6 +24,38 @@ def record_user(config):
     finally:
         if web_server is not None:
             web_server.stop()
+
+    if recorder is not None and recorder.restart_after_update:
+        from tiktok_live_recorder.updater import (
+            UpdateError,
+            apply_restart_update_files,
+            find_repo_root,
+            relaunch,
+        )
+
+        root = find_repo_root()
+        if root is None:
+            logger.error("Could not find git repo root for restart update.")
+            return recorder
+        try:
+            with recorder._update_lock:
+                recorder._update_state = "applying"
+            apply_restart_update_files(root)
+            with recorder._update_lock:
+                recorder._update_state = "restarting"
+            if instance_lock is not None:
+                instance_lock.release()
+            relaunch(sys.argv[1:])
+            sys.exit(0)
+        except UpdateError as ex:
+            logger.error("Restart update failed: %s", ex)
+            with recorder._update_lock:
+                recorder._update_state = "error"
+                recorder._update_error = str(ex)
+                recorder._update_pending = False
+                recorder._restart_after_update = False
+
+    return recorder
 
 
 def _build_config(args, mode, cookies, user=None, users=None):
@@ -54,13 +87,13 @@ def _build_config(args, mode, cookies, user=None, users=None):
     )
 
 
-def run_recordings(args, mode, cookies):
+def run_recordings(args, mode, cookies, instance_lock=None):
     from tiktok_live_recorder.utils.enums import Mode
 
     if mode == Mode.WATCHLIST:
         users = args.user if isinstance(args.user, list) else [args.user]
         config = _build_config(args, mode, cookies, users=users)
-        record_user(config)
+        return record_user(config, instance_lock=instance_lock)
     elif isinstance(args.user, list):
         processes = []
         for user in args.user:
@@ -81,9 +114,10 @@ def run_recordings(args, mode, cookies):
                 for p in processes:
                     if p.is_alive():
                         p.terminate()
+        return None
     else:
         config = _build_config(args, mode, cookies, user=args.user)
-        record_user(config)
+        return record_user(config, instance_lock=instance_lock)
 
 
 def main() -> int:
@@ -122,7 +156,7 @@ def main() -> int:
         instance_lock = InstanceLock(str(args.output or default_output_base()))
         instance_lock.acquire()
 
-        run_recordings(args, mode, cookies)
+        run_recordings(args, mode, cookies, instance_lock=instance_lock)
 
     except FfmpegRequirementError as ex:
         logger.error(f"FFmpeg requirement not met: {ex}")
@@ -138,7 +172,10 @@ def main() -> int:
 
     finally:
         if instance_lock is not None:
-            instance_lock.release()
+            try:
+                instance_lock.release()
+            except OSError:
+                pass
 
     return exit_code
 

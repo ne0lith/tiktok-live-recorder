@@ -61,6 +61,7 @@ This fork adds reliability and workflow improvements on top of the upstream proj
 - **In-app salvage pipeline** - multi-pass convert with ffprobe validation before deleting `*_flv.mp4`; keeps broken intermediates when recovery fails
 - **Persisted runtime settings** - poll interval, Telegram uploads, and max concurrent converts survive restarts via `config/runtime_settings.json`
 - **Web dashboard** - live operator UI on port `8787` with SSE updates, activity feed, media library, logs, and settings ([details](docs/GUIDE.md#web-dashboard))
+- **In-app updates** - git clone installs can check and apply updates from **Settings -> Application** with scope-aware hot reload or graceful restart ([details](docs/GUIDE.md#updating-the-application))
 - **Watchlist mode** - poll many users in one process; each live user records in a background thread
 - **`config/` directory** - secrets and watchlists live outside `src/` with committed `.example` templates
 - **TikTok HEVC FLV support** - startup FFmpeg capability probe; on Linux, automatic BtbN FFmpeg n8.1 install into `.vendor/ffmpeg/` when ffmpeg is missing or too old ([details](docs/GUIDE.md#ffmpeg-and-hevc))
@@ -161,6 +162,8 @@ docker run \
 The image ships only `config/*.example` templates. Mount `./config` so your real `cookies.json`, `users.json`, `runtime_settings.json`, and `telegram.json` persist on the host. Expose port **8787** for the dashboard (see [Web dashboard](docs/GUIDE.md#web-dashboard)).
 
 The container image does not need a capable distro FFmpeg. On first start the same Linux vendor install runs into `/app/.vendor/ffmpeg/` when needed. Persist that directory with a volume if you want to avoid re-downloading after container recreation.
+
+In-app updates from the dashboard are **not** supported inside Docker - rebuild the image and recreate the container when upgrading ([updating guide](docs/GUIDE.md#updating-the-application)).
 
 </details>
 
@@ -281,7 +284,7 @@ See [Watchlist file reload](#watchlist-file-reload) for live edits to `config/us
 
 Runs in **watchlist**, **followers**, and **automatic** mode at `http://localhost:8787` by default (`-web-host` / `-web-port` to change). **No authentication** - restrict access on shared networks.
 
-Use it to monitor live status, manage recordings, move leftover FLVs to `to_fix/`, tail/clear logs, and adjust runtime settings without editing files by hand. Full feature list, keyboard shortcuts, FFmpeg notes, and workflow details: **[Web dashboard guide](docs/GUIDE.md#web-dashboard)**.
+Use it to monitor live status, manage recordings, move leftover FLVs to `to_fix/`, tail/clear logs, adjust runtime settings, and apply updates (git clone installs) without editing files by hand. Full feature list, keyboard shortcuts, FFmpeg notes, and workflow details: **[Web dashboard guide](docs/GUIDE.md#web-dashboard)**.
 
 Disable with `-no-web`.
 
@@ -385,9 +388,16 @@ Many TikTok lives use **HEVC in legacy FLV** (codec id 12). The in-app pipeline 
 
 The recorder writes `tiktok-recorder.log` (rotates at 5 MB, keeps 3 backups). Override the path with `TIKTOK_RECORDER_LOG_FILE`. To reclaim disk space on demand, open **Logs** in the dashboard and click **Clear log** ([log viewer guide](docs/GUIDE.md#log-viewer)).
 
+### In-app update unavailable or failed
+
+In-app apply requires a **git clone** with **`git`** and **`uv`** on `PATH` and a writable project directory. Docker installs must rebuild manually. If **Update now** is missing, use `git pull`, `uv sync`, and restart from the shell ([updating guide](docs/GUIDE.md#updating-the-application)).
+
+If a restart-scope update times out while waiting for converts, active ffmpeg jobs may still be running - wait for them to finish or stop the recorder, then upgrade manually. Do not force-kill during conversion if you want to keep partial `*_flv.mp4` files for salvage.
+
 ## Guide
 
 - [Web dashboard](docs/GUIDE.md#web-dashboard)
+- [Updating the application](docs/GUIDE.md#updating-the-application)
 - [Conversion queue and post-processing](docs/GUIDE.md#conversion-queue-and-post-processing)
 - [FFmpeg and HEVC](docs/GUIDE.md#ffmpeg-and-hevc)
 - [Salvaging leftover recordings](docs/GUIDE.md#salvaging-leftover-recordings)
@@ -407,7 +417,7 @@ Contributions are welcome! Open an [issue](https://github.com/ne0lith/tiktok-liv
 - [Code of Conduct](CODE_OF_CONDUCT.md)
 - [Security Policy](SECURITY.md) - report vulnerabilities privately
 
-When a newer version is available, the recorder prints a notification with upgrade instructions (`git pull` or re-clone). It does not modify your local files automatically.
+When a newer version is available, the recorder prints a notification on startup with upgrade instructions (`git pull` + `uv sync`). Git clone installs can also check and apply updates from the [dashboard](docs/GUIDE.md#updating-the-application). Docker and other non-git installs must rebuild or update manually.
 
 ## Legal
 
