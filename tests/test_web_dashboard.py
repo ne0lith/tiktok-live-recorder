@@ -734,6 +734,14 @@ def test_api_delete_media(tmp_path):
     assert response.status_code == 204
     assert not file_path.exists()
 
+    response = client.get("/api/media")
+    assert response.status_code == 200
+    media = response.json()
+    assert "alpha" not in media or not any(
+        item["filename"] == "TK_alpha_2026.01.01_12-00-00.mp4"
+        for item in media.get("alpha", [])
+    )
+
     response = client.delete("/api/media/alpha/TK_alpha_2026.01.01_13-00-00_flv.mp4")
     assert response.status_code == 400
     assert in_progress.exists()

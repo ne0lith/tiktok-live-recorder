@@ -116,15 +116,6 @@ export function syncLibraryShowLegacyToggle() {
   if (toggle) toggle.checked = libraryState.showLegacy;
 }
 
-function isAnyMediaPlaying() {
-  return Boolean(
-    mediaPlayerVideo &&
-      mediaPlayerVideo.src &&
-      !mediaPlayerVideo.paused &&
-      !mediaPlayerVideo.ended,
-  );
-}
-
 function isPlayerActive() {
   return Boolean(
     mediaPlayerVideo &&
@@ -297,7 +288,7 @@ export function playMedia(item, username) {
   highlightActiveRow();
 }
 
-export function closePlayer() {
+export function closePlayer({ applyPending = true } = {}) {
   mediaPlayerVideo?.pause();
   mediaPlayerVideo?.removeAttribute("src");
   mediaPlayerVideo?.load();
@@ -311,7 +302,7 @@ export function closePlayer() {
   }
   setPlayerOpen(false);
   highlightActiveRow();
-  maybeApplyPendingMedia();
+  if (applyPending) maybeApplyPendingMedia();
 }
 
 function highlightActiveRow() {
@@ -380,8 +371,7 @@ function createMediaCard(item, username) {
     try {
       await deleteMediaItem(username, item);
       showToast(`Deleted ${item.filename}`);
-      if (libraryState.playingUrl === item.url) closePlayer();
-      await refreshMedia({ force: true });
+      await handleMediaDeleted(username, item);
     } catch (error) {
       showToast(error.message);
     }
@@ -403,6 +393,40 @@ async function deleteMediaItem(username, item) {
       ? `/api/media/${encodedUser}/legacy/${encodedFile}`
       : `/api/media/${encodedUser}/${encodedFile}`;
   await api(path, { method: "DELETE" });
+}
+
+function removeMediaFromLibrary(username, item) {
+  const pruneBucket = (media) => {
+    if (!media) return {};
+    const next = {};
+    for (const [key, items] of Object.entries(media)) {
+      if (!usernamesMatch(key, username)) {
+        next[key] = items;
+        continue;
+      }
+      const kept = items.filter(
+        (entry) => !(entry.filename === item.filename && entry.url === item.url),
+      );
+      if (kept.length) next[key] = kept;
+    }
+    return next;
+  };
+
+  const nextLatest = pruneBucket(latestMedia);
+  setLatestMedia(nextLatest);
+  if (pendingMedia) {
+    setPendingMedia(pruneBucket(pendingMedia));
+  }
+  renderMedia(nextLatest);
+}
+
+async function handleMediaDeleted(username, item) {
+  setPendingMedia(null);
+  removeMediaFromLibrary(username, item);
+  if (libraryState.playingUrl === item.url) {
+    closePlayer({ applyPending: false });
+  }
+  await refreshMedia({ force: true });
 }
 
 function renderMediaList(rows) {
@@ -445,7 +469,7 @@ export function renderMedia(media) {
 
   const usernames = Object.keys(filtered);
   if (!usernames.length) {
-    if (!isAnyMediaPlaying() && mediaLibrary) {
+    if (mediaLibrary) {
       const emptyMessage = selectedProfile
         ? `No recordings for @${selectedProfile}${query ? " matching your search." : "."}`
         : query
@@ -597,8 +621,7 @@ export function initMediaInteractions() {
     try {
       await deleteMediaItem(username, item);
       showToast(`Deleted ${item.filename}`);
-      closePlayer();
-      await refreshMedia({ force: true });
+      await handleMediaDeleted(username, item);
     } catch (error) {
       showToast(error.message);
     }

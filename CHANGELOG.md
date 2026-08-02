@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.20.3] - 2026-08-02
+
+### Fixed
+
+- **Media library**: deleting a recording removes its card immediately instead of leaving a stale entry until refresh; fixes ghost cards after delete when the player was open or SSE had deferred a library update
+
 ## [8.20.2] - 2026-08-02
 
 ### Added
@@ -607,7 +613,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.2...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.3...HEAD
+[8.20.3]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.2...v8.20.3
 [8.20.2]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.1...v8.20.2
 [8.20.1]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.0...v8.20.1
 [8.20.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.19.0...v8.20.0
