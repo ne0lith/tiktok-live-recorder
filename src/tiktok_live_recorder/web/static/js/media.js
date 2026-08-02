@@ -29,6 +29,47 @@ const playerFilename = document.getElementById("player-filename");
 const playerMeta = document.getElementById("player-meta");
 const playerActions = document.getElementById("player-actions");
 const playerFileActions = document.getElementById("player-file-actions");
+const playerRepairBtn = document.getElementById("player-repair");
+
+function repairApiPath(username, item) {
+  const encodedUser = encodeURIComponent(username);
+  const encodedFile = encodeURIComponent(item.filename);
+  if (item.source === "legacy") {
+    return `/api/media/${encodedUser}/legacy/${encodedFile}/repair`;
+  }
+  return `/api/media/${encodedUser}/${encodedFile}/repair`;
+}
+
+function itemHasThumbnail(item) {
+  if (!item?.thumb_url) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(true);
+    img.onerror = () => resolve(false);
+    img.src = `${item.thumb_url}?probe=${Date.now()}`;
+  });
+}
+
+async function updatePlayerRepairButton(item) {
+  if (!playerRepairBtn) return;
+  if (!item || item.in_progress) {
+    playerRepairBtn.classList.add("hidden");
+    playerRepairBtn.disabled = false;
+    return;
+  }
+  const hasThumb = await itemHasThumbnail(item);
+  const show = !hasThumb;
+  playerRepairBtn.classList.toggle("hidden", !show);
+  if (show) {
+    playerRepairBtn.disabled = false;
+    playerRepairBtn.textContent = item.needs_convert ? "Convert" : "Fix video";
+  }
+}
+
+function hidePlayerRepairButton() {
+  playerRepairBtn?.classList.add("hidden");
+  if (playerRepairBtn) playerRepairBtn.disabled = false;
+}
 
 export function loadLibraryPreferences() {
   const savedSort = localStorage.getItem(STORAGE_SORT_KEY);
@@ -227,6 +268,7 @@ export function playMedia(item, username) {
   if (playerMeta) playerMeta.textContent = mediaItemMeta(item);
   renderPlayerActions();
   setPlayerOpen(true);
+  void updatePlayerRepairButton(item);
   const targetUrl = new URL(item.url, window.location.origin).href;
   if (mediaPlayerVideo && mediaPlayerVideo.src !== targetUrl) {
     mediaPlayerVideo.src = item.url;
@@ -242,6 +284,7 @@ export function closePlayer() {
   libraryState.playingUrl = null;
   libraryState.playingUsername = null;
   libraryState.playingItem = null;
+  hidePlayerRepairButton();
   if (playerActions) {
     playerActions.classList.add("hidden");
     playerActions.innerHTML = "";
@@ -503,6 +546,29 @@ export function initMediaInteractions() {
 
   document.getElementById("player-close")?.addEventListener("click", closePlayer);
 
+  playerRepairBtn?.addEventListener("click", async () => {
+    const item = libraryState.playingItem;
+    const username = libraryState.playingUsername;
+    if (!item || !username) return;
+    const label = item.needs_convert ? "convert" : "repair";
+    if (!confirm(`${label === "convert" ? "Convert" : "Fix"} ${item.filename}?`)) return;
+    try {
+      playerRepairBtn.disabled = true;
+      playerRepairBtn.textContent = "Queued…";
+      const result = await api(repairApiPath(username, item), { method: "POST" });
+      const position = result.position;
+      showToast(
+        position > 1
+          ? `Queued (position ${position})`
+          : `${label === "convert" ? "Conversion" : "Repair"} queued`,
+      );
+    } catch (error) {
+      showToast(error.message);
+      playerRepairBtn.disabled = false;
+      void updatePlayerRepairButton(item);
+    }
+  });
+
   document.getElementById("player-delete")?.addEventListener("click", async () => {
     const item = libraryState.playingItem;
     const username = libraryState.playingUsername;
@@ -542,6 +608,19 @@ export function initMediaInteractions() {
   };
 
   mediaPlayer?.addEventListener("click", handleProfileClick);
+
+  window.addEventListener("ttlr:media-updated", () => {
+    if (libraryState.playingUrl) {
+      const items = mediaItemsForUser(libraryState.playingUsername || "");
+      const stillThere = items.some((entry) => entry.url === libraryState.playingUrl);
+      if (!stillThere) {
+        closePlayer();
+        return;
+      }
+    }
+    const item = libraryState.playingItem;
+    if (item) void updatePlayerRepairButton(item);
+  });
 
   window.addEventListener("ttlr:status-updated", () => {
     if (libraryState.playingUsername) renderPlayerActions();

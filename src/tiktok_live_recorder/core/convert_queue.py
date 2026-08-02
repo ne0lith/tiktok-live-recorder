@@ -23,6 +23,7 @@ class ConvertJob:
     on_progress: ConvertProgressCallback | None
     on_start: Callable[[], None] | None
     on_complete: ConvertCompleteCallback
+    mode: str = "flv"
 
 
 class ConvertQueue:
@@ -94,14 +95,23 @@ class ConvertQueue:
                 self._active += 1
             if job.on_start:
                 job.on_start()
-            mp4_output = job.output_path.replace("_flv.mp4", ".mp4")
-            converted = VideoManagement.convert_flv_to_mp4(
-                job.output_path,
-                job.bitrate,
-                job.ffmpeg_path,
-                on_progress=job.on_progress,
-            )
-            success = converted and Path(mp4_output).is_file()
+            if job.mode == "repair":
+                mp4_output = job.output_path
+                success = VideoManagement.repair_mp4_file(
+                    job.output_path,
+                    job.bitrate,
+                    job.ffmpeg_path,
+                    on_progress=job.on_progress,
+                )
+            else:
+                mp4_output = job.output_path.replace("_flv.mp4", ".mp4")
+                converted = VideoManagement.convert_flv_to_mp4(
+                    job.output_path,
+                    job.bitrate,
+                    job.ffmpeg_path,
+                    on_progress=job.on_progress,
+                )
+                success = converted and Path(mp4_output).is_file()
             if not success:
                 logger.warning(
                     "[@%s] Conversion failed; left raw recording at %s",
@@ -111,7 +121,11 @@ class ConvertQueue:
             job.on_complete(success, mp4_output)
         except Exception as exc:
             logger.error("[@%s] Conversion error: %s", job.user, exc, exc_info=True)
-            mp4_output = job.output_path.replace("_flv.mp4", ".mp4")
+            mp4_output = (
+                job.output_path
+                if job.mode == "repair"
+                else job.output_path.replace("_flv.mp4", ".mp4")
+            )
             job.on_complete(False, mp4_output)
         finally:
             with self._lock:

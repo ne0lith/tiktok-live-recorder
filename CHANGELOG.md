@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.20.0] - 2026-08-02
+
+### Added
+
+- **Media player**: **Fix video** / **Convert** button when a recording has no thumbnail (broken MP4 or orphan `*_flv.mp4`); queues the in-app salvage pipeline via `POST /api/media/{username}/{filename}/repair`
+- **Conversion**: `repair_mp4_file()` re-encodes unplayable MP4s in place through the same salvage passes used after recording
+
 ## [8.19.0] - 2026-08-02
 
 ### Added
@@ -575,7 +582,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.19.0...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.0...HEAD
+[8.20.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.19.0...v8.20.0
 [8.19.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.18.1...v8.19.0
 [8.18.1]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.18.0...v8.18.1
 [8.18.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.17.0...v8.18.0

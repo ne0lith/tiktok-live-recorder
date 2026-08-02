@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -284,6 +285,13 @@ class StubRecorder:
             self.active_recording_output_paths(),
             default_to_fix_dir(),
         )
+
+    def enqueue_media_repair(self, username, media_path):
+        self.repair_requests = getattr(self, "repair_requests", [])
+        self.repair_requests.append((username, media_path))
+        path = Path(media_path)
+        mode = "flv" if path.name.endswith("_flv.mp4") else "repair"
+        return {"queued": True, "position": 1, "mode": mode}
 
     def get_ffmpeg_info(self):
         return {
@@ -627,3 +635,37 @@ def test_api_leftover_flv_and_move(tmp_path, monkeypatch):
 
     response = client.get("/api/media/leftover-flv")
     assert response.json()["count"] == 0
+
+
+def test_api_repair_media(tmp_path, monkeypatch):
+    output_base = tmp_path / "output"
+    user_dir = output_base / "alpha"
+    user_dir.mkdir(parents=True)
+    broken = user_dir / "TK_alpha_2026.01.01_12-00-00.mp4"
+    broken.write_bytes(b"broken")
+    flv = user_dir / "TK_alpha_2026.01.01_13-00-00_flv.mp4"
+    flv.write_bytes(b"flv")
+
+    monkeypatch.setattr(
+        "tiktok_live_recorder.web.app.default_output_base",
+        lambda: output_base,
+    )
+
+    recorder = StubRecorder()
+    config = RecorderConfig(mode=Mode.WATCHLIST, users=["alpha"], cookies={})
+    client = TestClient(create_app(recorder, config))
+
+    response = client.post(
+        f"/api/media/alpha/{broken.name}/repair",
+    )
+    assert response.status_code == 200
+    assert response.json() == {"queued": True, "position": 1, "mode": "repair"}
+    assert recorder.repair_requests == [("alpha", str(broken.resolve()))]
+
+    response = client.post(f"/api/media/alpha/{flv.name}/repair")
+    assert response.status_code == 200
+    assert response.json()["mode"] == "flv"
+
+    recorder._active_paths = {str(flv.resolve())}
+    response = client.post(f"/api/media/alpha/{flv.name}/repair")
+    assert response.status_code == 400

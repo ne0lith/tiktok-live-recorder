@@ -302,6 +302,7 @@ Click a `@handle` to filter status and the media library to that user. Each prof
 - Thumbnail previews for finished recordings (server-generated `*.thumb.jpg` cache, lazy-loaded in the browser)
 - Orphan `*_flv.mp4` files pinned and styled (`needs convert`); legacy items show a `legacy` tag when visible. Active recordings are hidden until finalized (see Live status).
 - Docked in-browser player above the scrollable list (playback is not interrupted by library refreshes)
+- **Fix video** in the player when thumbnail generation fails (broken MP4) or for orphan `*_flv.mp4` files (**Convert**); queues the in-app salvage pipeline
 - Player header links to the user's profile filter; watchlist user actions (Stop, Pause, Check, etc.) appear below the header while a file is playing
 - Download or delete files (delete requires confirmation; **Delete** is also available in the player panel)
 - **Move leftover FLVs** - move orphan `*_flv.mp4` files into repo-root `to_fix/` (shown only when orphans exist; badge shows count). Skips files that belong to an active recording. See [Salvaging leftover recordings](#salvaging-leftover-recordings).

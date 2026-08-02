@@ -639,3 +639,84 @@ class VideoManagement:
             "Use the dashboard 'Move leftover FLVs' action to retry."
         )
         return False
+
+    @staticmethod
+    def repair_mp4_file(
+        file: str,
+        bitrate=None,
+        ffmpeg_path=None,
+        on_progress: ConvertProgressCallback | None = None,
+    ) -> bool:
+        """
+        Re-encode an existing MP4 in place using the salvage pipeline.
+
+        Returns True when the file was replaced with a dashboard-playable MP4.
+        """
+        source = Path(file)
+        if not source.is_file():
+            logger.error("Repair skipped; file not found: %s", file)
+            return False
+
+        if not VideoManagement.wait_for_file_release(file):
+            logger.error(
+                "File %s is still locked after waiting. Skipping repair.", file
+            )
+            return False
+
+        ffmpeg_cmd = ffmpeg_path or "ffmpeg"
+        ffprobe_cmd = VideoManagement._ffprobe_cmd(ffmpeg_path)
+        temp_output = str(source.with_name(f"{source.stem}.repair.tmp.mp4"))
+
+        logger.info("Repairing %s in place...", source.resolve())
+
+        def _commit_repair() -> bool:
+            try:
+                source.unlink()
+                Path(temp_output).replace(source)
+                return True
+            except OSError as exc:
+                logger.error("Could not replace %s after repair: %s", source, exc)
+                return False
+
+        try:
+            if VideoManagement._try_convert_pass(
+                file,
+                temp_output,
+                bitrate=bitrate,
+                ffmpeg_cmd=ffmpeg_cmd,
+                ffprobe_cmd=ffprobe_cmd,
+                on_progress=on_progress,
+                phase="repair",
+            ):
+                return _commit_repair()
+
+            for audio_mode in VideoManagement._salvage_audio_modes(file, ffprobe_cmd):
+                if VideoManagement._try_convert_pass(
+                    file,
+                    temp_output,
+                    bitrate=bitrate,
+                    ffmpeg_cmd=ffmpeg_cmd,
+                    ffprobe_cmd=ffprobe_cmd,
+                    on_progress=on_progress,
+                    phase=f"repair-salvage-{audio_mode}",
+                    salvage=True,
+                    audio_mode=audio_mode,
+                ):
+                    return _commit_repair()
+
+            for audio_mode in VideoManagement._salvage_audio_modes(file, ffprobe_cmd):
+                if VideoManagement._try_mkv_salvage_pass(
+                    file,
+                    temp_output,
+                    bitrate=bitrate,
+                    ffmpeg_cmd=ffmpeg_cmd,
+                    ffprobe_cmd=ffprobe_cmd,
+                    on_progress=on_progress,
+                    audio_mode=audio_mode,
+                ):
+                    return _commit_repair()
+        finally:
+            Path(temp_output).unlink(missing_ok=True)
+
+        logger.error("Repair failed; left original at %s", source.resolve())
+        return False

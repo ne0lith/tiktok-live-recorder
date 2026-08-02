@@ -161,6 +161,43 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
     def api_move_leftover_flv() -> dict[str, Any]:
         return recorder.move_leftover_flvs()
 
+    def _queue_media_repair(
+        username: str,
+        filename: str,
+        *,
+        subdir: str | None = None,
+    ) -> dict[str, Any]:
+        path = resolve_media_path(
+            output_base,
+            custom_output,
+            username,
+            filename,
+            subdir=subdir,
+        )
+        if path is None:
+            raise HTTPException(status_code=404, detail="Media not found")
+        if path.name.endswith("_flv.mp4") and is_active_recording_file(
+            path, recorder.active_recording_output_paths()
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot repair an in-progress recording",
+            )
+        try:
+            return recorder.enqueue_media_repair(username, str(path))
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/media/{username}/{filename}/repair")
+    def api_repair_media(username: str, filename: str) -> dict[str, Any]:
+        return _queue_media_repair(username, filename)
+
+    @app.post("/api/media/{username}/legacy/{filename}/repair")
+    def api_repair_legacy_media(username: str, filename: str) -> dict[str, Any]:
+        return _queue_media_repair(username, filename, subdir="legacy")
+
     @app.get("/api/ffmpeg")
     def api_ffmpeg() -> dict[str, Any]:
         return recorder.get_ffmpeg_info()

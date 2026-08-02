@@ -1310,6 +1310,50 @@ class TikTokRecorder:
                         active.add(str(output_path))
         return active
 
+    def enqueue_media_repair(self, username: str, media_path: str) -> dict:
+        """Queue salvage conversion/repair for a library file."""
+        path = Path(media_path)
+        if not path.is_file():
+            raise FileNotFoundError(f"Media not found: {media_path}")
+
+        try:
+            resolved = str(path.resolve())
+        except OSError:
+            resolved = str(path)
+        if resolved in self.active_recording_output_paths():
+            raise ValueError("Cannot repair an in-progress recording")
+
+        is_flv = path.name.endswith("_flv.mp4")
+        mode = "flv" if is_flv else "repair"
+
+        def on_complete(success: bool, output: str) -> None:
+            label = "converted" if is_flv else "repaired"
+            outcome = "succeeded" if success else "failed"
+            self.record_activity(
+                "media",
+                f"Manual {label} {outcome}: {path.name}",
+                username=username,
+            )
+            if success and not is_flv:
+                from tiktok_live_recorder.web.thumbnails import delete_thumbnail
+
+                delete_thumbnail(path)
+            self._wake_poll_loop(reason="conversion-finished")
+
+        queue_position = self._convert_queue.enqueue(
+            ConvertJob(
+                user=username,
+                output_path=str(path),
+                bitrate=self.bitrate,
+                ffmpeg_path=self.ffmpeg_path,
+                on_progress=None,
+                on_start=None,
+                on_complete=on_complete,
+                mode=mode,
+            )
+        )
+        return {"queued": True, "position": queue_position, "mode": mode}
+
     def move_leftover_flvs(self) -> dict:
         from tiktok_live_recorder.utils.utils import default_to_fix_dir
         from tiktok_live_recorder.web.media import move_orphan_flv_files
