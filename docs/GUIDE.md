@@ -1,7 +1,9 @@
 # Guide
 
 - [Configuration directory](#configuration-directory)
+- [Runtime settings](#runtime-settings)
 - [FFmpeg and HEVC](#ffmpeg-and-hevc)
+- [Conversion queue and post-processing](#conversion-queue-and-post-processing)
 - [How to set cookies](#how-to-set-cookies)
 - [How to set up the watchlist](#how-to-set-up-the-watchlist)
 - [How to get room_id](#how-to-get-room_id)
@@ -21,6 +23,7 @@ All user-specific settings live in `config/` at the project root:
 | `cookies.json` | `cookies.json.example` | TikTok session cookies |
 | `users.json` | `users.json.example` | Watchlist usernames |
 | `watchlist_state.json` | `watchlist_state.json.example` | Paused users (auto-managed by the dashboard) |
+| `runtime_settings.json` | `runtime_settings.json.example` | Poll interval, Telegram uploads, max concurrent converts |
 | `telegram.json` | `telegram.json.example` | Telegram API credentials |
 
 Real config files are gitignored. Only the `*.example` templates are committed.
@@ -28,6 +31,28 @@ Real config files are gitignored. Only the `*.example` templates are committed.
 On first use, the recorder copies the matching `.example` file if the real file does not exist yet.
 
 Override the config location with the `TIKTOK_RECORDER_CONFIG_DIR` environment variable.
+
+## Runtime Settings
+
+`config/runtime_settings.json` stores operator preferences that persist across restarts:
+
+```json
+{
+  "automatic_interval_minutes": 5,
+  "use_telegram": false,
+  "max_concurrent_converts": 1
+}
+```
+
+| Field | Default | Purpose |
+|-------|---------|---------|
+| `automatic_interval_minutes` | `5` | Watchlist/followers/automatic poll interval |
+| `use_telegram` | `false` | Upload finished MP4s to Telegram after conversion |
+| `max_concurrent_converts` | `1` | Parallel FLV->MP4 jobs when streams end |
+
+**Load order:** built-in defaults -> `runtime_settings.json` -> CLI flags on startup (`-automatic_interval`, `-telegram`, `-max-concurrent-converts`). CLI wins for that run only.
+
+**Dashboard:** **Settings -> Runtime** edits all three fields and saves to `runtime_settings.json` immediately (no restart). **Legacy recordings** visibility is separate - stored in browser `localStorage`, not this file.
 
 ## FFmpeg and HEVC
 
@@ -64,11 +89,50 @@ To use your own build instead: `uv run tiktok-live-recorder -ffmpeg-path /path/t
 
 ### Fallback rewriter
 
-If demux still fails after install, the recorder attempts a legacy FLV tag rewrite (codec 12 -> Enhanced `hvc1`) before giving up. Check logs for conversion errors if a recording stays on **`convert_failed`**.
+If demux still fails during conversion, pass 3 of the in-app pipeline attempts a legacy FLV tag rewrite (codec 12 -> Enhanced `hvc1`) before trying the MKV salvage pass. Check logs for conversion errors if a recording stays on **`convert_failed`**.
 
 ### Windows and macOS
 
 Install FFmpeg manually ([ffmpeg.org](https://ffmpeg.org/download.html), Homebrew, Chocolatey, etc.). There is no automatic vendor download on these platforms - use FFmpeg **8.0+** for best HEVC FLV compatibility, or pass `-ffmpeg-path`.
+
+## Conversion Queue and Post-Processing
+
+Every finished recording goes through the same post-processing path:
+
+1. The recording thread flushes `TK_<user>_<timestamp>_flv.mp4` and sets status **`convert_queued`**.
+2. A job is added to the shared **ConvertQueue** (FIFO).
+3. When a worker slot is free, status becomes **`converting`** and ffmpeg runs.
+4. On success (validated H.264 + `yuv420p`), the `*_flv.mp4` is removed and status becomes **`finished`**.
+5. On failure after all passes, status becomes **`convert_failed`** and the `*_flv.mp4` is kept.
+
+Recording threads **never** invoke ffmpeg directly. There is no setting to skip conversion.
+
+### Concurrency
+
+By default only **one** convert runs at a time (`max_concurrent_converts: 1`). When several streams end together, extra jobs wait in **`convert_queued`** until a slot opens. The dashboard shows queue stats (`pending`, `active`, `max_concurrent`) and per-user queue position.
+
+Raise the limit when you have CPU headroom (2-4 is typical on a dedicated box). Lower it on Docker hosts or shared VMs.
+
+| Surface | How |
+|---------|-----|
+| Dashboard | **Settings -> Runtime -> Max concurrent converts** |
+| Config file | `max_concurrent_converts` in `runtime_settings.json` |
+| CLI | `-max-concurrent-converts 2` (overrides file on startup) |
+
+### Multi-pass salvage (inside each queued job)
+
+Each queued job runs the full pipeline before reporting success or failure:
+
+| Pass | What |
+|------|------|
+| 1 | Standard libx264 encode -> ffprobe validate |
+| 2 | Salvage encode (`discardcorrupt`, timestamp reset, audio fallbacks) -> validate |
+| 3 | Legacy HEVC FLV tag rewrite -> validate |
+| 4 | MKV intermediate encode -> MP4 remux -> validate |
+
+The `*_flv.mp4` is deleted **only** when ffprobe confirms a dashboard-playable MP4. Truncated CDN drops that used to produce empty MP4s with ffmpeg exit code 0 are now caught here.
+
+Salvage is retry logic inside one queue job, not a separate queue or manual step.
 
 ## How To Set Cookies
 
@@ -123,11 +187,13 @@ A plain JSON array also works: `["creator1", "creator2"]`.
 uv run tiktok-live-recorder -mode watchlist
 ```
 
-3. (Optional) Set the poll interval in minutes (default 5):
+3. (Optional) Set the poll interval in minutes (default from `runtime_settings.json`, else 5):
 
 ```bash
 uv run tiktok-live-recorder -mode watchlist -automatic_interval 3
 ```
+
+You can also change the interval from **Settings -> Runtime** in the dashboard; it is saved to `config/runtime_settings.json`.
 
 **CLI alternatives** (fixed for that run - not live-reloaded):
 
@@ -209,7 +275,9 @@ The sticky summary strip shows live/recording/offline/paused/error counts, poll 
 
 ### Live status
 
-- Per-user state: `offline`, `recording`, `converting`, `stopping`, `paused`, `convert_failed`, errors, etc.
+- Per-user state: `offline`, `recording`, `convert_queued`, `converting`, `stopping`, `paused`, `convert_failed`, errors, etc.
+- **`convert_queued`** - recording finished; waiting for a convert worker slot (queue position in progress details)
+- **`converting`** - ffmpeg post-processing in progress (percent/ETA when available)
 - Room ID, elapsed time, file size, and active output path
 - Last-poll summary: finished, skipped, and errors from the most recent check
 - **Force check** - poll immediately (shows loading while a poll is in progress)
@@ -242,7 +310,7 @@ Click a `@handle` to filter status and the media library to that user. Each prof
 
 Opens in a modal overlay (shortcut **`s`**):
 
-- **Runtime** - poll interval (minutes), Telegram upload on/off (no restart), and **Legacy recordings** visibility in the media library (browser `localStorage`, off by default)
+- **Runtime** - poll interval (minutes), **max concurrent converts**, Telegram upload on/off (saved to `runtime_settings.json`; no restart), and **Legacy recordings** visibility in the media library (browser `localStorage`, off by default)
 - **Record now** - start recording by username and/or room ID
 - **Cookies / Telegram** - edit `cookies.json` and `telegram.json` in the browser
 - **Recent Telegram uploads** - when uploads are enabled
@@ -272,11 +340,11 @@ Press **`?`** for the full list. Defaults:
 
 ## Salvaging Leftover Recordings
 
-During recording, output is written to `TK_<user>_<timestamp>_flv.mp4`. When the stream ends, FFmpeg converts it to `TK_<user>_<timestamp>.mp4` and removes the `*_flv.mp4` on success.
+During recording, output is written to `TK_<user>_<timestamp>_flv.mp4`. When the stream ends, conversion is **always** enqueued (see [Conversion queue and post-processing](#conversion-queue-and-post-processing)). The in-app pipeline tries multiple salvage passes before giving up.
 
-If conversion fails (common with old FFmpeg on HEVC streams), the `*_flv.mp4` remains and the user may show **`convert_failed`** in live status.
+If all passes fail (common with very old FFmpeg on HEVC streams, or severely truncated files), the `*_flv.mp4` remains and the user shows **`convert_failed`** in live status.
 
-**Fix FFmpeg first** ([FFmpeg and HEVC](#ffmpeg-and-hevc)), then salvage:
+**Fix FFmpeg first** ([FFmpeg and HEVC](#ffmpeg-and-hevc)), then salvage externally:
 
 1. Open the dashboard **Media library**.
 2. Click **Move leftover FLVs** (button appears only when orphan files exist; badge shows count).

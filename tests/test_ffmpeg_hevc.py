@@ -529,6 +529,22 @@ def test_parse_ffmpeg_progress_line_reads_out_time_us():
     }
 
 
+def test_parse_ffmpeg_progress_line_ignores_non_numeric_out_time():
+    from tiktok_live_recorder.utils.video_management import VideoManagement
+
+    assert VideoManagement.parse_ffmpeg_progress_line("out_time_us=N/A") is None
+    assert VideoManagement.parse_ffmpeg_progress_line("out_time_ms=N/A") is None
+
+
+def test_output_is_dashboard_playable_requires_h264_yuv420p(tmp_path):
+    from tiktok_live_recorder.utils.video_management import VideoManagement
+
+    missing = tmp_path / "missing.mp4"
+    assert (
+        VideoManagement.output_is_dashboard_playable(str(missing), "ffprobe") is False
+    )
+
+
 def test_describe_ffmpeg_binary_detects_vendor_path():
     from tiktok_live_recorder.utils.ffmpeg_setup import describe_ffmpeg_binary
 

@@ -1132,6 +1132,7 @@ body.modal-open {
 }
 
 .badge.converting,
+.badge.convert_queued,
 .badge.stopping,
 .badge.finished {
   color: var(--accent);

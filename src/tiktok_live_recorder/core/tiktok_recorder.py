@@ -8,6 +8,7 @@ from threading import Event, Lock, Thread
 
 from requests import HTTPError, RequestException
 
+from tiktok_live_recorder.core.convert_queue import ConvertJob, ConvertQueue
 from tiktok_live_recorder.core.tiktok_api import TikTokAPI
 from tiktok_live_recorder.utils.logger_manager import logger
 from tiktok_live_recorder.utils.recorder_config import RecorderConfig
@@ -16,7 +17,6 @@ from tiktok_live_recorder.utils.ffmpeg_setup import (
     get_startup_ffmpeg_info,
     normalize_cdn_url,
 )
-from tiktok_live_recorder.utils.video_management import VideoManagement
 from tiktok_live_recorder.utils.utils import output_dir_for_user
 from tiktok_live_recorder.utils.custom_exceptions import (
     LiveNotFound,
@@ -27,6 +27,9 @@ from tiktok_live_recorder.utils.enums import Mode, Error, TimeOut, TikTokError
 
 # Pause between watchlist/followers poll steps to avoid bursting TikTok/tikrec APIs.
 POLL_USER_DELAY_SECONDS = 0.5
+
+_POST_RECORD_STATUSES = frozenset({"convert_queued", "converting"})
+_BUSY_STATUSES = frozenset({"recording", "stopping", "convert_queued", "converting"})
 
 
 def _is_stream_url_gone(exc: BaseException) -> bool:
@@ -51,6 +54,7 @@ class TikTokRecorder:
         self.room_id = config.room_id
         self.mode = config.mode
         self.automatic_interval = config.automatic_interval
+        self.max_concurrent_converts = config.max_concurrent_converts
         self.duration = config.duration
         self.output = config.output
         self.bitrate = config.bitrate
@@ -79,6 +83,15 @@ class TikTokRecorder:
         self._activity: deque[dict] = deque(maxlen=50)
         self._poll_wake_reason: str | None = None
         self._partial_poll_users: list[str] = []
+        self._convert_queue = ConvertQueue(max_concurrent=self.max_concurrent_converts)
+
+    @staticmethod
+    def _entry_still_active(entry: dict) -> bool:
+        status = entry.get("status", "recording")
+        if status in _POST_RECORD_STATUSES:
+            return True
+        thread = entry.get("thread")
+        return bool(thread and thread.is_alive())
 
     def request_stop(self):
         """Signal all loops/threads to finish and finalize open recordings."""
@@ -239,10 +252,9 @@ class TikTokRecorder:
 
         recordings = []
         for username, entry in active_entries.items():
-            thread = entry.get("thread")
-            if thread is not None and not thread.is_alive():
-                # Thread ended; poll loop will clean this up on the next pass.
+            if not self._entry_still_active(entry):
                 continue
+            thread = entry.get("thread")
             started_at = entry.get("started_at")
             elapsed = (now - started_at) if started_at else None
             output_path = entry.get("output_path")
@@ -252,21 +264,25 @@ class TikTokRecorder:
                     file_size = max(file_size, Path(output_path).stat().st_size)
                 except OSError:
                     pass
+            status = entry.get("status", "recording")
             recordings.append(
                 {
                     "username": username,
                     "room_id": entry.get("room_id"),
-                    "status": entry.get("status", "recording"),
+                    "status": status,
                     "started_at": started_at,
                     "elapsed_seconds": round(elapsed, 1)
                     if elapsed is not None
                     else None,
                     "bytes_written": file_size,
                     "output_path": output_path,
-                    "is_alive": bool(thread and thread.is_alive()),
+                    "is_alive": status in _POST_RECORD_STATUSES
+                    or bool(thread and thread.is_alive()),
                     "convert_progress": entry.get("convert_progress"),
                 }
             )
+
+        convert_queue = self._convert_queue.stats()
 
         return {
             "mode": self.mode.name.lower(),
@@ -275,6 +291,8 @@ class TikTokRecorder:
             "users_file": self.users_file,
             "automatic_interval_minutes": self.automatic_interval,
             "use_telegram": self.use_telegram,
+            "max_concurrent_converts": self.max_concurrent_converts,
+            "convert_queue": convert_queue,
             "last_poll_at": self._last_poll_at,
             "poll_label": self._poll_label,
             "poll": snapshot,
@@ -299,17 +317,28 @@ class TikTokRecorder:
         *,
         automatic_interval_minutes: int | None = None,
         use_telegram: bool | None = None,
+        max_concurrent_converts: int | None = None,
     ) -> dict:
+        from tiktok_live_recorder.utils.utils import write_runtime_settings
+
         if automatic_interval_minutes is not None:
             if automatic_interval_minutes < 1:
                 raise ValueError("automatic_interval_minutes must be at least 1")
             self.automatic_interval = automatic_interval_minutes
         if use_telegram is not None:
             self.use_telegram = use_telegram
-        return {
+        if max_concurrent_converts is not None:
+            if max_concurrent_converts < 1:
+                raise ValueError("max_concurrent_converts must be at least 1")
+            self.max_concurrent_converts = max_concurrent_converts
+            self._convert_queue.set_max_concurrent(max_concurrent_converts)
+        settings = {
             "automatic_interval_minutes": self.automatic_interval,
             "use_telegram": self.use_telegram,
+            "max_concurrent_converts": self.max_concurrent_converts,
         }
+        write_runtime_settings(settings)
+        return settings
 
     def _record_telegram_upload(
         self,
@@ -351,21 +380,21 @@ class TikTokRecorder:
             result.get("message", "Upload finished"),
         )
 
-    def _is_user_recording(self, username: str) -> bool:
+    def _is_user_busy(self, username: str) -> bool:
         entry = self._active_recordings.get(username)
         if not entry:
             return False
-        thread = entry.get("thread")
-        return bool(thread and thread.is_alive())
+        return self._entry_still_active(entry)
+
+    def _is_user_recording(self, username: str) -> bool:
+        return self._is_user_busy(username)
 
     def _room_owner(self, room_id: str, *, exclude: str | None = None) -> str | None:
         for name, entry in self._active_recordings.items():
             if exclude and name == exclude:
                 continue
-            if entry.get("room_id") == room_id:
-                thread = entry.get("thread")
-                if thread and thread.is_alive():
-                    return name
+            if entry.get("room_id") == room_id and self._entry_still_active(entry):
+                return name
         return None
 
     def _spawn_recording_thread(self, username: str, room_id: str) -> None:
@@ -411,7 +440,7 @@ class TikTokRecorder:
         if not username or not room_id:
             raise ValueError("Could not resolve username and room_id")
 
-        if self._is_user_recording(username):
+        if self._is_user_busy(username):
             raise RuntimeError(f"@{username} is already recording")
 
         owner = self._room_owner(room_id, exclude=username)
@@ -519,6 +548,12 @@ class TikTokRecorder:
             raise UserLiveError(f"@{self.user}: {TikTokError.USER_NOT_CURRENTLY_LIVE}")
 
         self.start_recording(self.user, self.room_id)
+        self._wait_for_user_pipeline(self.user)
+
+    def _wait_for_user_pipeline(self, username: str, timeout: float = 3600.0) -> None:
+        deadline = time.time() + timeout
+        while self._is_user_busy(username) and time.time() < deadline:
+            time.sleep(0.5)
 
     def automatic_mode(self):
         while not self._should_stop():
@@ -630,8 +665,7 @@ class TikTokRecorder:
         for username, entry in list(active_recordings.items()):
             if username in users_set:
                 continue
-            thread = entry["thread"]
-            if thread.is_alive():
+            if self._entry_still_active(entry):
                 groups["recording"].append(username)
                 counts["recording"] += 1
                 continue
@@ -666,9 +700,12 @@ class TikTokRecorder:
 
             if username in active_recordings:
                 entry = active_recordings[username]
-                thread = entry["thread"]
-                if thread.is_alive():
-                    groups["recording"].append(username)
+                if self._entry_still_active(entry):
+                    status = entry.get("status", "recording")
+                    if status in _POST_RECORD_STATUSES:
+                        groups["recording"].append(username)
+                    else:
+                        groups["recording"].append(username)
                     counts["recording"] += 1
                     continue
 
@@ -857,7 +894,7 @@ class TikTokRecorder:
                 )
 
     def _shutdown_recordings(self, timeout: float = 300.0):
-        """Wait for recording threads to flush + convert after a stop request."""
+        """Wait for recording threads and queued conversions after a stop request."""
         self.request_stop()
         active = getattr(self, "_active_recordings", {}) or {}
         if not active:
@@ -868,17 +905,26 @@ class TikTokRecorder:
         )
         deadline = time.time() + timeout
         for username, entry in list(active.items()):
-            thread = entry["thread"]
+            thread = entry.get("thread")
+            if thread is None:
+                continue
             remaining = max(0.0, deadline - time.time())
             thread.join(timeout=remaining)
             if thread.is_alive():
                 logger.warning(f"[@{username}] still finalizing after wait timeout")
+
+        while self._active_recordings and time.time() < deadline:
+            stats = self._convert_queue.stats()
+            if stats["pending"] == 0 and stats["active"] == 0:
+                break
+            time.sleep(0.5)
+
+        for username in list(self._active_recordings):
+            outcome = self._recording_results.pop(username, "ok")
+            if outcome == "ok":
+                logger.info(f"[@{username}] finalized")
             else:
-                outcome = self._recording_results.pop(username, "ok")
-                if outcome == "ok":
-                    logger.info(f"[@{username}] finalized")
-                else:
-                    logger.info(f"[@{username}] stopped with error")
+                logger.info(f"[@{username}] stopped with error")
 
     def _log_recording(self, user, message, level="info"):
         getattr(logger, level)(f"[@{user}] {message}")
@@ -886,16 +932,66 @@ class TikTokRecorder:
     def _recording_worker(self, user, room_id):
         try:
             self.start_recording(user, room_id)
-            self._recording_results[user] = "ok"
         except (UserLiveError, LiveNotFound) as ex:
             self._recording_results[user] = "error"
             self._log_recording(user, str(ex), "error")
+            with self._state_lock:
+                self._active_recordings.pop(user, None)
+            self._user_stop_events.pop(user, None)
         except Exception as ex:
             self._recording_results[user] = "error"
             self._log_recording(user, f"Unexpected error: {ex}", "error")
+            with self._state_lock:
+                self._active_recordings.pop(user, None)
+            self._user_stop_events.pop(user, None)
         finally:
             if self.mode in (Mode.WATCHLIST, Mode.FOLLOWERS):
                 self._wake_poll_loop()
+
+    def _enqueue_conversion(self, user: str, output: str) -> None:
+        def on_start() -> None:
+            self._update_recording_entry(
+                user,
+                status="converting",
+                convert_progress={"percent": 0, "phase": "starting"},
+            )
+
+        def on_progress(progress: dict) -> None:
+            self._update_recording_entry(user, convert_progress=progress)
+
+        def on_complete(converted: bool, mp4_output: str) -> None:
+            if converted and Path(mp4_output).is_file():
+                self._update_recording_entry(
+                    user, status="finished", convert_progress=None
+                )
+                self._maybe_upload_to_telegram(user, mp4_output)
+                self._recording_results[user] = "ok"
+            else:
+                self._update_recording_entry(
+                    user, status="convert_failed", convert_progress=None
+                )
+                self._recording_results[user] = "error"
+            with self._state_lock:
+                self._active_recordings.pop(user, None)
+            self._user_stop_events.pop(user, None)
+            self._wake_poll_loop(reason="conversion-finished")
+
+        queue_position = self._convert_queue.enqueue(
+            ConvertJob(
+                user=user,
+                output_path=output,
+                bitrate=self.bitrate,
+                ffmpeg_path=self.ffmpeg_path,
+                on_progress=on_progress,
+                on_start=on_start,
+                on_complete=on_complete,
+            )
+        )
+        self._update_recording_entry(
+            user,
+            status="convert_queued",
+            convert_progress={"phase": "queued", "queue_position": queue_position},
+        )
 
     def _build_output_path(self, user: str) -> str:
         filename = (
@@ -1197,36 +1293,14 @@ class TikTokRecorder:
             raise LiveNotFound(TikTokError.RETRIEVE_LIVE_URL)
 
         self._log_recording(user, f"Recording finished: {Path(output).resolve()}\n")
-        self._update_recording_entry(
-            user,
-            status="converting",
-            convert_progress={"percent": 0, "phase": "starting"},
-        )
-
-        def on_convert_progress(progress: dict) -> None:
-            self._update_recording_entry(user, convert_progress=progress)
-
-        converted = VideoManagement.convert_flv_to_mp4(
-            output,
-            self.bitrate,
-            self.ffmpeg_path,
-            on_progress=on_convert_progress,
-        )
-        mp4_output = output.replace("_flv.mp4", ".mp4")
-        if converted and Path(mp4_output).is_file():
-            self._update_recording_entry(user, status="finished", convert_progress=None)
-            self._maybe_upload_to_telegram(user, mp4_output)
-        else:
-            self._update_recording_entry(
-                user, status="convert_failed", convert_progress=None
-            )
+        self._enqueue_conversion(user, output)
 
     def active_recording_output_paths(self) -> set[str]:
         active: set[str] = set()
         with self._state_lock:
             for entry in self._active_recordings.values():
                 status = entry.get("status")
-                if status not in ("recording", "converting", "stopping"):
+                if status not in _BUSY_STATUSES:
                     continue
                 output_path = entry.get("output_path")
                 if output_path:

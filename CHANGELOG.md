@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.19.0] - 2026-08-02
+
+### Added
+
+- **Conversion queue**: every recording enqueues `_flv.mp4` -> final `.mp4` conversion with bounded concurrency (`max_concurrent_converts`, default 1); configurable via CLI (`-max-concurrent-converts`), web Settings, and persisted `config/runtime_settings.json`
+- **Status API/UI**: `convert_queued` state, queue stats (`convert_queue`), and queue position while waiting for a convert slot
+
+### Changed
+
+- **Conversion**: recording threads no longer run ffmpeg inline; all post-record converts go through the shared queue
+- **Runtime settings**: `automatic_interval_minutes`, `use_telegram`, and `max_concurrent_converts` persist across restarts
+- **Docs**: README and GUIDE cover conversion queue, runtime settings, and in-app salvage pipeline
+
+### Fixed
+
+- **Conversion**: multi-pass salvage pipeline (discard-corrupt input, timestamp reset, audio fallbacks, HEVC rewrite, MKV intermediate) with ffprobe validation before deleting `*_flv.mp4`
+- **Conversion**: ignore ffmpeg progress lines with `out_time_us=N/A` so long encodes do not crash mid-run
+- **Watchlist/status**: keep entries visible through `convert_queued` / `converting` after the recording thread exits
+
 ## [8.18.1] - 2026-08-01
 
 ### Changed
@@ -556,7 +575,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.18.1...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.19.0...HEAD
+[8.19.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.18.1...v8.19.0
 [8.18.1]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.18.0...v8.18.1
 [8.18.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.17.0...v8.18.0
 [8.17.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.16.0...v8.17.0

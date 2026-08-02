@@ -55,6 +55,7 @@ class UsernamePayload(BaseModel):
 class RuntimeSettingsPayload(BaseModel):
     automatic_interval_minutes: int | None = Field(default=None, ge=1)
     use_telegram: bool | None = None
+    max_concurrent_converts: int | None = Field(default=None, ge=1)
 
 
 class RecordPayload(BaseModel):
@@ -407,6 +408,7 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
         return {
             "automatic_interval_minutes": recorder.automatic_interval,
             "use_telegram": recorder.use_telegram,
+            "max_concurrent_converts": recorder.max_concurrent_converts,
             "ffmpeg": recorder.get_ffmpeg_info(),
         }
 
@@ -416,11 +418,13 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
             settings = recorder.update_runtime_settings(
                 automatic_interval_minutes=payload.automatic_interval_minutes,
                 use_telegram=payload.use_telegram,
+                max_concurrent_converts=payload.max_concurrent_converts,
             )
         except ValueError as ex:
             raise HTTPException(status_code=400, detail=str(ex)) from ex
         config.automatic_interval = settings["automatic_interval_minutes"]
         config.use_telegram = settings["use_telegram"]
+        config.max_concurrent_converts = settings["max_concurrent_converts"]
         return settings
 
     @app.get("/api/settings/cookies")

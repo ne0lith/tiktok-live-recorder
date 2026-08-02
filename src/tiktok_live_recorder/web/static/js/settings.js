@@ -34,6 +34,7 @@ export async function loadSettings() {
   const telegramEditor = document.getElementById("telegram-editor");
   const intervalInput = document.getElementById("interval-input");
   const telegramEnabled = document.getElementById("telegram-enabled");
+  const maxConvertsInput = document.getElementById("max-converts-input");
 
   if (cookiesResult.status === "fulfilled" && cookiesEditor) {
     cookiesEditor.value = JSON.stringify(cookiesResult.value.cookies || {}, null, 2);
@@ -48,6 +49,9 @@ export async function loadSettings() {
     }
     if (telegramEnabled) {
       telegramEnabled.checked = Boolean(runtime.use_telegram);
+    }
+    if (maxConvertsInput) {
+      maxConvertsInput.value = String(runtime.max_concurrent_converts ?? 1);
     }
   }
 
@@ -103,9 +107,17 @@ export function initSettingsInteractions() {
         10,
       );
       const use_telegram = document.getElementById("telegram-enabled").checked;
+      const max_concurrent_converts = Number.parseInt(
+        document.getElementById("max-converts-input").value,
+        10,
+      );
       await api("/api/settings/runtime", {
         method: "PUT",
-        body: JSON.stringify({ automatic_interval_minutes, use_telegram }),
+        body: JSON.stringify({
+          automatic_interval_minutes,
+          use_telegram,
+          max_concurrent_converts,
+        }),
       });
       showToast("Runtime settings saved");
       await refreshStatus();

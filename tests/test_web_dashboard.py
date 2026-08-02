@@ -85,9 +85,11 @@ def test_get_status_includes_recordings():
     recorder = TikTokRecorder(
         RecorderConfig(mode=Mode.WATCHLIST, users=["alpha"], cookies={})
     )
+    alive_thread = MagicMock()
+    alive_thread.is_alive.return_value = True
     recorder._active_recordings = {
         "alpha": {
-            "thread": None,
+            "thread": alive_thread,
             "room_id": "room-alpha",
             "started_at": 1000.0,
             "output_path": "/tmp/alpha.mp4",
@@ -131,6 +133,32 @@ def test_get_status_omits_dead_finished_threads():
     status = recorder.get_status()
 
     assert status["recordings"] == []
+
+
+def test_get_status_includes_convert_queued_after_thread_ends():
+    recorder = TikTokRecorder(
+        RecorderConfig(mode=Mode.WATCHLIST, users=["alpha"], cookies={})
+    )
+    dead_thread = MagicMock()
+    dead_thread.is_alive.return_value = False
+    recorder._active_recordings = {
+        "alpha": {
+            "thread": dead_thread,
+            "room_id": "room-alpha",
+            "started_at": 1000.0,
+            "output_path": "/tmp/alpha_flv.mp4",
+            "bytes_written": 4096,
+            "status": "convert_queued",
+            "convert_progress": {"phase": "queued", "queue_position": 2},
+        }
+    }
+
+    status = recorder.get_status()
+
+    assert len(status["recordings"]) == 1
+    assert status["recordings"][0]["status"] == "convert_queued"
+    assert status["recordings"][0]["is_alive"] is True
+    assert status["convert_queue"]["max_concurrent"] == 1
 
 
 def test_scan_media_library_groups_by_username(tmp_path):
@@ -219,6 +247,7 @@ class StubRecorder:
     users_file = None
     automatic_interval = 5
     use_telegram = False
+    max_concurrent_converts = 1
     _telegram_uploads: list = []
 
     def get_status(self):
@@ -229,6 +258,8 @@ class StubRecorder:
             "recordings": [],
             "automatic_interval_minutes": self.automatic_interval,
             "use_telegram": self.use_telegram,
+            "max_concurrent_converts": self.max_concurrent_converts,
+            "convert_queue": {"pending": 0, "active": 0, "max_concurrent": 1},
             "telegram_uploads": list(self._telegram_uploads),
             "poll": {},
             "poll_label": None,
@@ -281,9 +312,12 @@ class StubRecorder:
             self.automatic_interval = kwargs["automatic_interval_minutes"]
         if kwargs.get("use_telegram") is not None:
             self.use_telegram = kwargs["use_telegram"]
+        if kwargs.get("max_concurrent_converts") is not None:
+            self.max_concurrent_converts = kwargs["max_concurrent_converts"]
         return {
             "automatic_interval_minutes": self.automatic_interval,
             "use_telegram": self.use_telegram,
+            "max_concurrent_converts": self.max_concurrent_converts,
         }
 
     def start_recording_now(self, *, username=None, room_id=None):
@@ -489,11 +523,16 @@ def test_api_runtime_settings(api_client):
 
     response = client.put(
         "/api/settings/runtime",
-        json={"automatic_interval_minutes": 10, "use_telegram": True},
+        json={
+            "automatic_interval_minutes": 10,
+            "use_telegram": True,
+            "max_concurrent_converts": 2,
+        },
     )
     assert response.status_code == 200
     assert recorder.automatic_interval == 10
     assert recorder.use_telegram is True
+    assert recorder.max_concurrent_converts == 2
 
 
 def test_api_ffmpeg(api_client):

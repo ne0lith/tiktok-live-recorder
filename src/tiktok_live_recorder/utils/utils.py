@@ -75,6 +75,64 @@ def telegram_file_path() -> str:
     return str(_ensure_config_file("telegram.json"))
 
 
+def runtime_settings_path() -> str:
+    return str(_ensure_config_file("runtime_settings.json"))
+
+
+def default_runtime_settings() -> dict:
+    return {
+        "automatic_interval_minutes": 5,
+        "use_telegram": False,
+        "max_concurrent_converts": 1,
+    }
+
+
+def read_runtime_settings() -> dict:
+    from tiktok_live_recorder.utils.logger_manager import logger
+
+    settings = default_runtime_settings()
+    path = runtime_settings_path()
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        return settings
+    except json.JSONDecodeError as exc:
+        logger.error(f"runtime settings at {path} are invalid JSON: {exc}")
+        return settings
+
+    if not isinstance(data, dict):
+        logger.error(f"runtime settings at {path} must be a JSON object")
+        return settings
+
+    if isinstance(data.get("automatic_interval_minutes"), int):
+        settings["automatic_interval_minutes"] = max(
+            1, data["automatic_interval_minutes"]
+        )
+    if isinstance(data.get("use_telegram"), bool):
+        settings["use_telegram"] = data["use_telegram"]
+    if isinstance(data.get("max_concurrent_converts"), int):
+        settings["max_concurrent_converts"] = max(1, data["max_concurrent_converts"])
+    return settings
+
+
+def write_runtime_settings(settings: dict) -> None:
+    path = runtime_settings_path()
+    config_dir().mkdir(parents=True, exist_ok=True)
+    payload = default_runtime_settings()
+    if isinstance(settings.get("automatic_interval_minutes"), int):
+        payload["automatic_interval_minutes"] = max(
+            1, settings["automatic_interval_minutes"]
+        )
+    if isinstance(settings.get("use_telegram"), bool):
+        payload["use_telegram"] = settings["use_telegram"]
+    if isinstance(settings.get("max_concurrent_converts"), int):
+        payload["max_concurrent_converts"] = max(1, settings["max_concurrent_converts"])
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
+        f.write("\n")
+
+
 def default_output_base() -> Path:
     return repo_root_path() / "output"
 

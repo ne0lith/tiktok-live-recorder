@@ -18,11 +18,19 @@ export function getUserRecordingState(username, status) {
 function canStopUser(username, status, row = null) {
   if (row) {
     return (
-      row.state === "recording" || row.state === "converting" || row.state === "stopping"
+      row.state === "recording" ||
+      row.state === "convert_queued" ||
+      row.state === "converting" ||
+      row.state === "stopping"
     );
   }
   const state = getUserRecordingState(username, status);
-  return state === "recording" || state === "converting" || state === "stopping";
+  return (
+    state === "recording" ||
+    state === "convert_queued" ||
+    state === "converting" ||
+    state === "stopping"
+  );
 }
 
 export function profileLinkMarkup(username, { active = false } = {}) {

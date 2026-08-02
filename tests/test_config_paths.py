@@ -81,3 +81,26 @@ def test_read_users_from_bootstrapped_file(monkeypatch, tmp_path):
 
     assert users_path == str(tmp_path / "users.json")
     assert users == ["alpha", "beta"]
+
+
+def test_runtime_settings_round_trip(monkeypatch, tmp_path):
+    from tiktok_live_recorder.utils.utils import (
+        read_runtime_settings,
+        write_runtime_settings,
+    )
+
+    monkeypatch.setenv("TIKTOK_RECORDER_CONFIG_DIR", str(tmp_path))
+    write_runtime_settings(
+        {
+            "automatic_interval_minutes": 7,
+            "use_telegram": True,
+            "max_concurrent_converts": 3,
+        }
+    )
+
+    settings = read_runtime_settings()
+    assert settings == {
+        "automatic_interval_minutes": 7,
+        "use_telegram": True,
+        "max_concurrent_converts": 3,
+    }

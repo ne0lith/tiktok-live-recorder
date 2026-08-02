@@ -11,6 +11,7 @@ class RecorderConfig:
     users: list[str] | None = None
     room_id: str | None = None
     automatic_interval: int = 5
+    max_concurrent_converts: int = 1
     cookies: dict | None = None
     proxy: str | None = None
     output: str | None = None

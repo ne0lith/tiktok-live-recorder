@@ -27,6 +27,10 @@ def record_user(config):
 
 def _build_config(args, mode, cookies, user=None, users=None):
     from tiktok_live_recorder.utils.recorder_config import RecorderConfig
+    from tiktok_live_recorder.utils.utils import read_runtime_settings
+
+    runtime = read_runtime_settings()
+    use_telegram = args.telegram or runtime["use_telegram"]
 
     return RecorderConfig(
         url=args.url,
@@ -36,11 +40,12 @@ def _build_config(args, mode, cookies, user=None, users=None):
         room_id=args.room_id,
         mode=mode,
         automatic_interval=args.automatic_interval,
+        max_concurrent_converts=args.max_concurrent_converts,
         cookies=cookies,
         proxy=args.proxy,
         output=args.output,
         duration=args.duration,
-        use_telegram=args.telegram,
+        use_telegram=use_telegram,
         bitrate=args.bitrate,
         ffmpeg_path=args.ffmpeg_path,
         web_host=args.web_host,

@@ -1,4 +1,5 @@
 import time
+from pathlib import Path
 from threading import Thread
 from unittest.mock import MagicMock
 
@@ -16,6 +17,45 @@ from tiktok_live_recorder.utils.custom_exceptions import (
 )
 from tiktok_live_recorder.utils.enums import Mode, TikTokError
 from tiktok_live_recorder.utils.recorder_config import RecorderConfig
+
+
+@pytest.fixture(autouse=True)
+def sync_convert_queue(monkeypatch):
+    """Run queued conversions inline so recorder tests stay deterministic."""
+
+    from tiktok_live_recorder.core.convert_queue import ConvertQueue
+    from tiktok_live_recorder.utils.video_management import VideoManagement
+
+    def immediate_enqueue(self, job):
+        with self._lock:
+            self._pending += 1
+            position = self._pending
+        self._semaphore.acquire()
+        try:
+            with self._lock:
+                self._pending = max(0, self._pending - 1)
+                self._active += 1
+            if job.on_start:
+                job.on_start()
+            mp4_output = job.output_path.replace("_flv.mp4", ".mp4")
+            converted = VideoManagement.convert_flv_to_mp4(
+                job.output_path,
+                job.bitrate,
+                job.ffmpeg_path,
+                on_progress=job.on_progress,
+            )
+            success = converted and Path(mp4_output).is_file()
+            job.on_complete(success, mp4_output)
+        except Exception:
+            mp4_output = job.output_path.replace("_flv.mp4", ".mp4")
+            job.on_complete(False, mp4_output)
+        finally:
+            with self._lock:
+                self._active = max(0, self._active - 1)
+            self._semaphore.release()
+        return position
+
+    monkeypatch.setattr(ConvertQueue, "enqueue", immediate_enqueue)
 
 
 def test_is_stream_url_gone_detects_404():
@@ -676,6 +716,44 @@ def test_poll_users_once_skips_duplicate_room(monkeypatch):
     recorder._recording_worker.assert_not_called()
 
 
+def test_start_recording_enqueues_conversion(tmp_path, monkeypatch):
+    recorder = TikTokRecorder(
+        RecorderConfig(
+            mode=Mode.AUTOMATIC, user="alpha", output=str(tmp_path), cookies={}
+        )
+    )
+
+    class RecordingFakeAPI:
+        def __init__(self):
+            self.alive_checks = 0
+
+        def get_live_url_candidates(self, room_id, user=None):
+            return ["https://cdn.example.com/live.flv"]
+
+        def check_alive(self, room_id, **kwargs):
+            self.alive_checks += 1
+            return self.alive_checks == 1
+
+        def download_live_stream(self, live_url):
+            yield b"x" * 5000
+
+    recorder.tiktok = RecordingFakeAPI()
+    convert = MagicMock(return_value=True)
+    monkeypatch.setattr(
+        "tiktok_live_recorder.utils.video_management.VideoManagement.convert_flv_to_mp4",
+        convert,
+    )
+    monkeypatch.setattr(
+        "tiktok_live_recorder.core.tiktok_recorder.time.sleep", lambda *_: None
+    )
+
+    recorder._spawn_recording_thread("alpha", "room-alpha")
+    recorder._active_recordings["alpha"]["thread"].join(timeout=5)
+
+    assert "alpha" not in recorder._active_recordings
+    convert.assert_called_once()
+
+
 def test_start_recording_finalizes_when_user_goes_offline(tmp_path, monkeypatch):
     recorder = TikTokRecorder(
         RecorderConfig(
@@ -702,7 +780,7 @@ def test_start_recording_finalizes_when_user_goes_offline(tmp_path, monkeypatch)
     recorder.tiktok = fake
     convert = MagicMock()
     monkeypatch.setattr(
-        "tiktok_live_recorder.core.tiktok_recorder.VideoManagement.convert_flv_to_mp4",
+        "tiktok_live_recorder.utils.video_management.VideoManagement.convert_flv_to_mp4",
         convert,
     )
 
@@ -746,7 +824,7 @@ def test_cdn_404_tries_all_refreshed_candidates_before_giving_up(tmp_path, monke
     fake = FakeAPI()
     recorder.tiktok = fake
     monkeypatch.setattr(
-        "tiktok_live_recorder.core.tiktok_recorder.VideoManagement.convert_flv_to_mp4",
+        "tiktok_live_recorder.utils.video_management.VideoManagement.convert_flv_to_mp4",
         MagicMock(),
     )
 
@@ -799,7 +877,7 @@ def test_404_after_data_finalizes_then_poll_can_start_again(tmp_path, monkeypatc
     recorder.tiktok = fake
     convert = MagicMock()
     monkeypatch.setattr(
-        "tiktok_live_recorder.core.tiktok_recorder.VideoManagement.convert_flv_to_mp4",
+        "tiktok_live_recorder.utils.video_management.VideoManagement.convert_flv_to_mp4",
         convert,
     )
     monkeypatch.setattr(
@@ -838,6 +916,8 @@ def test_404_after_data_finalizes_then_poll_can_start_again(tmp_path, monkeypatc
         "tiktok_live_recorder.core.tiktok_recorder.Thread", ImmediateThread
     )
 
+    recorder._poll_wake.clear()
+    recorder._poll_users_once(["alpha"], {}, label="Watchlist")
     recorder._poll_users_once(["alpha"], {}, label="Watchlist")
     assert convert.call_count == 1
     assert fake.download_calls == 2
@@ -926,7 +1006,7 @@ def test_request_stop_ends_recording_and_finalizes(tmp_path, monkeypatch):
     recorder.tiktok = FakeAPI()
     convert = MagicMock()
     monkeypatch.setattr(
-        "tiktok_live_recorder.core.tiktok_recorder.VideoManagement.convert_flv_to_mp4",
+        "tiktok_live_recorder.utils.video_management.VideoManagement.convert_flv_to_mp4",
         convert,
     )
 
@@ -970,7 +1050,7 @@ def test_cdn_refresh_offline_still_finalizes(tmp_path, monkeypatch):
     recorder.tiktok = fake
     convert = MagicMock()
     monkeypatch.setattr(
-        "tiktok_live_recorder.core.tiktok_recorder.VideoManagement.convert_flv_to_mp4",
+        "tiktok_live_recorder.utils.video_management.VideoManagement.convert_flv_to_mp4",
         convert,
     )
 

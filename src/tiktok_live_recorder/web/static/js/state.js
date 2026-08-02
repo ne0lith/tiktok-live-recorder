@@ -8,6 +8,7 @@ export const STORAGE_HIDE_PAUSED_KEY = "ttlr_hide_paused";
 export const STATE_SORT_ORDER = {
   recording: 0,
   converting: 0,
+  convert_queued: 0,
   stopping: 0,
   live: 1,
   starting: 1,

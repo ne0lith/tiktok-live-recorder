@@ -64,10 +64,22 @@ def parse_args():
         dest="automatic_interval",
         help=(
             "Polling interval in minutes for automatic, watchlist, and followers modes. "
-            "[Default: 5]"
+            "[Default: from runtime_settings.json or 5]"
         ),
         type=int,
-        default=5,
+        default=None,
+        action="store",
+    )
+
+    parser.add_argument(
+        "-max-concurrent-converts",
+        dest="max_concurrent_converts",
+        help=(
+            "Maximum number of FLV-to-MP4 conversions running at once. "
+            "[Default: from runtime_settings.json or 1]"
+        ),
+        type=int,
+        default=None,
         action="store",
     )
 
@@ -172,9 +184,19 @@ def parse_args():
 
 
 def validate_and_parse_args():
-    from tiktok_live_recorder.utils.utils import read_users, users_file_path
+    from tiktok_live_recorder.utils.utils import (
+        read_runtime_settings,
+        read_users,
+        users_file_path,
+    )
 
     args = parse_args()
+    runtime = read_runtime_settings()
+
+    if args.automatic_interval is None:
+        args.automatic_interval = runtime["automatic_interval_minutes"]
+    if args.max_concurrent_converts is None:
+        args.max_concurrent_converts = runtime["max_concurrent_converts"]
 
     if not args.mode:
         raise ArgsParseError(
@@ -260,6 +282,11 @@ def validate_and_parse_args():
 
     if args.web_port < 1 or args.web_port > 65535:
         raise ArgsParseError("Incorrect web_port value. Must be between 1 and 65535.")
+
+    if args.max_concurrent_converts < 1:
+        raise ArgsParseError(
+            "Incorrect max_concurrent_converts value. Must be at least 1."
+        )
 
     if args.mode == "manual":
         mode = Mode.MANUAL

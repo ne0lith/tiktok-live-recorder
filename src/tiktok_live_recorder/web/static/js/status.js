@@ -40,6 +40,7 @@ const ACTIVE_STATES = new Set([
   "live",
   "starting",
   "recording",
+  "convert_queued",
   "converting",
   "stopping",
   "error",
@@ -117,7 +118,12 @@ function countByState(rows) {
   const counts = { live: 0, recording: 0, offline: 0, paused: 0, error: 0 };
   for (const row of rows) {
     if (row.state === "live" || row.state === "starting") counts.live += 1;
-    else if (row.state === "recording" || row.state === "converting" || row.state === "stopping") {
+    else if (
+      row.state === "recording" ||
+      row.state === "convert_queued" ||
+      row.state === "converting" ||
+      row.state === "stopping"
+    ) {
       counts.recording += 1;
     } else if (row.state === "paused") counts.paused += 1;
     else if (row.state === "error") counts.error += 1;
@@ -135,7 +141,12 @@ function rowMatchesFilter(row) {
   }
   if (statusFilter === "live") return row.state === "live" || row.state === "starting";
   if (statusFilter === "recording") {
-    return row.state === "recording" || row.state === "converting" || row.state === "stopping";
+    return (
+      row.state === "recording" ||
+      row.state === "convert_queued" ||
+      row.state === "converting" ||
+      row.state === "stopping"
+    );
   }
   if (statusFilter === "offline") return row.state === "offline";
   if (statusFilter === "paused") return row.state === "paused";
@@ -267,6 +278,13 @@ function renderStatusActions(row, status) {
 }
 
 function formatStateLabel(row) {
+  if (row.state === "convert_queued") {
+    const position = row.convert_progress?.queue_position;
+    if (position != null && position > 1) {
+      return `queued (#${position})`;
+    }
+    return "queued";
+  }
   if (row.state === "converting") {
     const percent = row.convert_progress?.percent;
     if (percent != null) return `converting ${percent}%`;

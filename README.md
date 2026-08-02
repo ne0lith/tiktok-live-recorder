@@ -57,6 +57,9 @@ Recordings are saved to `output/<username>/` by default. The [web dashboard](doc
 
 This fork adds reliability and workflow improvements on top of the upstream project:
 
+- **Conversion queue** - every finished recording enqueues `_flv.mp4` -> `.mp4` conversion with bounded concurrency (default 1); no inline ffmpeg in recording threads ([details](docs/GUIDE.md#conversion-queue-and-post-processing))
+- **In-app salvage pipeline** - multi-pass convert with ffprobe validation before deleting `*_flv.mp4`; keeps broken intermediates when recovery fails
+- **Persisted runtime settings** - poll interval, Telegram uploads, and max concurrent converts survive restarts via `config/runtime_settings.json`
 - **Web dashboard** - live operator UI on port `8787` with SSE updates, activity feed, media library, logs, and settings ([details](docs/GUIDE.md#web-dashboard))
 - **Watchlist mode** - poll many users in one process; each live user records in a background thread
 - **`config/` directory** - secrets and watchlists live outside `src/` with committed `.example` templates
@@ -155,7 +158,7 @@ docker run \
   -mode watchlist
 ```
 
-The image ships only `config/*.example` templates. Mount `./config` so your real `cookies.json`, `users.json`, and `telegram.json` persist on the host. Expose port **8787** for the dashboard (see [Web dashboard](docs/GUIDE.md#web-dashboard)).
+The image ships only `config/*.example` templates. Mount `./config` so your real `cookies.json`, `users.json`, `runtime_settings.json`, and `telegram.json` persist on the host. Expose port **8787** for the dashboard (see [Web dashboard](docs/GUIDE.md#web-dashboard)).
 
 The container image does not need a capable distro FFmpeg. On first start the same Linux vendor install runs into `/app/.vendor/ffmpeg/` when needed. Persist that directory with a volume if you want to avoid re-downloading after container recreation.
 
@@ -178,7 +181,8 @@ uv run python -m tiktok_live_recorder [options]
 | `-url <URL>` | TikTok live URL to record from. |
 | `-room_id <ROOM_ID>` | Room ID to record from. |
 | `-mode <MODE>` | Recording mode: `manual`, `automatic`, `watchlist`, `followers`. |
-| `-automatic_interval <MIN>` | Polling interval in minutes for automatic, watchlist, and followers modes (default: 5). |
+| `-automatic_interval <MIN>` | Polling interval in minutes for automatic, watchlist, and followers modes. Default: from `config/runtime_settings.json`, else **5**. |
+| `-max-concurrent-converts <N>` | Max parallel FLV->MP4 jobs when streams end (default: from `runtime_settings.json`, else **1**). |
 | `-output <DIRECTORY>` | Output directory. Defaults to `output/<username>/` per user. |
 | `-duration <SECONDS>` | Stop recording after this many seconds. |
 | `-proxy <URL>` | HTTP proxy to bypass regional restrictions. |
@@ -290,6 +294,7 @@ User-specific files live in [`config/`](config/):
 | `cookies.json` | TikTok session cookies (gitignored) |
 | `users.json` | Watchlist usernames (gitignored) |
 | `watchlist_state.json` | Paused users - auto-managed by the dashboard (gitignored) |
+| `runtime_settings.json` | Poll interval, Telegram uploads, max concurrent converts (gitignored) |
 | `telegram.json` | Telegram upload credentials (gitignored) |
 
 Committed `*.example` templates are copied automatically on first use. Override the config directory with the `TIKTOK_RECORDER_CONFIG_DIR` environment variable. Override the log file path with `TIKTOK_RECORDER_LOG_FILE` (see [Log viewer](docs/GUIDE.md#log-viewer)).
@@ -304,7 +309,13 @@ Step-by-step setup: [docs/GUIDE.md](docs/GUIDE.md).
 - **Custom `-output`:** files are saved directly in that directory; the username is still included in the filename
 - **Legacy folder:** older recordings may live under `output/<username>/legacy/`; the dashboard hides them by default (**Settings -> Runtime -> Legacy recordings**)
 
-If conversion fails, the intermediate `*_flv.mp4` is kept and the user shows **`convert_failed`** in the dashboard until you fix FFmpeg or use **Move leftover FLVs** ([salvage guide](docs/GUIDE.md#salvaging-leftover-recordings)).
+### Post-recording conversion
+
+When a stream ends, the recorder **always** enqueues conversion on a shared queue (recording threads never call ffmpeg directly). A worker runs the full `_flv.mp4` -> `.mp4` pipeline, including multi-pass salvage when the first encode is not dashboard-playable (H.264 + `yuv420p`). The `*_flv.mp4` is deleted only after ffprobe validation succeeds.
+
+While waiting for a convert slot, status shows **`convert_queued`** (with queue position). During encode, status shows **`converting`** with percent/ETA. At most **N** ffmpeg jobs run at once (`-max-concurrent-converts` or **Settings -> Runtime -> Max concurrent converts**; default **1**).
+
+If every pass fails, the `*_flv.mp4` is kept and the user shows **`convert_failed`** until you fix FFmpeg or use **Move leftover FLVs** ([salvage guide](docs/GUIDE.md#salvaging-leftover-recordings)).
 
 ### Watchlist threading
 
@@ -362,12 +373,13 @@ On **Windows, macOS, and Termux**, install FFmpeg and ensure it is on your `PATH
 
 ### HEVC / conversion failed (`convert_failed`)
 
-Many TikTok lives use **HEVC in legacy FLV** (codec id 12). Older distro FFmpeg builds cannot demux this format.
+Many TikTok lives use **HEVC in legacy FLV** (codec id 12). The in-app pipeline tries standard encode, then salvage passes (corrupt-input discard, timestamp reset, audio fallbacks, HEVC rewrite, MKV intermediate) before giving up.
 
 1. Restart the recorder and check startup logs for `capable for TikTok HEVC FLV` vs `NOT capable`.
 2. On Linux, let the automatic BtbN install complete (first run may pause while downloading).
-3. For leftover `*_flv.mp4` files, use the dashboard **Move leftover FLVs** button ([guide](docs/GUIDE.md#salvaging-leftover-recordings)), then run `fix-mp4s` against `to_fix/`.
-4. Or pass `-ffmpeg-path` to FFmpeg 8.0+ that supports legacy HEVC FLV.
+3. Check live status for **`convert_queued`** / **`converting`** - conversion may still be in progress; raise **Max concurrent converts** in Settings if many streams ended at once.
+4. For leftover `*_flv.mp4` files after **`convert_failed`**, use the dashboard **Move leftover FLVs** button ([guide](docs/GUIDE.md#salvaging-leftover-recordings)), then run `fix-mp4s` against `to_fix/`.
+5. Or pass `-ffmpeg-path` to FFmpeg 8.0+ that supports legacy HEVC FLV.
 
 ### Log file growing large
 
@@ -376,6 +388,7 @@ The recorder writes `tiktok-recorder.log` (rotates at 5 MB, keeps 3 backups). Ov
 ## Guide
 
 - [Web dashboard](docs/GUIDE.md#web-dashboard)
+- [Conversion queue and post-processing](docs/GUIDE.md#conversion-queue-and-post-processing)
 - [FFmpeg and HEVC](docs/GUIDE.md#ffmpeg-and-hevc)
 - [Salvaging leftover recordings](docs/GUIDE.md#salvaging-leftover-recordings)
 - [Log viewer](docs/GUIDE.md#log-viewer)

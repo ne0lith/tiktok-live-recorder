@@ -87,11 +87,15 @@ export function syncStartupFfmpegFromDom() {
 export function syncRuntimeControls(status) {
   const intervalInput = document.getElementById("interval-input");
   const telegramEnabled = document.getElementById("telegram-enabled");
+  const maxConvertsInput = document.getElementById("max-converts-input");
   if (intervalInput && document.activeElement !== intervalInput) {
     intervalInput.value = String(status.automatic_interval_minutes ?? 5);
   }
   if (telegramEnabled && document.activeElement !== telegramEnabled) {
     telegramEnabled.checked = Boolean(status.use_telegram);
+  }
+  if (maxConvertsInput && document.activeElement !== maxConvertsInput) {
+    maxConvertsInput.value = String(status.max_concurrent_converts ?? 1);
   }
   if (status?.ffmpeg?.path) {
     syncFfmpegInfo(status.ffmpeg);

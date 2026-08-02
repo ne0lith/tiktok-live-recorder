@@ -1,0 +1,5 @@
+{
+  "automatic_interval_minutes": 5,
+  "use_telegram": false,
+  "max_concurrent_converts": 1
+}
