@@ -736,6 +736,7 @@ def test_api_delete_media(tmp_path):
 
     response = client.get("/api/media")
     assert response.status_code == 200
+    assert response.headers.get("cache-control") == "no-store"
     media = response.json()
     assert "alpha" not in media or not any(
         item["filename"] == "TK_alpha_2026.01.01_12-00-00.mp4"

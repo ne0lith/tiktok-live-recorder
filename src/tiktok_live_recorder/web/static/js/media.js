@@ -130,6 +130,19 @@ function shouldDeferMediaRender() {
   return isPlayerActive();
 }
 
+function mediaContainsItem(media, item) {
+  if (!item?.url) return false;
+  for (const items of Object.values(media || {})) {
+    if (items.some((entry) => entry.url === item.url)) return true;
+  }
+  return false;
+}
+
+function reconcilePlayerWithMedia(media) {
+  if (!libraryState.playingItem || mediaContainsItem(media, libraryState.playingItem)) return;
+  closePlayer({ applyPending: false });
+}
+
 function mediaItemMeta(item) {
   const statusBits = [];
   if (item.needs_convert) statusBits.push("needs convert");
@@ -537,8 +550,16 @@ export async function refreshLeftoverFlvButton() {
 }
 
 export async function refreshMedia({ force = false } = {}) {
-  const media = await api("/api/media");
-  applyMediaUpdate(media, { force });
+  const path = force ? `/api/media?_=${Date.now()}` : "/api/media";
+  const media = await api(path);
+  if (force) {
+    setPendingMedia(null);
+    renderMedia(media);
+    reconcilePlayerWithMedia(media);
+    window.dispatchEvent(new CustomEvent("ttlr:media-updated"));
+  } else {
+    applyMediaUpdate(media, { force });
+  }
   await refreshLeftoverFlvButton();
 }
 
@@ -657,7 +678,7 @@ export function initMediaInteractions() {
       const items = mediaItemsForUser(libraryState.playingUsername || "");
       const stillThere = items.some((entry) => entry.url === libraryState.playingUrl);
       if (!stillThere) {
-        closePlayer();
+        closePlayer({ applyPending: false });
         return;
       }
     }

@@ -6,7 +6,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -225,8 +230,11 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
         return recorder.get_update_status()
 
     @app.get("/api/media")
-    def api_media() -> dict[str, list[dict]]:
-        return _scan_media(recorder, output_base, custom_output)
+    def api_media() -> JSONResponse:
+        return JSONResponse(
+            content=_scan_media(recorder, output_base, custom_output),
+            headers={"Cache-Control": "no-store"},
+        )
 
     @app.get("/api/media/leftover-flv")
     def api_leftover_flv() -> dict[str, Any]:

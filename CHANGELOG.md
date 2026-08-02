@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.20.4] - 2026-08-02
+
+### Fixed
+
+- **Media library refresh**: manual Refresh always fetches a fresh library scan (no browser cache), clears deferred SSE state, and rebuilds the card list so deleted or missing files no longer linger as ghost cards
+
 ## [8.20.3] - 2026-08-02
 
 ### Fixed
@@ -613,7 +619,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.3...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.4...HEAD
+[8.20.4]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.3...v8.20.4
 [8.20.3]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.2...v8.20.3
 [8.20.2]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.1...v8.20.2
 [8.20.1]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.0...v8.20.1

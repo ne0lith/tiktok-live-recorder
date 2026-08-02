@@ -28,6 +28,7 @@ export async function api(path, options = {}) {
   const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
   try {
     const response = await fetch(path, {
+      cache: options.cache ?? "no-store",
       headers: { "Content-Type": "application/json", ...(options.headers || {}) },
       signal: controller.signal,
       ...options,
