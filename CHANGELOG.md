@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.20.7] - 2026-08-04
+
+### Fixed
+
+- **Live status digest**: last-poll newly found lives labeled **Starting** (was **Live**); after spawn they move into **Recording** so the label does not stick until the next poll finishes (wait interval + full watchlist check)
+
+### Changed
+
+- **Docs**: GUIDE clarifies Starting vs Recording in the ops digest
+
 ## [8.20.6] - 2026-08-03
 
 ### Added
@@ -646,7 +656,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.6...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.7...HEAD
+[8.20.7]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.6...v8.20.7
 [8.20.6]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.5...v8.20.6
 [8.20.5]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.4...v8.20.5
 [8.20.4]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.3...v8.20.4

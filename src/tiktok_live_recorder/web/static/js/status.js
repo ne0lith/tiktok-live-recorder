@@ -189,8 +189,19 @@ function renderStatusOps(status) {
   const max = queue.max_concurrent || 1;
   const convertBusy = pending + active > 0 || jobs.length > 0;
 
+  const recordingSet = new Set(
+    (poll.recording || []).map((u) => String(u).toLowerCase()),
+  );
+  (status.recordings || []).forEach((entry) => {
+    if (entry?.username) recordingSet.add(String(entry.username).toLowerCase());
+  });
+  // "Starting" only while not yet in an active recording (snapshot used to keep
+  // newly found lives here for the whole interval after spawn).
+  const starting = (poll.starting || [])
+    .map((entry) => (typeof entry === "string" ? entry : entry.username || entry))
+    .filter((username) => username && !recordingSet.has(String(username).toLowerCase()));
   const countPills = [
-    ["Live", poll.starting],
+    ["Starting", starting],
     ["Recording", poll.recording],
     ["Offline", poll.offline],
     ["Paused", poll.paused],
@@ -207,7 +218,7 @@ function renderStatusOps(status) {
 
   // Only expand names for actionable / noisy-small groups - never dump offline lists.
   const detailGroups = [
-    ["Live", poll.starting?.map((e) => e.username || e)],
+    ["Starting", starting],
     ["Skipped", poll.skipped],
     ["Errors", poll.errors],
   ].filter(([, items]) => items && items.length);

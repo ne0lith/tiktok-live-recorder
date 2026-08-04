@@ -279,7 +279,7 @@ The sticky summary strip has two left-aligned rows: **filter chips** (All / Live
 - Per-user state: `offline`, `recording`, `stopping`, `paused`, errors, etc.
 - Convert/repair progress appears in the Live status **ops digest** and summary meta line (`media_jobs`), not as the user's live status - so a user can show **recording** again while a prior file is still converting
 - Room ID, elapsed time, file size, and active output path
-- Ops digest: compact last-poll counts plus capped name lists for live/skipped/errors; convert jobs listed one per line
+- Ops digest: compact last-poll counts plus capped name lists for starting/skipped/errors; convert jobs listed one per line. **Starting** = newly found live this poll (clears once recording starts); **Recording** = already recording. Current sessions are under Active.
 - **Check** (per user) - priority live check for that user: pauses an in-progress full poll, runs the Check (and any other queued Checks if you click several), then resumes the remaining users; works while converting or when paused
 - **Force check** - abort/restart the full watchlist poll immediately (shows loading while a poll is in progress)
 - **Stop** - graceful shutdown for an active recording

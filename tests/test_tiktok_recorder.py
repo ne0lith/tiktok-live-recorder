@@ -355,9 +355,8 @@ def test_poll_users_once_retries_transient_network_error(monkeypatch):
     recorder._poll_users_once(["alpha"], {}, label="Watchlist")
 
     assert attempts["count"] == 2
-    assert recorder._last_poll_snapshot["starting"] == [
-        {"username": "alpha", "room_id": "room-alpha"}
-    ]
+    assert recorder._last_poll_snapshot["starting"] == []
+    assert recorder._last_poll_snapshot["recording"] == ["alpha"]
     assert recorder._last_poll_snapshot["errors"] == []
 
 
@@ -814,6 +813,8 @@ def test_poll_users_once_starts_recording_for_live_user(monkeypatch):
 
     assert started == {"user": "alpha", "room_id": "room-alpha"}
     assert active_recordings["alpha"]["room_id"] == "room-alpha"
+    assert recorder._last_poll_snapshot["starting"] == []
+    assert "alpha" in recorder._last_poll_snapshot["recording"]
 
 
 def test_poll_users_once_skips_duplicate_room(monkeypatch):

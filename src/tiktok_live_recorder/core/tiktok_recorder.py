@@ -961,7 +961,7 @@ class TikTokRecorder:
             )
         if groups["starting"]:
             logger.info(
-                f"  live:      {', '.join(f'@{u}' for u, _ in groups['starting'])}"
+                f"  starting:  {', '.join(f'@{u}' for u, _ in groups['starting'])}"
             )
         if groups["skipped"]:
             logger.info(f"  skipped:   {', '.join(groups['skipped'])}")
@@ -972,6 +972,9 @@ class TikTokRecorder:
 
         self._last_poll_at = time.time()
         self._poll_label = label
+        # Publish starting while spawn runs so the dashboard can show brief "Starting",
+        # then fold them into recording so the label does not stick until the next poll
+        # finishes (wait interval + full watchlist check — often well past 5 min).
         self._last_poll_snapshot = {
             "offline": list(groups["offline"]),
             "recording": list(groups["recording"]),
@@ -991,6 +994,18 @@ class TikTokRecorder:
             self._spawn_recording_thread(username, room_id)
             active_recordings[username] = self._active_recordings[username]
             time.sleep(2.5)
+
+        if groups["starting"]:
+            started = [username for username, _ in groups["starting"]]
+            recording = list(groups["recording"])
+            for username in started:
+                if username not in recording:
+                    recording.append(username)
+            self._last_poll_snapshot = {
+                **self._last_poll_snapshot,
+                "starting": [],
+                "recording": recording,
+            }
 
         return active_recordings, False
 
