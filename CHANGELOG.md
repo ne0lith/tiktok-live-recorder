@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.20.5] - 2026-08-03
+
+### Fixed
+
+- **Convert vs recording**: post-record MP4 conversion no longer keeps a username "busy", so watchlist polling and a new live can start while prior sessions are still queued/converting
+- **Per-user Check**: priority Check always re-hits TikTok (clears `checked_this_cycle`, nests during an in-progress poll, and checks paused users)
+- **Per-user Check vs full poll**: Check pauses an in-progress watchlist poll, runs all queued Checks (spam-safe), then resumes the remaining users; only global Force check / recording-ended recheck aborts and restarts the cycle
+
+### Changed
+
+- **Dashboard / docs**: convert progress lives in the convert-queue / `media_jobs` strip; user rows show live recording state only
+
 ## [8.20.4] - 2026-08-02
 
 ### Fixed
@@ -619,7 +631,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.4...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.5...HEAD
+[8.20.5]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.4...v8.20.5
 [8.20.4]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.3...v8.20.4
 [8.20.3]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.2...v8.20.3
 [8.20.2]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.1...v8.20.2

@@ -28,8 +28,9 @@ from tiktok_live_recorder.utils.enums import Mode, Error, TimeOut, TikTokError
 # Pause between watchlist/followers poll steps to avoid bursting TikTok/tikrec APIs.
 POLL_USER_DELAY_SECONDS = 0.5
 
-_POST_RECORD_STATUSES = frozenset({"convert_queued", "converting"})
-_BUSY_STATUSES = frozenset({"recording", "stopping", "convert_queued", "converting"})
+# Only live capture occupies the per-username recording slot. Convert jobs live in
+# `_media_jobs` / ConvertQueue and must not block polling or a new live.
+_RECORDING_STATUSES = frozenset({"recording", "stopping"})
 
 
 def _is_stream_url_gone(exc: BaseException) -> bool:
@@ -81,8 +82,8 @@ class TikTokRecorder:
         self._poll_in_progress = False
         self._checked_this_cycle: set[str] = set()
         self._activity: deque[dict] = deque(maxlen=50)
-        self._poll_wake_reason: str | None = None
         self._partial_poll_users: list[str] = []
+        self._poll_restart_requested = False
         self._media_jobs: dict[str, dict] = {}
         self._convert_queue = ConvertQueue(max_concurrent=self.max_concurrent_converts)
         self._update_lock = Lock()
@@ -94,8 +95,8 @@ class TikTokRecorder:
     @staticmethod
     def _entry_still_active(entry: dict) -> bool:
         status = entry.get("status", "recording")
-        if status in _POST_RECORD_STATUSES:
-            return True
+        if status not in _RECORDING_STATUSES:
+            return False
         thread = entry.get("thread")
         return bool(thread and thread.is_alive())
 
@@ -131,11 +132,7 @@ class TikTokRecorder:
 
         recordings_waiting = 0
         for entry in self._active_recordings.values():
-            status = entry.get("status", "recording")
-            thread = entry.get("thread")
-            if status in _POST_RECORD_STATUSES or (
-                thread is not None and thread.is_alive()
-            ):
+            if self._entry_still_active(entry):
                 recordings_waiting += 1
 
         converts = self._convert_queue.stats()
@@ -174,19 +171,10 @@ class TikTokRecorder:
         """Interrupt the poll sleep so the watchlist can be checked."""
         if self._update_pending:
             return
-        if reason is not None:
-            self._set_poll_wake_reason(reason)
+        if reason == "full" or reason == "conversion-finished":
+            with self._state_lock:
+                self._poll_restart_requested = True
         self._poll_wake.set()
-
-    def _set_poll_wake_reason(self, reason: str) -> None:
-        with self._state_lock:
-            self._poll_wake_reason = reason
-
-    def _take_poll_wake_reason(self) -> str:
-        with self._state_lock:
-            reason = self._poll_wake_reason or "full"
-            self._poll_wake_reason = None
-            return reason
 
     def _queue_partial_poll_users(self, usernames: list[str]) -> None:
         with self._state_lock:
@@ -203,20 +191,55 @@ class TikTokRecorder:
             self._partial_poll_users.clear()
             return users
 
-    def _drain_poll_requests(self, label: str) -> bool:
-        """Handle pending poll wake requests. Returns True if the current cycle should abort."""
-        if not self._poll_wake.is_set():
-            return False
-        self._poll_wake.clear()
-        reason = self._take_poll_wake_reason()
-        if reason == "partial":
+    def _has_partial_poll_users(self) -> bool:
+        with self._state_lock:
+            return bool(self._partial_poll_users)
+
+    def _take_poll_restart_requested(self) -> bool:
+        with self._state_lock:
+            requested = self._poll_restart_requested
+            self._poll_restart_requested = False
+            return requested
+
+    def _service_priority_polls(self, label: str) -> None:
+        """
+        Pause the caller: run every queued per-user Check, then return.
+
+        Spam-safe: Checks accumulate in `_partial_poll_users` and are drained in
+        batches until the queue is empty. Never requests a full poll restart; the
+        original in-progress cycle resumes after this returns.
+        """
+        while self._has_partial_poll_users():
             partial_users = self._take_partial_poll_users()
-            if partial_users:
-                if self._run_partial_poll_cycle(partial_users, label):
-                    return True
+            if not partial_users:
+                break
+            # Nested abort is ignored; full restart uses `_poll_restart_requested`.
+            self._run_partial_poll_cycle(partial_users, label)
+
+    def _drain_poll_requests(self, label: str) -> bool:
+        """
+        Handle pending poll wake requests.
+
+        Per-user Checks always run first (pause → check → resume). Returns True
+        only when a full Force check / early recheck should abort the current cycle.
+        """
+        has_partial = self._has_partial_poll_users()
+        wake_set = self._poll_wake.is_set()
+        if not wake_set and not has_partial:
             return False
-        self._take_partial_poll_users()
-        return True
+
+        if wake_set:
+            self._poll_wake.clear()
+
+        # Always finish priority Checks before considering a full restart so
+        # spam-clicking Check cannot drop the original poll mid-cycle.
+        self._service_priority_polls(label)
+
+        if self._take_poll_restart_requested():
+            # Full restart will cover everyone; drop any Checks queued mid-service.
+            self._take_partial_poll_users()
+            return True
+        return False
 
     def _wait_for_next_poll(self, seconds: float, *, label: str):
         """Sleep until the poll interval elapses, handling priority single-user polls."""
@@ -225,7 +248,8 @@ class TikTokRecorder:
             remaining = deadline - time.time()
             if remaining <= 0:
                 return
-            if self._poll_wake.wait(timeout=min(remaining, 1.0)):
+            woke = self._poll_wake.wait(timeout=min(remaining, 1.0))
+            if woke or self._has_partial_poll_users():
                 if self._drain_poll_requests(label):
                     logger.info("Recording ended — rechecking watchlist early")
                     return
@@ -253,13 +277,16 @@ class TikTokRecorder:
         username = username.lstrip("@").strip()
         if not username:
             return
+        with self._state_lock:
+            self._checked_this_cycle.discard(username)
         self._queue_partial_poll_users([username])
         self.record_activity(
             "poll",
             f"Priority check for @{username}",
             username=username,
         )
-        self._wake_poll_loop(reason="partial")
+        # Wake only — do not set restart. In-progress polls pause, Check, resume.
+        self._wake_poll_loop()
 
     def record_activity(
         self,
@@ -379,9 +406,7 @@ class TikTokRecorder:
                     else None,
                     "bytes_written": file_size,
                     "output_path": output_path,
-                    "is_alive": status in _POST_RECORD_STATUSES
-                    or bool(thread and thread.is_alive()),
-                    "convert_progress": entry.get("convert_progress"),
+                    "is_alive": bool(thread and thread.is_alive()),
                 }
             )
 
@@ -754,7 +779,7 @@ class TikTokRecorder:
         )
         logger.debug(f"{label} poll order: {', '.join(f'@{u}' for u in poll_users)}")
 
-    def _poll_users_once(self, users, active_recordings, label):
+    def _poll_users_once(self, users, active_recordings, label, *, force: bool = False):
         from tiktok_live_recorder.utils.utils import read_paused_users
 
         reset_warn = getattr(self.tiktok, "reset_tikrec_warn_flag", None)
@@ -793,9 +818,15 @@ class TikTokRecorder:
         self._log_poll_plan(label, poll_users)
 
         aborted = False
-        if self._drain_poll_requests(label):
+        if not force and self._drain_poll_requests(label):
             logger.info(f"{label} poll restarting early (force check)")
             return active_recordings, True
+        if force:
+            # Nested priority cycle: run any newly queued Checks, but leave
+            # `_poll_restart_requested` for the outer full poll to honor.
+            if self._poll_wake.is_set():
+                self._poll_wake.clear()
+            self._service_priority_polls(label)
 
         for poll_index, username in enumerate(poll_users):
             if (
@@ -805,18 +836,18 @@ class TikTokRecorder:
             ):
                 time.sleep(POLL_USER_DELAY_SECONDS)
 
-            if self._drain_poll_requests(label):
+            if force:
+                if self._poll_wake.is_set():
+                    self._poll_wake.clear()
+                self._service_priority_polls(label)
+            elif self._drain_poll_requests(label):
                 aborted = True
                 break
 
             if username in active_recordings:
                 entry = active_recordings[username]
                 if self._entry_still_active(entry):
-                    status = entry.get("status", "recording")
-                    if status in _POST_RECORD_STATUSES:
-                        groups["recording"].append(username)
-                    else:
-                        groups["recording"].append(username)
+                    groups["recording"].append(username)
                     counts["recording"] += 1
                     continue
 
@@ -832,7 +863,7 @@ class TikTokRecorder:
             if self._should_stop():
                 break
 
-            if username.lower() in paused_users:
+            if not force and username.lower() in paused_users:
                 groups["paused"].append(username)
                 continue
 
@@ -852,7 +883,8 @@ class TikTokRecorder:
                     (
                         name
                         for name, entry in active_recordings.items()
-                        if entry["room_id"] == room_id and entry["thread"].is_alive()
+                        if entry["room_id"] == room_id
+                        and self._entry_still_active(entry)
                     ),
                     None,
                 )
@@ -955,12 +987,14 @@ class TikTokRecorder:
             logger.info(f"{label} priority poll: checking {len(users)} users")
         with self._state_lock:
             nested = self._poll_in_progress_depth > 0
+            for username in users:
+                self._checked_this_cycle.discard(username)
         if not nested:
             self._begin_poll()
         self.record_activity("poll", f"Priority check for {len(users)} user(s)")
         try:
             self._active_recordings, aborted = self._poll_users_once(
-                users, self._active_recordings, label
+                users, self._active_recordings, label, force=True
             )
             return aborted
         finally:
@@ -1080,36 +1114,59 @@ class TikTokRecorder:
             self._user_stop_events.pop(user, None)
         finally:
             if self.mode in (Mode.WATCHLIST, Mode.FOLLOWERS):
-                self._wake_poll_loop()
+                # Early full recheck when a recording thread exits (success or error).
+                self._wake_poll_loop(reason="conversion-finished")
 
     def _enqueue_conversion(self, user: str, output: str) -> None:
+        path = Path(output)
+        try:
+            media_key = str(path.resolve())
+        except OSError:
+            media_key = str(path)
+
         def on_start() -> None:
-            self._update_recording_entry(
-                user,
+            self._upsert_media_job(
+                media_key,
                 status="converting",
+                started_at=time.time(),
                 convert_progress={"percent": 0, "phase": "starting"},
+            )
+            self.record_activity(
+                "media",
+                f"Convert started: {path.name}",
+                username=user,
             )
 
         def on_progress(progress: dict) -> None:
-            self._update_recording_entry(user, convert_progress=progress)
+            self._upsert_media_job(media_key, convert_progress=progress)
 
         def on_complete(converted: bool, mp4_output: str) -> None:
+            self._remove_media_job(media_key)
             if converted and Path(mp4_output).is_file():
-                self._update_recording_entry(
-                    user, status="finished", convert_progress=None
+                self._recording_results[user] = "ok"
+                self.record_activity(
+                    "media",
+                    f"Convert succeeded: {path.name}",
+                    username=user,
                 )
                 self._maybe_upload_to_telegram(user, mp4_output)
-                self._recording_results[user] = "ok"
             else:
-                self._update_recording_entry(
-                    user, status="convert_failed", convert_progress=None
-                )
                 self._recording_results[user] = "error"
-            with self._state_lock:
-                self._active_recordings.pop(user, None)
-            self._user_stop_events.pop(user, None)
+                self.record_activity(
+                    "media",
+                    f"Convert failed: {path.name}",
+                    username=user,
+                )
             self._wake_poll_loop(reason="conversion-finished")
 
+        self._upsert_media_job(
+            media_key,
+            username=user,
+            filename=path.name,
+            mode="flv",
+            status="queued",
+            queued_at=time.time(),
+        )
         queue_position = self._convert_queue.enqueue(
             ConvertJob(
                 user=user,
@@ -1121,11 +1178,16 @@ class TikTokRecorder:
                 on_complete=on_complete,
             )
         )
-        self._update_recording_entry(
-            user,
-            status="convert_queued",
-            convert_progress={"phase": "queued", "queue_position": queue_position},
-        )
+        with self._state_lock:
+            if media_key in self._media_jobs:
+                self._media_jobs[media_key]["queue_position"] = queue_position
+                self._media_jobs[media_key]["convert_progress"] = {
+                    "phase": "queued",
+                    "queue_position": queue_position,
+                }
+            # Free the username recording slot so poll/record can start again while convert runs.
+            self._active_recordings.pop(user, None)
+        self._user_stop_events.pop(user, None)
 
     def _build_output_path(self, user: str) -> str:
         filename = (
@@ -1430,11 +1492,11 @@ class TikTokRecorder:
         self._enqueue_conversion(user, output)
 
     def active_recording_output_paths(self) -> set[str]:
+        """Paths that must not be deleted/repaired: live recordings + queued converts."""
         active: set[str] = set()
         with self._state_lock:
             for entry in self._active_recordings.values():
-                status = entry.get("status")
-                if status not in _BUSY_STATUSES:
+                if not self._entry_still_active(entry):
                     continue
                 output_path = entry.get("output_path")
                 if output_path:
@@ -1442,6 +1504,11 @@ class TikTokRecorder:
                         active.add(str(Path(output_path).resolve()))
                     except OSError:
                         active.add(str(output_path))
+            for path in self._media_jobs:
+                try:
+                    active.add(str(Path(path).resolve()))
+                except OSError:
+                    active.add(str(path))
         return active
 
     def enqueue_media_repair(self, username: str, media_path: str) -> dict:

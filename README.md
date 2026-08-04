@@ -316,13 +316,13 @@ Step-by-step setup: [docs/GUIDE.md](docs/GUIDE.md).
 
 When a stream ends, the recorder **always** enqueues conversion on a shared queue (recording threads never call ffmpeg directly). A worker runs the full `_flv.mp4` -> `.mp4` pipeline, including multi-pass salvage when the first encode is not dashboard-playable (H.264 + `yuv420p`). The `*_flv.mp4` is deleted only after ffprobe validation succeeds.
 
-While waiting for a convert slot, status shows **`convert_queued`** (with queue position). During encode, status shows **`converting`** with percent/ETA. At most **N** ffmpeg jobs run at once (`-max-concurrent-converts` or **Settings -> Runtime -> Max concurrent converts**; default **1**).
+Convert jobs are tracked in the dashboard **convert-queue strip** (queued / converting with percent). At most **N** ffmpeg jobs run at once (`-max-concurrent-converts` or **Settings -> Runtime -> Max concurrent converts**; default **1**). Conversion does **not** block polling or recording the same user again if they go live.
 
-If every pass fails, the `*_flv.mp4` is kept and the user shows **`convert_failed`** until you fix FFmpeg or use **Move leftover FLVs** ([salvage guide](docs/GUIDE.md#salvaging-leftover-recordings)).
+If every pass fails, the `*_flv.mp4` is kept; use **Move leftover FLVs** ([salvage guide](docs/GUIDE.md#salvaging-leftover-recordings)).
 
 ### Watchlist threading
 
-Watchlist mode runs one polling loop in the main thread. When a user goes live, a background thread starts their recording. The poll loop keeps checking other users and skips anyone already being recorded.
+Watchlist mode runs one polling loop in the main thread. When a user goes live, a background thread starts their recording. The poll loop keeps checking other users and skips anyone already being recorded (same room id / active recording only - not converts).
 
 When a recording ends, the watchlist is rechecked immediately instead of waiting for the full `-automatic_interval`.
 
@@ -380,7 +380,7 @@ Many TikTok lives use **HEVC in legacy FLV** (codec id 12). The in-app pipeline 
 
 1. Restart the recorder and check startup logs for `capable for TikTok HEVC FLV` vs `NOT capable`.
 2. On Linux, let the automatic BtbN install complete (first run may pause while downloading).
-3. Check live status for **`convert_queued`** / **`converting`** - conversion may still be in progress; raise **Max concurrent converts** in Settings if many streams ended at once.
+3. Check the convert-queue strip for queued/converting jobs - conversion may still be in progress; raise **Max concurrent converts** in Settings if many streams ended at once.
 4. For leftover `*_flv.mp4` files after **`convert_failed`**, use the dashboard **Move leftover FLVs** button ([guide](docs/GUIDE.md#salvaging-leftover-recordings)), then run `fix-mp4s` against `to_fix/`.
 5. Or pass `-ffmpeg-path` to FFmpeg 8.0+ that supports legacy HEVC FLV.
 

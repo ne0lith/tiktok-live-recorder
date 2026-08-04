@@ -41,8 +41,6 @@ const ACTIVE_STATES = new Set([
   "live",
   "starting",
   "recording",
-  "convert_queued",
-  "converting",
   "stopping",
   "error",
 ]);
@@ -65,7 +63,6 @@ export function deriveRows(status) {
         elapsed_seconds: null,
         bytes_written: null,
         output_path: null,
-        convert_progress: null,
       });
     }
     return rows.get(key);
@@ -104,7 +101,6 @@ export function deriveRows(status) {
     row.elapsed_seconds = entry.elapsed_seconds;
     row.bytes_written = entry.bytes_written;
     row.output_path = entry.output_path || row.output_path;
-    row.convert_progress = entry.convert_progress || null;
   });
 
   return Array.from(rows.values()).sort((a, b) => {
@@ -119,12 +115,7 @@ function countByState(rows) {
   const counts = { live: 0, recording: 0, offline: 0, paused: 0, error: 0 };
   for (const row of rows) {
     if (row.state === "live" || row.state === "starting") counts.live += 1;
-    else if (
-      row.state === "recording" ||
-      row.state === "convert_queued" ||
-      row.state === "converting" ||
-      row.state === "stopping"
-    ) {
+    else if (row.state === "recording" || row.state === "stopping") {
       counts.recording += 1;
     } else if (row.state === "paused") counts.paused += 1;
     else if (row.state === "error") counts.error += 1;
@@ -142,12 +133,7 @@ function rowMatchesFilter(row) {
   }
   if (statusFilter === "live") return row.state === "live" || row.state === "starting";
   if (statusFilter === "recording") {
-    return (
-      row.state === "recording" ||
-      row.state === "convert_queued" ||
-      row.state === "converting" ||
-      row.state === "stopping"
-    );
+    return row.state === "recording" || row.state === "stopping";
   }
   if (statusFilter === "offline") return row.state === "offline";
   if (statusFilter === "paused") return row.state === "paused";
@@ -231,10 +217,14 @@ function renderConvertQueueSummary(status) {
     : "";
   const jobLines = jobs
     .map((job) => {
-      const state =
-        job.status === "converting"
-          ? "converting"
-          : `queued${job.queue_position ? ` (#${job.queue_position})` : ""}`;
+      const progress = job.convert_progress || {};
+      let state;
+      if (job.status === "converting") {
+        const percent = progress.percent;
+        state = percent != null ? `converting ${percent}%` : "converting";
+      } else {
+        state = `queued${job.queue_position ? ` (#${job.queue_position})` : ""}`;
+      }
       const action = job.mode === "flv" ? "convert" : "repair";
       return `<div class="poll-group"><span class="poll-group-label">@${job.username || "?"}</span> ${job.filename || "?"} · ${action} · ${state}</div>`;
     })
@@ -321,43 +311,7 @@ function renderStatusActions(row, status) {
 }
 
 function formatStateLabel(row) {
-  if (row.state === "convert_queued") {
-    const position = row.convert_progress?.queue_position;
-    if (position != null && position > 1) {
-      return `queued (#${position})`;
-    }
-    return "queued";
-  }
-  if (row.state === "converting") {
-    const percent = row.convert_progress?.percent;
-    if (percent != null) return `converting ${percent}%`;
-  }
   return row.state;
-}
-
-function renderConvertProgress(row) {
-  if (row.state !== "converting") return "";
-  const percent = row.convert_progress?.percent;
-  if (percent == null) return "";
-  const safe = Math.max(0, Math.min(100, percent));
-  const eta =
-    row.convert_progress?.duration_seconds &&
-    row.convert_progress?.out_time_seconds != null
-      ? formatDuration(
-          Math.max(
-            0,
-            row.convert_progress.duration_seconds -
-              row.convert_progress.out_time_seconds,
-          ),
-        )
-      : null;
-  const etaLabel = eta && eta !== "0s" ? ` · ~${eta} left` : "";
-  return `<div class="convert-progress" role="progressbar" aria-valuenow="${safe}" aria-valuemin="0" aria-valuemax="100" title="MP4 conversion in progress">
-    <div class="convert-progress-track">
-      <div class="convert-progress-fill" style="width: ${safe}%"></div>
-    </div>
-    <span class="convert-progress-meta">${safe}%${etaLabel}</span>
-  </div>`;
 }
 
 function partitionStatusRows(rows) {
@@ -389,8 +343,6 @@ function renderStatusLine(row, status) {
   const detailMarkup = details.length
     ? `<p class="status-line-detail">${details.join(" · ")}</p>`
     : "";
-  const progressMarkup =
-    isActive && row.state === "converting" ? renderConvertProgress(row) : "";
 
   return `
     <div class="status-line${isActive ? " status-line--active" : ""}${focused ? " status-line--focused" : ""}" data-username="${row.username}">
@@ -400,7 +352,6 @@ function renderStatusLine(row, status) {
           <span class="badge ${row.state}">${formatStateLabel(row)}</span>
         </div>
         ${detailMarkup}
-        ${progressMarkup}
       </div>
       <div class="status-line-actions">${renderStatusActions(row, status)}</div>
     </div>

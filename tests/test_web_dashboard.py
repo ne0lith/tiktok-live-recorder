@@ -136,7 +136,8 @@ def test_get_status_omits_dead_finished_threads():
     assert status["recordings"] == []
 
 
-def test_get_status_includes_convert_queued_after_thread_ends():
+def test_get_status_excludes_convert_from_recordings_list():
+    """Convert no longer occupies the per-user recording slot."""
     recorder = TikTokRecorder(
         RecorderConfig(mode=Mode.WATCHLIST, users=["alpha"], cookies={})
     )
@@ -150,15 +151,23 @@ def test_get_status_includes_convert_queued_after_thread_ends():
             "output_path": "/tmp/alpha_flv.mp4",
             "bytes_written": 4096,
             "status": "convert_queued",
-            "convert_progress": {"phase": "queued", "queue_position": 2},
         }
+    }
+    recorder._media_jobs["/tmp/alpha_flv.mp4"] = {
+        "username": "alpha",
+        "filename": "alpha_flv.mp4",
+        "mode": "flv",
+        "status": "queued",
+        "queue_position": 2,
+        "queued_at": 1000.0,
     }
 
     status = recorder.get_status()
 
-    assert len(status["recordings"]) == 1
-    assert status["recordings"][0]["status"] == "convert_queued"
-    assert status["recordings"][0]["is_alive"] is True
+    assert status["recordings"] == []
+    assert len(status["media_jobs"]) == 1
+    assert status["media_jobs"][0]["status"] == "queued"
+    assert status["media_jobs"][0]["username"] == "alpha"
     assert status["convert_queue"]["max_concurrent"] == 1
 
 

@@ -100,17 +100,17 @@ Install FFmpeg manually ([ffmpeg.org](https://ffmpeg.org/download.html), Homebre
 
 Every finished recording goes through the same post-processing path:
 
-1. The recording thread flushes `TK_<user>_<timestamp>_flv.mp4` and sets status **`convert_queued`**.
-2. A job is added to the shared **ConvertQueue** (FIFO).
-3. When a worker slot is free, status becomes **`converting`** and ffmpeg runs.
-4. On success (validated H.264 + `yuv420p`), the `*_flv.mp4` is removed and status becomes **`finished`**.
-5. On failure after all passes, status becomes **`convert_failed`** and the `*_flv.mp4` is kept.
+1. The recording thread flushes `TK_<user>_<timestamp>_flv.mp4` and frees the username's recording slot so polling can start a new live if needed.
+2. A job is added to the shared **ConvertQueue** (FIFO) and tracked in `media_jobs` (dashboard convert-queue strip).
+3. When a worker slot is free, the job status becomes **`converting`** and ffmpeg runs.
+4. On success (validated H.264 + `yuv420p`), the `*_flv.mp4` is removed.
+5. On failure after all passes, the `*_flv.mp4` is kept (activity notes the failure).
 
-Recording threads **never** invoke ffmpeg directly. There is no setting to skip conversion.
+Recording threads **never** invoke ffmpeg directly. There is no setting to skip conversion. Convert jobs do **not** block watchlist polling or a new recording for the same username.
 
 ### Concurrency
 
-By default only **one** convert runs at a time (`max_concurrent_converts: 1`). When several streams end together, extra jobs wait in **`convert_queued`** until a slot opens. The dashboard shows queue stats (`pending`, `active`, `max_concurrent`) and per-user queue position.
+By default only **one** convert runs at a time (`max_concurrent_converts: 1`). When several streams end together, extra jobs wait in the convert queue until a slot opens. The dashboard shows queue stats (`pending`, `active`, `max_concurrent`) and per-file job rows in the convert-queue strip.
 
 Raise the limit when you have CPU headroom (2-4 is typical on a dedicated box). Lower it on Docker hosts or shared VMs.
 
@@ -276,12 +276,12 @@ The sticky summary strip shows live/recording/offline/paused/error counts, poll 
 
 ### Live status
 
-- Per-user state: `offline`, `recording`, `convert_queued`, `converting`, `stopping`, `paused`, `convert_failed`, errors, etc.
-- **`convert_queued`** - recording finished; waiting for a convert worker slot (queue position in progress details)
-- **`converting`** - ffmpeg post-processing in progress (percent/ETA when available)
+- Per-user state: `offline`, `recording`, `stopping`, `paused`, errors, etc.
+- Convert/repair progress appears in the **convert-queue strip** (`media_jobs`), not as the user's live status - so a user can show **recording** again while a prior file is still converting
 - Room ID, elapsed time, file size, and active output path
 - Last-poll summary: finished, skipped, and errors from the most recent check
-- **Force check** - poll immediately (shows loading while a poll is in progress)
+- **Check** (per user) - priority live check for that user: pauses an in-progress full poll, runs the Check (and any other queued Checks if you click several), then resumes the remaining users; works while converting or when paused
+- **Force check** - abort/restart the full watchlist poll immediately (shows loading while a poll is in progress)
 - **Stop** - graceful shutdown for an active recording
 - **Watchlist only:** add/remove users (top bar); pause/resume (pause state in `config/watchlist_state.json`)
 - **Mobile:** status cards replace the table on narrow viewports
