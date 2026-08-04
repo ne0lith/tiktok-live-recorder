@@ -158,7 +158,7 @@ def test_get_status_excludes_convert_from_recordings_list():
         "filename": "alpha_flv.mp4",
         "mode": "flv",
         "status": "queued",
-        "queue_position": 2,
+        "queue_position": 99,  # stale — snapshot must recompute
         "queued_at": 1000.0,
     }
 
@@ -168,7 +168,61 @@ def test_get_status_excludes_convert_from_recordings_list():
     assert len(status["media_jobs"]) == 1
     assert status["media_jobs"][0]["status"] == "queued"
     assert status["media_jobs"][0]["username"] == "alpha"
+    assert status["media_jobs"][0]["queue_position"] == 1
     assert status["convert_queue"]["max_concurrent"] == 1
+
+
+def test_media_jobs_snapshot_assigns_unique_live_queue_positions():
+    recorder = TikTokRecorder(
+        RecorderConfig(mode=Mode.WATCHLIST, users=["alpha", "beta"], cookies={})
+    )
+    recorder._media_jobs = {
+        "/tmp/a_flv.mp4": {
+            "username": "alpha",
+            "filename": "a_flv.mp4",
+            "mode": "flv",
+            "status": "queued",
+            "queue_position": 5,
+            "queued_at": 100.0,
+        },
+        "/tmp/b_flv.mp4": {
+            "username": "beta",
+            "filename": "b_flv.mp4",
+            "mode": "flv",
+            "status": "converting",
+            "queue_position": 1,
+            "queued_at": 50.0,
+            "convert_progress": {"percent": 10, "queue_position": 1},
+        },
+        "/tmp/c_flv.mp4": {
+            "username": "gamma",
+            "filename": "c_flv.mp4",
+            "mode": "flv",
+            "status": "queued",
+            "queue_position": 5,
+            "queued_at": 200.0,
+        },
+    }
+
+    jobs = recorder._media_jobs_snapshot()
+    by_path = {job["path"]: job for job in jobs}
+
+    assert by_path["/tmp/b_flv.mp4"]["status"] == "converting"
+    assert "queue_position" not in by_path["/tmp/b_flv.mp4"]
+    assert "queue_position" not in (
+        by_path["/tmp/b_flv.mp4"].get("convert_progress") or {}
+    )
+
+    assert by_path["/tmp/a_flv.mp4"]["queue_position"] == 1
+    assert by_path["/tmp/c_flv.mp4"]["queue_position"] == 2
+    assert by_path["/tmp/a_flv.mp4"]["convert_progress"]["queue_position"] == 1
+    assert by_path["/tmp/c_flv.mp4"]["convert_progress"]["queue_position"] == 2
+    # Converting jobs sort first, then waiting in FIFO order.
+    assert [job["path"] for job in jobs] == [
+        "/tmp/b_flv.mp4",
+        "/tmp/a_flv.mp4",
+        "/tmp/c_flv.mp4",
+    ]
 
 
 def test_scan_media_library_groups_by_username(tmp_path):
@@ -414,6 +468,15 @@ def test_dashboard_index_cache_busts_assets(api_client):
     assert 'id="settings-modal"' in response.text
     assert 'id="logs-modal"' in response.text
     assert 'id="activity-feed"' in response.text
+    assert 'id="activity-filters"' in response.text
+    assert response.text.index('id="activity-feed"') < response.text.index(
+        'id="summary-strip"'
+    )
+    assert 'id="summary-filters"' in response.text
+    assert 'id="summary-meta"' in response.text
+    assert 'id="status-ops"' in response.text
+    assert 'id="poll-summary"' not in response.text
+    assert 'id="summary-chips"' not in response.text
     assert 'id="connection-banner"' in response.text
     assert 'id="player-actions"' in response.text
     assert 'id="player-delete"' in response.text

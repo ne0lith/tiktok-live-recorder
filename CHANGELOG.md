@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.20.6] - 2026-08-03
+
+### Added
+
+- **Dashboard**: Recent activity sits under the top bar; Poll / Recording / Media / Telegram chips hide noisy event types (saved in `localStorage`)
+
+### Changed
+
+- **Dashboard summary strip**: filters and meta are two left-aligned rows (no right-floated meta chips)
+- **Live status ops**: poll/convert summaries use a compact digest with count pills and capped name lists instead of a wrapping dump
+
+### Fixed
+
+- **Convert queue positions**: dashboard `#N` / "Next" labels are live 1-based ranks among currently waiting jobs (no stale duplicates or off-by-ones after jobs ahead finish)
+
 ## [8.20.5] - 2026-08-03
 
 ### Fixed
@@ -631,7 +646,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.5...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.6...HEAD
+[8.20.6]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.5...v8.20.6
 [8.20.5]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.4...v8.20.5
 [8.20.4]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.3...v8.20.4
 [8.20.3]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.2...v8.20.3

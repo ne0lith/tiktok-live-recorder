@@ -42,8 +42,22 @@
         </div>
       </header>
 
+      <section class="panel activity-panel" aria-label="Recent activity">
+        <div class="panel-head activity-panel-head">
+          <h2>Recent activity</h2>
+          <div
+            id="activity-filters"
+            class="activity-filters"
+            role="group"
+            aria-label="Activity event types"
+          ></div>
+        </div>
+        <ul id="activity-feed" class="activity-feed"></ul>
+      </section>
+
       <section id="summary-strip" class="panel summary-strip sticky-chrome" aria-label="Operator summary">
-        <div id="summary-chips" class="summary-chips"></div>
+        <div id="summary-filters" class="summary-row summary-row--filters"></div>
+        <div id="summary-meta" class="summary-row summary-row--meta"></div>
       </section>
 
       <section class="panel status-panel">
@@ -51,18 +65,10 @@
           <h2>Live status</h2>
           <p id="status-meta" class="meta">Loading…</p>
         </div>
-        <div id="poll-summary" class="poll-summary hidden"></div>
-        <div id="convert-queue-summary" class="poll-summary hidden" aria-live="polite"></div>
+        <div id="status-ops" class="status-ops hidden" aria-live="polite"></div>
         <div class="status-scroll">
           <div id="status-board" class="status-board" aria-live="polite"></div>
         </div>
-      </section>
-
-      <section class="panel activity-panel">
-        <div class="panel-head">
-          <h2>Recent activity</h2>
-        </div>
-        <ul id="activity-feed" class="activity-feed"></ul>
       </section>
 
       <section class="panel library-panel">

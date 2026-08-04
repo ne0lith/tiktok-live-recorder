@@ -397,22 +397,37 @@ body.modal-open {
 .summary-strip {
   padding: 0.85rem 1.1rem;
   margin-bottom: 1.25rem;
+  display: grid;
+  gap: 0.55rem;
 }
 
-.summary-chips {
+.summary-row {
   display: flex;
   flex-wrap: wrap;
   gap: 0.45rem;
   align-items: center;
+  justify-content: flex-start;
 }
 
-.summary-chips-meta {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-  align-items: center;
-  margin-left: auto;
-  justify-content: flex-end;
+.summary-row--meta {
+  gap: 0.35rem 0.15rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.summary-fact {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.summary-fact--live {
+  color: var(--accent);
+}
+
+.summary-fact-sep {
+  color: rgba(154, 166, 178, 0.55);
+  padding: 0 0.25rem;
+  user-select: none;
 }
 
 .summary-chip {
@@ -432,13 +447,7 @@ body.modal-open {
     color 160ms ease;
 }
 
-.summary-chip--meta {
-  cursor: default;
-  color: var(--muted);
-  background: transparent;
-}
-
-.summary-chip:not(.summary-chip--meta):hover {
+.summary-chip:hover {
   background: rgba(255, 255, 255, 0.06);
 }
 
@@ -461,23 +470,139 @@ body.modal-open {
   background: transparent;
 }
 
-.summary-chip--polling {
-  color: var(--accent);
-  animation: pulse-poll 1.2s ease-in-out infinite;
-}
-
-@keyframes pulse-poll {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.55;
-  }
-}
-
 .summary-chip--clear {
   color: var(--muted);
+}
+
+.status-ops {
+  display: grid;
+  gap: 0.65rem;
+  margin: 0 0 1rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.status-ops.hidden {
+  display: none;
+}
+
+.status-ops-block {
+  display: grid;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.status-ops-block + .status-ops-block {
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--line);
+}
+
+.status-ops-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.65rem;
+  align-items: center;
+}
+
+.status-ops-title {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.status-ops-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.status-ops-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.status-ops-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.18rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.status-ops-pill-label {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.status-ops-details,
+.status-ops-jobs {
+  display: grid;
+  gap: 0.28rem;
+  min-width: 0;
+}
+
+.status-ops-detail-row,
+.status-ops-job {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr);
+  gap: 0.55rem;
+  align-items: baseline;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.status-ops-job {
+  grid-template-columns: 6.5rem minmax(0, 1fr) auto;
+}
+
+@media (max-width: 720px) {
+  .status-ops-job {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .status-ops-job-user {
+    grid-column: 1 / -1;
+  }
+}
+
+.status-ops-detail-label,
+.status-ops-job-user {
+  color: var(--text);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.status-ops-job-file {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-ops-job-meta {
+  white-space: nowrap;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
 }
 
 .status-filter {
@@ -1603,30 +1728,6 @@ td.col-room {
   color: #f0c674;
 }
 
-.poll-summary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.55rem 1rem;
-  padding: 0 0 1rem;
-  color: var(--muted);
-  font-size: 0.84rem;
-}
-
-.poll-label {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.2rem 0.55rem;
-  border-radius: 999px;
-  background: rgba(63, 208, 201, 0.1);
-  color: var(--accent);
-  font-weight: 600;
-}
-
-.poll-group-label {
-  color: var(--text);
-  font-weight: 600;
-}
-
 .convert-progress {
   margin-top: 0.35rem;
   min-width: 6.5rem;
@@ -1806,8 +1907,58 @@ td.col-room {
 }
 
 .activity-panel {
-  padding-top: 1rem;
-  padding-bottom: 1rem;
+  padding-top: 0.85rem;
+  padding-bottom: 0.85rem;
+}
+
+.activity-panel-head {
+  margin-bottom: 0.65rem;
+  gap: 0.75rem 1rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.activity-panel-head h2 {
+  font-size: 1.15rem;
+}
+
+.activity-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+
+.activity-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 1.7rem;
+  padding: 0 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    color 140ms ease,
+    background 140ms ease,
+    border-color 140ms ease;
+}
+
+.activity-filter-chip:hover {
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.activity-filter-chip.is-active {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: rgba(63, 208, 201, 0.35);
 }
 
 .activity-feed {
@@ -1817,8 +1968,8 @@ td.col-room {
   display: grid;
   grid-template-columns: max-content max-content minmax(0, 1fr);
   column-gap: 0.65rem;
-  row-gap: 0.45rem;
-  max-height: 12rem;
+  row-gap: 0.4rem;
+  max-height: 9.5rem;
   overflow: auto;
   align-items: baseline;
 }
@@ -1856,9 +2007,6 @@ td.col-room {
   word-break: break-word;
 }
 
-.poll-summary {
-  margin-bottom: 0.85rem;
-}
 .shortcuts-list {
   list-style: none;
   margin: 0;
@@ -1898,9 +2046,5 @@ td.col-room {
 @media (prefers-reduced-motion: reduce) {
   .segment-indicator {
     transition: none !important;
-  }
-
-  .summary-chip--polling {
-    animation: none;
   }
 }

@@ -272,14 +272,14 @@ The UI updates live via **Server-Sent Events** (`GET /api/events`) with polling 
 
 ### Summary strip and filters
 
-The sticky summary strip shows live/recording/offline/paused/error counts, poll timing, app version (from on-disk `pyproject.toml` after hot updates), and (when focused) the selected user. **Click a chip** to filter the status list (All / Live / Recording / Offline / Paused / Errors). **Hide paused** toggles paused users out of the All view (saved in `localStorage`; the focused profile still shows when paused). Recording users sort first; large watchlists show a **Show all users** control.
+The sticky summary strip has two left-aligned rows: **filter chips** (All / Live / Recording / Offline / Paused / Errors, Hide paused, focused user) and a quiet **meta line** (convert busy, last/next poll, version, FFmpeg). Click a chip to filter the status list. **Hide paused** toggles paused users out of the All view (saved in `localStorage`; the focused profile still shows when paused). Recording users sort first; large watchlists show a **Show all users** control.
 
 ### Live status
 
 - Per-user state: `offline`, `recording`, `stopping`, `paused`, errors, etc.
-- Convert/repair progress appears in the **convert-queue strip** (`media_jobs`), not as the user's live status - so a user can show **recording** again while a prior file is still converting
+- Convert/repair progress appears in the Live status **ops digest** and summary meta line (`media_jobs`), not as the user's live status - so a user can show **recording** again while a prior file is still converting
 - Room ID, elapsed time, file size, and active output path
-- Last-poll summary: finished, skipped, and errors from the most recent check
+- Ops digest: compact last-poll counts plus capped name lists for live/skipped/errors; convert jobs listed one per line
 - **Check** (per user) - priority live check for that user: pauses an in-progress full poll, runs the Check (and any other queued Checks if you click several), then resumes the remaining users; works while converting or when paused
 - **Force check** - abort/restart the full watchlist poll immediately (shows loading while a poll is in progress)
 - **Stop** - graceful shutdown for an active recording
@@ -288,7 +288,7 @@ The sticky summary strip shows live/recording/offline/paused/error counts, poll 
 
 ### Recent activity
 
-A feed of recent polls, recording starts/stops, and Telegram uploads (when enabled).
+Shown directly under the top bar. Feed of recent polls, recording starts/stops, media convert/repair jobs, and Telegram uploads (when enabled). Use the **Poll / Recording / Media / Telegram** chips to hide noisy event types (selection saved in `localStorage`).
 
 ### User focus
 
@@ -303,7 +303,7 @@ Click a `@handle` to filter status and the media library to that user. Each prof
 - Thumbnail previews for finished recordings (server-generated `*.thumb.jpg` cache, lazy-loaded in the browser)
 - Orphan `*_flv.mp4` files pinned and styled (`needs convert`); legacy items show a `legacy` tag when visible. Active recordings are hidden until finalized (see Live status).
 - Docked in-browser player above the scrollable list (playback is not interrupted by library refreshes)
-- **Fix video** in the player when thumbnail generation fails (broken MP4) or for orphan `*_flv.mp4` files (**Convert**); queues the in-app salvage pipeline. Progress appears in **Recent activity** (Media), the **Convert queue** strip under Live status, and the summary chip while jobs run.
+- **Fix video** in the player when thumbnail generation fails (broken MP4) or for orphan `*_flv.mp4` files (**Convert**); queues the in-app salvage pipeline. Progress appears in **Recent activity** (Media), the Live status convert digest, and the summary meta line while jobs run.
 - Player header links to the user's profile filter; watchlist user actions (Stop, Pause, Check, etc.) appear below the header while a file is playing
 - Download or delete files (delete requires confirmation; **Delete** is also available in the player panel)
 - **Move leftover FLVs** - move orphan `*_flv.mp4` files into repo-root `to_fix/` (shown only when orphans exist; badge shows count). Skips files that belong to an active recording. See [Salvaging leftover recordings](#salvaging-leftover-recordings).

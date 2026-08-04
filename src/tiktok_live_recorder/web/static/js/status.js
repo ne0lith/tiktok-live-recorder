@@ -1,5 +1,5 @@
 import { api } from "./api.js";
-import { renderActivityFeed } from "./activity.js";
+import { renderActivityFeed, loadActivityPreferences } from "./activity.js";
 import {
   formatBytes,
   formatDuration,
@@ -31,9 +31,9 @@ import {
 
 const statusBoard = document.getElementById("status-board");
 const statusMeta = document.getElementById("status-meta");
-const pollSummary = document.getElementById("poll-summary");
-const convertQueueSummary = document.getElementById("convert-queue-summary");
-const summaryChips = document.getElementById("summary-chips");
+const statusOps = document.getElementById("status-ops");
+const summaryFilters = document.getElementById("summary-filters");
+const summaryMeta = document.getElementById("summary-meta");
 const addUserForm = document.getElementById("add-user-form");
 const forcePollBtn = document.getElementById("force-poll-btn");
 
@@ -44,6 +44,8 @@ const ACTIVE_STATES = new Set([
   "stopping",
   "error",
 ]);
+
+const POLL_NAME_CAP = 6;
 
 export function deriveRows(status) {
   const paused = new Set((status.paused || []).map((u) => u.toLowerCase()));
@@ -164,78 +166,130 @@ function syncPollUI(status) {
   document.body.classList.toggle("poll-in-progress", polling);
 }
 
-function renderPollSummary(status) {
-  const poll = status.poll || {};
-  const groups = [
-    ["Finished", poll.finished],
-    ["Skipped", poll.skipped],
-    ["Errors", poll.errors],
-  ].filter(([, items]) => items && items.length);
-
-  if (!groups.length && !status.poll_label) {
-    pollSummary.classList.add("hidden");
-    pollSummary.innerHTML = "";
-    return;
-  }
-
-  const label = status.poll_label ? `<span class="poll-label">${status.poll_label}</span>` : "";
-  const chunks = groups
-    .map(([name, items]) => {
-      const values = items
-        .map((entry) => {
-          const text = String(entry);
-          return text.startsWith("@") ? text : `@${text}`;
-        })
-        .join(", ");
-      return `<div class="poll-group"><span class="poll-group-label">${name}</span> ${values}</div>`;
-    })
-    .join("");
-
-  pollSummary.classList.remove("hidden");
-  pollSummary.innerHTML = `${label}${chunks}`;
+function formatHandle(entry) {
+  const text = String(entry);
+  return text.startsWith("@") ? text : `@${text}`;
 }
 
-function renderConvertQueueSummary(status) {
-  if (!convertQueueSummary) return;
+function formatNameList(items, cap = POLL_NAME_CAP) {
+  const list = (items || []).map(formatHandle);
+  if (!list.length) return "";
+  if (list.length <= cap) return list.join(", ");
+  const shown = list.slice(0, cap).join(", ");
+  return `${shown} +${list.length - cap} more`;
+}
+
+function renderStatusOps(status) {
+  if (!statusOps) return;
+  const poll = status.poll || {};
   const queue = status.convert_queue || {};
   const jobs = status.media_jobs || [];
   const pending = queue.pending || 0;
   const active = queue.active || 0;
   const max = queue.max_concurrent || 1;
-  const total = pending + active;
+  const convertBusy = pending + active > 0 || jobs.length > 0;
 
-  if (!total && !jobs.length) {
-    convertQueueSummary.classList.add("hidden");
-    convertQueueSummary.innerHTML = "";
+  const countPills = [
+    ["Live", poll.starting],
+    ["Recording", poll.recording],
+    ["Offline", poll.offline],
+    ["Paused", poll.paused],
+    ["Finished", poll.finished],
+    ["Skipped", poll.skipped],
+    ["Errors", poll.errors],
+  ]
+    .filter(([, items]) => items && items.length)
+    .map(
+      ([label, items]) =>
+        `<span class="status-ops-pill"><span class="status-ops-pill-label">${label}</span> ${items.length}</span>`,
+    )
+    .join("");
+
+  // Only expand names for actionable / noisy-small groups - never dump offline lists.
+  const detailGroups = [
+    ["Live", poll.starting?.map((e) => e.username || e)],
+    ["Skipped", poll.skipped],
+    ["Errors", poll.errors],
+  ].filter(([, items]) => items && items.length);
+
+  const detailHtml = detailGroups
+    .map(
+      ([label, items]) =>
+        `<div class="status-ops-detail-row"><span class="status-ops-detail-label">${label}</span> ${formatNameList(items)}</div>`,
+    )
+    .join("");
+
+  const hasPollBlock = Boolean(status.poll_label || countPills || detailHtml);
+  const blocks = [];
+
+  if (hasPollBlock) {
+    const title = status.poll_label || "Last poll";
+    const running = status.poll_in_progress
+      ? `<span class="status-ops-badge">Running</span>`
+      : "";
+    blocks.push(`<div class="status-ops-block">
+      <div class="status-ops-head">
+        <span class="status-ops-title">${title}</span>
+        ${running}
+        <div class="status-ops-pills">${countPills}</div>
+      </div>
+      ${detailHtml ? `<div class="status-ops-details">${detailHtml}</div>` : ""}
+    </div>`);
+  }
+
+  if (convertBusy) {
+    document.body.classList.add("convert-queue-active");
+    const jobHtml = jobs
+      .map((job) => {
+        const progress = job.convert_progress || {};
+        let state;
+        if (job.status === "converting") {
+          const percent = progress.percent;
+          state = percent != null ? `${percent}%` : "converting";
+        } else {
+          const position = Number(job.queue_position);
+          state =
+            Number.isFinite(position) && position > 0
+              ? position === 1
+                ? "next"
+                : `#${position}`
+              : "queued";
+        }
+        const action = job.mode === "flv" ? "convert" : "repair";
+        const file = job.filename || "?";
+        return `<div class="status-ops-job">
+          <span class="status-ops-job-user">@${job.username || "?"}</span>
+          <span class="status-ops-job-file" title="${file}">${file}</span>
+          <span class="status-ops-job-meta">${action} · ${state}</span>
+        </div>`;
+      })
+      .join("");
+    blocks.push(`<div class="status-ops-block status-ops-block--convert">
+      <div class="status-ops-head">
+        <span class="status-ops-title">Convert</span>
+        <div class="status-ops-pills">
+          <span class="status-ops-pill"><span class="status-ops-pill-label">Active</span> ${active}/${max}</span>
+          <span class="status-ops-pill"><span class="status-ops-pill-label">Queued</span> ${pending}</span>
+        </div>
+      </div>
+      ${jobHtml ? `<div class="status-ops-jobs">${jobHtml}</div>` : ""}
+    </div>`);
+  } else {
     document.body.classList.remove("convert-queue-active");
+  }
+
+  if (!blocks.length) {
+    statusOps.classList.add("hidden");
+    statusOps.innerHTML = "";
     return;
   }
 
-  document.body.classList.add("convert-queue-active");
-  const queueLine = total
-    ? `<span class="poll-label">Convert queue</span> ${active} active · ${pending} queued · max ${max}`
-    : "";
-  const jobLines = jobs
-    .map((job) => {
-      const progress = job.convert_progress || {};
-      let state;
-      if (job.status === "converting") {
-        const percent = progress.percent;
-        state = percent != null ? `converting ${percent}%` : "converting";
-      } else {
-        state = `queued${job.queue_position ? ` (#${job.queue_position})` : ""}`;
-      }
-      const action = job.mode === "flv" ? "convert" : "repair";
-      return `<div class="poll-group"><span class="poll-group-label">@${job.username || "?"}</span> ${job.filename || "?"} · ${action} · ${state}</div>`;
-    })
-    .join("");
-
-  convertQueueSummary.classList.remove("hidden");
-  convertQueueSummary.innerHTML = `${queueLine}${jobLines}`;
+  statusOps.classList.remove("hidden");
+  statusOps.innerHTML = blocks.join("");
 }
 
 export function renderSummaryChips(status) {
-  if (!summaryChips) return;
+  if (!summaryFilters && !summaryMeta) return;
   const rows = deriveRows(status);
   const counts = countByState(rows);
   const version = document.body.dataset.version || "";
@@ -247,34 +301,6 @@ export function renderSummaryChips(status) {
     { filter: "paused", label: `Paused ${counts.paused}` },
     { filter: "error", label: `Errors ${counts.error}` },
   ];
-
-  const metaChips = [];
-  if (status.poll_in_progress) {
-    metaChips.push(`<span class="summary-chip summary-chip--meta summary-chip--polling">Poll running…</span>`);
-  }
-  const queue = status.convert_queue || {};
-  const queueBusy = (queue.pending || 0) + (queue.active || 0);
-  if (queueBusy > 0) {
-    metaChips.push(
-      `<span class="summary-chip summary-chip--meta summary-chip--polling">Convert ${queue.active || 0}/${queue.max_concurrent || 1} · ${queue.pending || 0} queued</span>`,
-    );
-  }
-  metaChips.push(`<span class="summary-chip summary-chip--meta">Last poll ${formatTimestamp(status.last_poll_at)}</span>`);
-  metaChips.push(`<span class="summary-chip summary-chip--meta">Next ${formatNextPoll(status)}</span>`);
-  if (version) metaChips.push(`<span class="summary-chip summary-chip--meta">v${version}</span>`);
-  if (status.ffmpeg?.path) {
-    const sourceShort =
-      status.ffmpeg.source === "vendor"
-        ? "FFmpeg vendor"
-        : status.ffmpeg.source === "system"
-          ? "FFmpeg system"
-          : "FFmpeg custom";
-    const hevcShort = status.ffmpeg.hevc_capable ? "HEVC OK" : "HEVC !";
-    const title = `${status.ffmpeg.path}\n${status.ffmpeg.version || ""}`;
-    metaChips.push(
-      `<span class="summary-chip summary-chip--meta summary-chip--ffmpeg" title="${title.replace(/"/g, "&quot;")}">${sourceShort} · ${hevcShort}</span>`,
-    );
-  }
 
   const focusChip = selectedProfile
     ? `<button type="button" class="summary-chip summary-chip--focus" data-clear-focus="1" title="Clear focus">@${selectedProfile} <span aria-hidden="true">x</span></button>`
@@ -289,7 +315,42 @@ export function renderSummaryChips(status) {
 
   const hidePausedChip = `<button type="button" class="summary-chip summary-chip--toggle${hidePausedUsers ? " is-active" : ""}" data-toggle="hide-paused" title="Hide paused users from the All view">Hide paused</button>`;
 
-  summaryChips.innerHTML = `${filterChips}${hidePausedChip}${focusChip}<div class="summary-chips-meta">${metaChips.join("")}</div>`;
+  if (summaryFilters) {
+    summaryFilters.innerHTML = `${filterChips}${hidePausedChip}${focusChip}`;
+  }
+
+  if (summaryMeta) {
+    const facts = [];
+    if (status.poll_in_progress) {
+      facts.push(`<span class="summary-fact summary-fact--live">Poll running…</span>`);
+    }
+    const queue = status.convert_queue || {};
+    const queueBusy = (queue.pending || 0) + (queue.active || 0);
+    if (queueBusy > 0) {
+      facts.push(
+        `<span class="summary-fact summary-fact--live">Convert ${queue.active || 0}/${queue.max_concurrent || 1} · ${queue.pending || 0} queued</span>`,
+      );
+    }
+    facts.push(
+      `<span class="summary-fact">Last poll ${formatTimestamp(status.last_poll_at)}</span>`,
+    );
+    facts.push(`<span class="summary-fact">Next ${formatNextPoll(status)}</span>`);
+    if (version) facts.push(`<span class="summary-fact">v${version}</span>`);
+    if (status.ffmpeg?.path) {
+      const sourceShort =
+        status.ffmpeg.source === "vendor"
+          ? "FFmpeg vendor"
+          : status.ffmpeg.source === "system"
+            ? "FFmpeg system"
+            : "FFmpeg custom";
+      const hevcShort = status.ffmpeg.hevc_capable ? "HEVC OK" : "HEVC !";
+      const title = `${status.ffmpeg.path}\n${status.ffmpeg.version || ""}`;
+      facts.push(
+        `<span class="summary-fact" title="${title.replace(/"/g, "&quot;")}">${sourceShort} · ${hevcShort}</span>`,
+      );
+    }
+    summaryMeta.innerHTML = facts.join('<span class="summary-fact-sep" aria-hidden="true">·</span>');
+  }
 }
 
 export function setStatusFilterValue(filter) {
@@ -299,6 +360,7 @@ export function setStatusFilterValue(filter) {
 
 export function loadStatusPreferences() {
   setHidePausedUsers(localStorage.getItem(STORAGE_HIDE_PAUSED_KEY) === "1");
+  loadActivityPreferences();
 }
 
 export function saveHidePausedPreference(value) {
@@ -425,15 +487,17 @@ export function renderStatus(status) {
   let rows = deriveRows(status);
   rows = rows.filter(rowMatchesFilter);
 
-  const pollLabel = status.poll_label ? ` · ${status.poll_label}` : "";
+  const mode = status.mode || "watchlist";
   if (statusMeta) {
-    statusMeta.textContent = `All users · ${status.mode}${pollLabel} · last poll ${formatTimestamp(
-      status.last_poll_at,
-    )} · interval ${status.automatic_interval_minutes} min`;
+    const bits = [mode];
+    if (status.poll_in_progress) bits.push("polling");
+    if (status.automatic_interval_minutes) {
+      bits.push(`every ${status.automatic_interval_minutes} min`);
+    }
+    statusMeta.textContent = bits.join(" · ");
   }
 
-  renderPollSummary(status);
-  renderConvertQueueSummary(status);
+  renderStatusOps(status);
   renderSummaryChips(status);
   renderActivityFeed(status.activity || []);
   renderTelegramUploads(status.telegram_uploads || []);
@@ -459,7 +523,7 @@ export async function refreshStatus() {
 export function initStatusInteractions() {
   loadStatusPreferences();
 
-  summaryChips?.addEventListener("click", (event) => {
+  summaryFilters?.addEventListener("click", (event) => {
     const clearFocus = event.target.closest("[data-clear-focus]");
     if (clearFocus) {
       setSelectedProfile(null);

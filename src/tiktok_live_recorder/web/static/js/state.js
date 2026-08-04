@@ -4,6 +4,7 @@ export const LOG_REFRESH_MS = 3000;
 export const STORAGE_SORT_KEY = "ttlr_library_sort";
 export const STORAGE_SHOW_LEGACY_KEY = "ttlr_library_show_legacy";
 export const STORAGE_HIDE_PAUSED_KEY = "ttlr_hide_paused";
+export const STORAGE_ACTIVITY_HIDDEN_KINDS_KEY = "ttlr_activity_hidden_kinds";
 
 export const STATE_SORT_ORDER = {
   recording: 0,
@@ -24,6 +25,7 @@ export let pendingMedia = null;
 export let selectedProfile = null;
 export let statusFilter = "all";
 export let hidePausedUsers = false;
+export let activityHiddenKinds = new Set();
 
 export const libraryState = {
   playingUrl: null,
@@ -61,4 +63,8 @@ export function setStatusFilter(filter) {
 
 export function setHidePausedUsers(value) {
   hidePausedUsers = Boolean(value);
+}
+
+export function setActivityHiddenKinds(kinds) {
+  activityHiddenKinds = kinds instanceof Set ? kinds : new Set(kinds || []);
 }

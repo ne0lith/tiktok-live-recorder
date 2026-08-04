@@ -316,16 +316,47 @@ class TikTokRecorder:
             self._media_jobs.pop(path, None)
 
     def _media_jobs_snapshot(self) -> list[dict]:
+        """Return media jobs with live 1-based queue positions among waiting jobs."""
         with self._state_lock:
             jobs = []
             for path, job in self._media_jobs.items():
                 entry = dict(job)
                 entry["path"] = path
                 jobs.append(entry)
+
+            waiting = sorted(
+                (job for job in jobs if job.get("status") == "queued"),
+                key=lambda item: (
+                    item.get("queued_at") or 0,
+                    item.get("path") or "",
+                ),
+            )
+            live_positions = {
+                job["path"]: index for index, job in enumerate(waiting, start=1)
+            }
+
+            for job in jobs:
+                if job.get("status") == "queued":
+                    position = live_positions[job["path"]]
+                    job["queue_position"] = position
+                    progress = dict(job.get("convert_progress") or {})
+                    progress["phase"] = "queued"
+                    progress["queue_position"] = position
+                    job["convert_progress"] = progress
+                else:
+                    # Active converts are not in line — never show a stale queue #.
+                    job.pop("queue_position", None)
+                    progress = job.get("convert_progress")
+                    if isinstance(progress, dict) and "queue_position" in progress:
+                        progress = dict(progress)
+                        progress.pop("queue_position", None)
+                        job["convert_progress"] = progress
+
             jobs.sort(
                 key=lambda item: (
                     0 if item.get("status") == "converting" else 1,
                     item.get("queued_at") or 0,
+                    item.get("path") or "",
                 )
             )
             return jobs
@@ -1129,6 +1160,7 @@ class TikTokRecorder:
                 media_key,
                 status="converting",
                 started_at=time.time(),
+                queue_position=None,
                 convert_progress={"percent": 0, "phase": "starting"},
             )
             self.record_activity(
@@ -1167,7 +1199,7 @@ class TikTokRecorder:
             status="queued",
             queued_at=time.time(),
         )
-        queue_position = self._convert_queue.enqueue(
+        self._convert_queue.enqueue(
             ConvertJob(
                 user=user,
                 output_path=output,
@@ -1178,13 +1210,11 @@ class TikTokRecorder:
                 on_complete=on_complete,
             )
         )
+        # Live queue # is assigned in `_media_jobs_snapshot` from FIFO order among
+        # currently waiting jobs — never freeze ConvertQueue's enqueue counter.
         with self._state_lock:
             if media_key in self._media_jobs:
-                self._media_jobs[media_key]["queue_position"] = queue_position
-                self._media_jobs[media_key]["convert_progress"] = {
-                    "phase": "queued",
-                    "queue_position": queue_position,
-                }
+                self._media_jobs[media_key]["convert_progress"] = {"phase": "queued"}
             # Free the username recording slot so poll/record can start again while convert runs.
             self._active_recordings.pop(user, None)
         self._user_stop_events.pop(user, None)
@@ -1531,7 +1561,10 @@ class TikTokRecorder:
 
         def on_start() -> None:
             self._upsert_media_job(
-                media_key, status="converting", started_at=time.time()
+                media_key,
+                status="converting",
+                started_at=time.time(),
+                queue_position=None,
             )
             self.record_activity(
                 "media",
@@ -1575,7 +1608,7 @@ class TikTokRecorder:
             username=username,
         )
         logger.info("[@%s] Queueing manual %s: %s", username, label, path.name)
-        queue_position = self._convert_queue.enqueue(
+        self._convert_queue.enqueue(
             ConvertJob(
                 user=username,
                 output_path=str(path),
@@ -1587,10 +1620,15 @@ class TikTokRecorder:
                 mode=mode,
             )
         )
-        with self._state_lock:
-            if media_key in self._media_jobs:
-                self._media_jobs[media_key]["queue_position"] = queue_position
-        return {"queued": True, "position": queue_position, "mode": mode}
+        position = next(
+            (
+                job.get("queue_position")
+                for job in self._media_jobs_snapshot()
+                if job.get("path") == media_key
+            ),
+            1,
+        )
+        return {"queued": True, "position": position, "mode": mode}
 
     def move_leftover_flvs(self) -> dict:
         from tiktok_live_recorder.utils.utils import default_to_fix_dir

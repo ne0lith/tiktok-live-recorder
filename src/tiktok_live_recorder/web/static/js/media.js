@@ -84,10 +84,13 @@ export function syncPlayerRepairFromStatus(status) {
   if (job.status === "converting") {
     playerRepairBtn.textContent = item.needs_convert ? "Converting…" : "Fixing…";
   } else {
-    playerRepairBtn.textContent =
-      job.queue_position && job.queue_position > 1
-        ? `Queued (#${job.queue_position})`
-        : "Queued…";
+    const position = Number(job.queue_position);
+    if (Number.isFinite(position) && position > 0) {
+      playerRepairBtn.textContent =
+        position === 1 ? "Next up…" : `Queued #${position}`;
+    } else {
+      playerRepairBtn.textContent = "Queued…";
+    }
   }
 }
 
