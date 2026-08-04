@@ -305,6 +305,26 @@ def test_resolve_media_path_rejects_traversal(tmp_path):
     )
 
 
+def test_resolve_media_path_allows_embedded_dots_in_username(tmp_path):
+    """TikTok usernames with embedded '..' must remain playable in the media library."""
+    username = "creator..99"
+    user_dir = tmp_path / username
+    user_dir.mkdir()
+    filename = f"TK_{username}_2026.08.04_14-12-57.mp4"
+    file_path = user_dir / filename
+    file_path.write_bytes(b"video")
+
+    assert resolve_media_path(tmp_path, None, username, filename) == file_path.resolve()
+
+    from tiktok_live_recorder.web.media import scan_media_library
+
+    library = scan_media_library(tmp_path, None)
+    assert username in library
+    assert library[username][0]["filename"] == filename
+    assert filename in library[username][0]["url"]
+    assert library[username][0]["thumb_url"].endswith("/thumb")
+
+
 class StubRecorder:
     mode = Mode.WATCHLIST
     users = ["alpha"]

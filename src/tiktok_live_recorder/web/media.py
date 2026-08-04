@@ -1,6 +1,7 @@
 import re
 import shutil
 from pathlib import Path
+from urllib.parse import quote
 
 from tiktok_live_recorder.web.thumbnails import thumbnail_url
 
@@ -9,9 +10,33 @@ LEGACY_SUBDIR = "legacy"
 
 
 def _is_safe_filename(filename: str) -> bool:
-    if ".." in filename or "/" in filename or "\\" in filename:
+    """Reject path separators / traversal names, not embedded '..' in TikTok usernames."""
+    if not filename or filename in {".", ".."}:
+        return False
+    if "/" in filename or "\\" in filename:
+        return False
+    # Path(filename).name strips dirs; mismatch means a separator slipped through.
+    if Path(filename).name != filename:
         return False
     return filename.lower().endswith(".mp4")
+
+
+def _is_safe_username(username: str) -> bool:
+    if not username or username in {".", ".."}:
+        return False
+    if "/" in username or "\\" in username:
+        return False
+    return Path(username).name == username
+
+
+def _encoded_media_url(
+    username: str, filename: str, *, subdir: str | None = None
+) -> str:
+    user = quote(username, safe="")
+    name = quote(filename, safe="")
+    if subdir:
+        return f"/media/{user}/{quote(subdir, safe='')}/{name}"
+    return f"/media/{user}/{name}"
 
 
 def _normalize_active_paths(active_output_paths: set[str] | None) -> set[str]:
@@ -32,10 +57,7 @@ def _media_entry(
     active_paths: set[str] | None = None,
 ) -> dict:
     stat = path.stat()
-    if subdir:
-        url = f"/media/{username}/{subdir}/{path.name}"
-    else:
-        url = f"/media/{username}/{path.name}"
+    url = _encoded_media_url(username, path.name, subdir=subdir)
     try:
         resolved = str(path.resolve())
     except OSError:
@@ -269,6 +291,8 @@ def resolve_media_path(
     subdir: str | None = None,
 ) -> Path | None:
     if not _is_safe_filename(filename):
+        return None
+    if not _is_safe_username(username):
         return None
     if subdir == LEGACY_SUBDIR:
         if subdir in filename:

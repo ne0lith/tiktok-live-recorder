@@ -31,10 +31,12 @@ def thumbnail_is_fresh(video_path: Path, thumb_path: Path) -> bool:
 
 
 def thumbnail_url(username: str, filename: str, *, subdir: str | None = None) -> str:
-    encoded_user = username
-    encoded_file = filename
+    from urllib.parse import quote
+
+    encoded_user = quote(username, safe="")
+    encoded_file = quote(filename, safe="")
     if subdir:
-        return f"/media/{encoded_user}/{subdir}/{encoded_file}/thumb"
+        return f"/media/{encoded_user}/{quote(subdir, safe='')}/{encoded_file}/thumb"
     return f"/media/{encoded_user}/{encoded_file}/thumb"
 
 
