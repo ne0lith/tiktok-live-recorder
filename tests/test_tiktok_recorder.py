@@ -946,7 +946,9 @@ def test_enqueue_conversion_frees_user_slot_and_tracks_media_job(tmp_path, monke
     assert jobs[0]["username"] == "alpha"
     assert jobs[0]["status"] == "queued"
     assert jobs[0]["queue_position"] == 1
-    assert str(raw.resolve()) in recorder.active_recording_output_paths()
+    active_paths = recorder.active_recording_output_paths()
+    assert str(raw.resolve()) in active_paths
+    assert str(raw.resolve())[: -len("_flv.mp4")] + ".mp4" in active_paths
     assert len(held) == 1
 
 

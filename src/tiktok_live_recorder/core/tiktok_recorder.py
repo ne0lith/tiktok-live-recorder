@@ -1537,7 +1537,12 @@ class TikTokRecorder:
         self._enqueue_conversion(user, output)
 
     def active_recording_output_paths(self) -> set[str]:
-        """Paths that must not be deleted/repaired: live recordings + queued converts."""
+        """Paths that must not be deleted/repaired: live recordings + queued converts.
+
+        For FLV convert jobs this includes both the ``*_flv.mp4`` source and the
+        final ``.mp4`` destination ffmpeg is writing, so the media library does
+        not list a half-written convert output.
+        """
         active: set[str] = set()
         with self._state_lock:
             for entry in self._active_recordings.values():
@@ -1551,9 +1556,12 @@ class TikTokRecorder:
                         active.add(str(output_path))
             for path in self._media_jobs:
                 try:
-                    active.add(str(Path(path).resolve()))
+                    resolved = str(Path(path).resolve())
                 except OSError:
-                    active.add(str(path))
+                    resolved = str(path)
+                active.add(resolved)
+                if resolved.endswith("_flv.mp4"):
+                    active.add(resolved[: -len("_flv.mp4")] + ".mp4")
         return active
 
     def enqueue_media_repair(self, username: str, media_path: str) -> dict:

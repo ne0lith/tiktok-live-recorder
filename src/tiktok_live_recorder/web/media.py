@@ -39,13 +39,28 @@ def _encoded_media_url(
     return f"/media/{user}/{name}"
 
 
+def _flv_to_mp4_path(path: str) -> str:
+    """Destination path ffmpeg writes while converting a ``*_flv.mp4`` source."""
+    if path.endswith("_flv.mp4"):
+        return path[: -len("_flv.mp4")] + ".mp4"
+    return path
+
+
 def _normalize_active_paths(active_output_paths: set[str] | None) -> set[str]:
+    """Resolve active paths and include in-flight conversion destinations.
+
+    Convert jobs track the ``*_flv.mp4`` source, but ffmpeg writes the final
+    ``.mp4`` concurrently — both must be treated as in-progress.
+    """
     normalized: set[str] = set()
     for path in active_output_paths or ():
         try:
-            normalized.add(str(Path(path).resolve()))
+            resolved = str(Path(path).resolve())
         except OSError:
-            normalized.add(str(path))
+            resolved = str(path)
+        normalized.add(resolved)
+        if resolved.endswith("_flv.mp4"):
+            normalized.add(_flv_to_mp4_path(resolved))
     return normalized
 
 
@@ -69,7 +84,8 @@ def _media_entry(
         "username": username,
         "size": stat.st_size,
         "modified_at": stat.st_mtime,
-        "in_progress": is_flv and is_active,
+        # Any path in active_paths (raw FLV *or* partial convert destination).
+        "in_progress": is_active,
         "needs_convert": is_flv and not is_active,
         "source": subdir or "recordings",
         "url": url,
@@ -88,6 +104,9 @@ def _append_library_entry(
     subdir: str | None = None,
     active_paths: set[str] | None = None,
 ) -> None:
+    # Repair writes ``*.repair.tmp.mp4`` beside the source; never list those.
+    if path.name.endswith(".repair.tmp.mp4"):
+        return
     entry = _media_entry(path, username, subdir=subdir, active_paths=active_paths)
     if entry["in_progress"]:
         return
