@@ -5,7 +5,12 @@ from urllib.parse import quote
 
 from tiktok_live_recorder.web.thumbnails import thumbnail_url
 
-MEDIA_PATTERN = re.compile(r"^TK_(?P<username>[^_]+)_.*\.mp4$", re.IGNORECASE)
+# Username may contain underscores (including a leading `_`); anchor on the
+# recorder timestamp so we do not stop at the first `_` after `TK_`.
+MEDIA_PATTERN = re.compile(
+    r"^TK_(?P<username>.+)_\d{4}\.\d{2}\.\d{2}_\d{2}-\d{2}-\d{2}(?:_flv)?\.mp4$",
+    re.IGNORECASE,
+)
 LEGACY_SUBDIR = "legacy"
 
 

@@ -325,6 +325,36 @@ def test_resolve_media_path_allows_embedded_dots_in_username(tmp_path):
     assert library[username][0]["thumb_url"].endswith("/thumb")
 
 
+@pytest.mark.parametrize(
+    "username",
+    [
+        "_creator",
+        "_.user.99",
+        "__user_name_",
+        "user__name",
+    ],
+)
+def test_resolve_media_path_allows_underscores_in_username(tmp_path, username):
+    """Usernames with leading/embedded '_' must match MEDIA_PATTERN and resolve."""
+    from tiktok_live_recorder.web.media import MEDIA_PATTERN, scan_media_library
+
+    user_dir = tmp_path / username
+    user_dir.mkdir()
+    filename = f"TK_{username}_2026.08.05_11-05-17.mp4"
+    file_path = user_dir / filename
+    file_path.write_bytes(b"video")
+
+    match = MEDIA_PATTERN.match(filename)
+    assert match is not None
+    assert match.group("username") == username
+    assert resolve_media_path(tmp_path, None, username, filename) == file_path.resolve()
+
+    library = scan_media_library(tmp_path, None)
+    assert username in library
+    assert library[username][0]["filename"] == filename
+    assert library[username][0]["thumb_url"].endswith("/thumb")
+
+
 class StubRecorder:
     mode = Mode.WATCHLIST
     users = ["alpha"]

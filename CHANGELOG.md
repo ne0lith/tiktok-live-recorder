@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+
+## [8.21.1] - 2026-08-06
+
+### Fixed
+
+- **Media library**: usernames that start with `_` or contain underscores (e.g. `_creator`, `_.user.99`) are no longer rejected by the `TK_…` filename pattern, so converted MP4s can play and generate thumbnails
+
 ## [8.21.0] - 2026-08-06
 
 ### Added
@@ -684,7 +691,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.21.0...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.21.1...HEAD
+[8.21.1]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.21.0...v8.21.1
 [8.21.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.10...v8.21.0
 [8.20.10]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.9...v8.20.10
 [8.20.9]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.8...v8.20.9
