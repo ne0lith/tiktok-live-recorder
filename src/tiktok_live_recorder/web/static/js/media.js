@@ -1,7 +1,8 @@
 import { api, showToast } from "./api.js";
-import { formatBytes, formatTimestamp, usernamesMatch } from "./format.js";
+import { formatBytes, formatTimestamp, normalizeUsername, usernamesMatch } from "./format.js";
 import { createMediaThumb, observeMediaThumbs } from "./media-thumbs.js";
 import {
+  STORAGE_HIDDEN_USERS_KEY,
   STORAGE_SHOW_LEGACY_KEY,
   STORAGE_SORT_KEY,
   latestMedia,
@@ -21,6 +22,7 @@ import {
 const libraryBody = document.getElementById("library-body");
 const mediaLibrary = document.getElementById("media-library");
 const librarySummary = document.getElementById("library-summary");
+const libraryHiddenUsers = document.getElementById("library-hidden-users");
 const mediaSearch = document.getElementById("media-search");
 const mediaPlayer = document.getElementById("media-player");
 const mediaPlayerVideo = document.getElementById("media-player-video");
@@ -30,6 +32,7 @@ const playerMeta = document.getElementById("player-meta");
 const playerActions = document.getElementById("player-actions");
 const playerFileActions = document.getElementById("player-file-actions");
 const playerRepairBtn = document.getElementById("player-repair");
+const playerHideUserBtn = document.getElementById("player-hide-user");
 
 function repairApiPath(username, item) {
   const encodedUser = encodeURIComponent(username);
@@ -98,9 +101,137 @@ export function loadLibraryPreferences() {
   const savedSort = localStorage.getItem(STORAGE_SORT_KEY);
   if (savedSort) libraryState.sortMode = savedSort;
   libraryState.showLegacy = localStorage.getItem(STORAGE_SHOW_LEGACY_KEY) === "1";
+  libraryState.hiddenUsers = loadHiddenUsers();
   const sortSelect = document.getElementById("library-sort");
   if (sortSelect) sortSelect.value = libraryState.sortMode;
   syncLibraryShowLegacyToggle();
+  renderHiddenUserChips();
+}
+
+function loadHiddenUsers() {
+  try {
+    const raw = localStorage.getItem(STORAGE_HIDDEN_USERS_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(
+      parsed
+        .map((name) => normalizeUsername(name))
+        .filter(Boolean),
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+function saveHiddenUsers() {
+  localStorage.setItem(
+    STORAGE_HIDDEN_USERS_KEY,
+    JSON.stringify([...libraryState.hiddenUsers]),
+  );
+}
+
+export function isLibraryUserHidden(username) {
+  const needle = normalizeUsername(username);
+  if (!needle) return false;
+  for (const hidden of libraryState.hiddenUsers) {
+    if (usernamesMatch(hidden, needle)) return true;
+  }
+  return false;
+}
+
+function findHiddenUserKey(username) {
+  const needle = normalizeUsername(username);
+  for (const hidden of libraryState.hiddenUsers) {
+    if (usernamesMatch(hidden, needle)) return hidden;
+  }
+  return null;
+}
+
+export function hideLibraryUser(username) {
+  const normalized = normalizeUsername(username);
+  if (!normalized || normalized.toLowerCase() === "unknown") return false;
+  if (isLibraryUserHidden(normalized)) return false;
+  libraryState.hiddenUsers.add(normalized);
+  saveHiddenUsers();
+  renderHiddenUserChips();
+  return true;
+}
+
+export function unhideLibraryUser(username) {
+  const key = findHiddenUserKey(username);
+  if (!key) return false;
+  libraryState.hiddenUsers.delete(key);
+  saveHiddenUsers();
+  renderHiddenUserChips();
+  return true;
+}
+
+export function clearHiddenLibraryUsers() {
+  if (!libraryState.hiddenUsers.size) return false;
+  libraryState.hiddenUsers.clear();
+  saveHiddenUsers();
+  renderHiddenUserChips();
+  return true;
+}
+
+function renderHiddenUserChips() {
+  if (!libraryHiddenUsers) return;
+  const names = [...libraryState.hiddenUsers].sort((a, b) =>
+    a.localeCompare(b, undefined, { sensitivity: "base" }),
+  );
+  if (!names.length) {
+    libraryHiddenUsers.classList.add("hidden");
+    libraryHiddenUsers.replaceChildren();
+    return;
+  }
+
+  const label = document.createElement("span");
+  label.className = "library-hidden-users-label";
+  label.textContent = "Hidden";
+
+  const chips = document.createElement("div");
+  chips.className = "library-hidden-users-chips";
+  for (const name of names) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "summary-chip summary-chip--focus library-hidden-user-chip";
+    chip.dataset.unhideUser = name;
+    chip.title = `Show @${name} again`;
+    chip.innerHTML = `@${name} <span aria-hidden="true">x</span>`;
+    chips.append(chip);
+  }
+
+  const clearBtn = document.createElement("button");
+  clearBtn.type = "button";
+  clearBtn.className = "summary-chip summary-chip--clear";
+  clearBtn.dataset.clearHiddenUsers = "1";
+  clearBtn.textContent = "Show all";
+
+  libraryHiddenUsers.replaceChildren(label, chips, clearBtn);
+  libraryHiddenUsers.classList.remove("hidden");
+}
+
+async function hideUserAndRefresh(username) {
+  const normalized = normalizeUsername(username);
+  if (!normalized || normalized.toLowerCase() === "unknown") {
+    showToast("Cannot hide unknown user");
+    return;
+  }
+  if (!hideLibraryUser(normalized)) {
+    showToast(`@${normalized} is already hidden`);
+    return;
+  }
+  showToast(`Hidden @${normalized}`);
+  if (selectedProfile && usernamesMatch(selectedProfile, normalized)) {
+    const { setSelectedProfile } = await import("./status.js");
+    setSelectedProfile(null);
+    return;
+  }
+  if (libraryState.playingUsername && usernamesMatch(libraryState.playingUsername, normalized)) {
+    closePlayer({ applyPending: false });
+  }
+  renderMedia(latestMedia);
 }
 
 export function saveLibrarySortMode(mode) {
@@ -198,11 +329,22 @@ function stripLegacyItems(media) {
   return filtered;
 }
 
+function stripHiddenUsers(media) {
+  if (!libraryState.hiddenUsers.size) return media;
+  const filtered = {};
+  for (const [username, items] of Object.entries(media || {})) {
+    if (isLibraryUserHidden(username)) continue;
+    filtered[username] = items;
+  }
+  return filtered;
+}
+
 function applyLibraryFilters(media, query) {
   let filtered = filterMedia(media, query);
   if (!libraryState.showLegacy) {
     filtered = stripLegacyItems(filtered);
   }
+  filtered = stripHiddenUsers(filtered);
   if (!selectedProfile) return filtered;
 
   const scoped = {};
@@ -224,8 +366,12 @@ function updateLibrarySummary(media) {
   );
   if (!librarySummary) return;
   const focusSuffix = selectedProfile ? ` · @${selectedProfile}` : "";
+  const hiddenCount = libraryState.hiddenUsers.size;
+  const hiddenSuffix = hiddenCount
+    ? ` · ${hiddenCount} user${hiddenCount === 1 ? "" : "s"} hidden`
+    : "";
   const legacySuffix = libraryState.showLegacy ? "" : " · legacy hidden";
-  librarySummary.textContent = `${fileCount} recording${fileCount === 1 ? "" : "s"} · ${usernames.length} user${usernames.length === 1 ? "" : "s"} · ${formatBytes(totalSize)}${focusSuffix}${legacySuffix}`;
+  librarySummary.textContent = `${fileCount} recording${fileCount === 1 ? "" : "s"} · ${usernames.length} user${usernames.length === 1 ? "" : "s"} · ${formatBytes(totalSize)}${focusSuffix}${hiddenSuffix}${legacySuffix}`;
 }
 
 export function flattenAndSortMedia(media) {
@@ -262,10 +408,15 @@ function renderPlayerHeader(username) {
   if (!playerUsername) return;
   if (!username || username.toLowerCase() === "unknown") {
     playerUsername.textContent = `@${username}`;
+    if (playerHideUserBtn) playerHideUserBtn.classList.add("hidden");
     return;
   }
   const active = usernamesMatch(username, selectedProfile);
   playerUsername.innerHTML = profileLinkMarkup(username, { active });
+  if (playerHideUserBtn) {
+    playerHideUserBtn.classList.remove("hidden");
+    playerHideUserBtn.title = `Hide all recordings from @${username}`;
+  }
 }
 
 function renderPlayerActions() {
@@ -393,6 +544,18 @@ function createMediaCard(item, username) {
   });
 
   actions.append(download, deleteBtn);
+  if (username && username.toLowerCase() !== "unknown") {
+    const hideBtn = document.createElement("button");
+    hideBtn.type = "button";
+    hideBtn.className = "btn btn-ghost btn-small media-hide-user-btn";
+    hideBtn.textContent = "Hide";
+    hideBtn.title = `Hide all recordings from @${username}`;
+    hideBtn.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      await hideUserAndRefresh(username);
+    });
+    actions.append(hideBtn);
+  }
   card.append(main, actions);
 
   if (item.needs_convert) card.classList.add("media-card--needs-convert");
@@ -485,13 +648,22 @@ export function renderMedia(media) {
   const usernames = Object.keys(filtered);
   if (!usernames.length) {
     if (mediaLibrary) {
+      const visibleBeforeHide = Object.keys(
+        stripLegacyItems(filterMedia(latestMedia || {}, query)),
+      );
+      const hiddenOnly =
+        libraryState.hiddenUsers.size > 0 &&
+        visibleBeforeHide.length > 0 &&
+        visibleBeforeHide.every((name) => isLibraryUserHidden(name));
       const emptyMessage = selectedProfile
         ? `No recordings for @${selectedProfile}${query ? " matching your search." : "."}`
-        : query
-          ? "No recordings match your search."
-          : !libraryState.showLegacy && Object.keys(latestMedia || {}).length
-            ? "No recordings visible (legacy hidden)."
-            : "No recordings yet.";
+        : hiddenOnly
+          ? "No recordings visible (users hidden)."
+          : query
+            ? "No recordings match your search."
+            : !libraryState.showLegacy && Object.keys(latestMedia || {}).length
+              ? "No recordings visible (legacy hidden)."
+              : "No recordings yet.";
       mediaLibrary.innerHTML = `<p class="empty library-empty">${emptyMessage}</p>`;
     }
     return;
@@ -611,7 +783,30 @@ export function initMediaInteractions() {
     renderMedia(latestMedia);
   });
 
+  libraryHiddenUsers?.addEventListener("click", (event) => {
+    const clearBtn = event.target.closest("[data-clear-hidden-users]");
+    if (clearBtn) {
+      clearHiddenLibraryUsers();
+      renderMedia(latestMedia);
+      showToast("Showing all users");
+      return;
+    }
+    const chip = event.target.closest("[data-unhide-user]");
+    if (!chip) return;
+    const name = chip.dataset.unhideUser;
+    if (unhideLibraryUser(name)) {
+      renderMedia(latestMedia);
+      showToast(`Showing @${name}`);
+    }
+  });
+
   document.getElementById("player-close")?.addEventListener("click", closePlayer);
+
+  playerHideUserBtn?.addEventListener("click", async () => {
+    const username = libraryState.playingUsername;
+    if (!username) return;
+    await hideUserAndRefresh(username);
+  });
 
   playerRepairBtn?.addEventListener("click", async () => {
     const item = libraryState.playingItem;
@@ -694,6 +889,10 @@ export function initMediaInteractions() {
   });
 
   window.addEventListener("ttlr:profile-changed", () => {
+    if (selectedProfile && isLibraryUserHidden(selectedProfile)) {
+      unhideLibraryUser(selectedProfile);
+      renderMedia(latestMedia);
+    }
     if (libraryState.playingUsername) {
       renderPlayerHeader(libraryState.playingUsername);
     }

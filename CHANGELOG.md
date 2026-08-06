@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.21.0] - 2026-08-06
+
+### Added
+
+- **Media library**: hide users from results (card **Hide** / player **Hide user**); dismissible chips under the toolbar restore them; persisted in `localStorage` so you can sort by largest without a prolific user dominating
+
+### Changed
+
+- **Docs**: GUIDE covers hiding users in the media library
+
 ## [8.20.10] - 2026-08-05
 
 ### Changed
@@ -674,7 +684,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.10...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.21.0...HEAD
+[8.21.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.10...v8.21.0
 [8.20.10]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.9...v8.20.10
 [8.20.9]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.8...v8.20.9
 [8.20.8]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.7...v8.20.8

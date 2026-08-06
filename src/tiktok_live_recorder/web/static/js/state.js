@@ -3,6 +3,7 @@ export const LOG_REFRESH_MS = 3000;
 
 export const STORAGE_SORT_KEY = "ttlr_library_sort";
 export const STORAGE_SHOW_LEGACY_KEY = "ttlr_library_show_legacy";
+export const STORAGE_HIDDEN_USERS_KEY = "ttlr_library_hidden_users";
 export const STORAGE_HIDE_PAUSED_KEY = "ttlr_hide_paused";
 export const STORAGE_ACTIVITY_HIDDEN_KINDS_KEY = "ttlr_activity_hidden_kinds";
 
@@ -33,6 +34,8 @@ export const libraryState = {
   playingItem: null,
   sortMode: "newest",
   showLegacy: false,
+  /** @type {Set<string>} normalized usernames excluded from library results */
+  hiddenUsers: new Set(),
 };
 
 export const logState = {

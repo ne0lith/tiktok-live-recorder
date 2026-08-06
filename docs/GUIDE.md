@@ -300,6 +300,7 @@ Click a `@handle` to filter status and the media library to that user. Each prof
 - **Legacy recordings** (`output/<username>/legacy/`) are **hidden by default**; enable **Settings -> Runtime -> Legacy recordings** to show them (saved in `localStorage`)
 - Sort: Newest, Oldest, Largest, A-Z user (preference saved in `localStorage`)
 - Search by username or filename (`/` focuses search)
+- **Hide** a user from results (card **Hide** or player **Hide user**) to browse largest/newest without that account; chips under the toolbar restore them (saved in `localStorage`). Focusing a `@handle` unhides that user if needed.
 - Thumbnail previews for finished recordings (server-generated `*.thumb.jpg` cache, lazy-loaded in the browser)
 - Orphan `*_flv.mp4` files pinned and styled (`needs convert`); legacy items show a `legacy` tag when visible. Active recordings are hidden until finalized (see Live status).
 - Docked in-browser player above the scrollable list (playback is not interrupted by library refreshes)

@@ -1305,7 +1305,7 @@ td.col-room {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.65rem 0.75rem;
-  margin-bottom: 1rem;
+  margin-bottom: 0.75rem;
 }
 
 .library-toolbar input {
@@ -1314,6 +1314,35 @@ td.col-room {
   height: var(--control-height-sm);
   padding: 0 0.95rem;
   box-sizing: border-box;
+}
+
+.library-hidden-users {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.55rem;
+  margin: 0 0 1rem;
+}
+
+.library-hidden-users.hidden {
+  display: none;
+}
+
+.library-hidden-users-label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.library-hidden-users-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.library-hidden-user-chip span {
+  margin-left: 0.2rem;
+  opacity: 0.75;
 }
 
 .media-player {
