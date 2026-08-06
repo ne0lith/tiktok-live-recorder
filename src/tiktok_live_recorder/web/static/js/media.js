@@ -346,7 +346,6 @@ function createMediaCard(item, username) {
   body.className = "media-card-body";
   const name = document.createElement("span");
   name.className = "media-card-name";
-  name.title = item.filename;
   name.textContent = item.filename;
 
   const meta = document.createElement("span");

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.20.10] - 2026-08-05
+
+### Changed
+
+- **Media library cards**: horizontal layout so filename, username, size, and date wrap fully (no line-clamp truncation); now-playing player header unchanged
+
 ## [8.20.9] - 2026-08-05
 
 ### Fixed
@@ -668,7 +674,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.9...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.10...HEAD
+[8.20.10]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.9...v8.20.10
 [8.20.9]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.8...v8.20.9
 [8.20.8]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.7...v8.20.8
 [8.20.7]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.6...v8.20.7
