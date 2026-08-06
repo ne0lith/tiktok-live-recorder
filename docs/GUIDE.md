@@ -307,6 +307,7 @@ Click a `@handle` to filter status and the media library to that user. Each prof
 - **Fix video** in the player when thumbnail generation fails (broken MP4) or for orphan `*_flv.mp4` files (**Convert**); queues the in-app salvage pipeline. Progress appears in **Recent activity** (Media), the Live status convert digest, and the summary meta line while jobs run.
 - Player header links to the user's profile filter; watchlist user actions (Stop, Pause, Check, etc.) appear below the header while a file is playing
 - Download or delete files (delete requires confirmation; **Delete** is also available in the player panel)
+- Multi-select recordings (checkbox on each card) then **Select all** / **Clear** / **Delete selected** in the toolbar to remove many files in one pass
 - **Move leftover FLVs** - move orphan `*_flv.mp4` files into repo-root `to_fix/` (shown only when orphans exist; badge shows count). Skips files that belong to an active recording. See [Salvaging leftover recordings](#salvaging-leftover-recordings).
 
 ### Settings

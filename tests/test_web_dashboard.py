@@ -870,6 +870,113 @@ def test_api_delete_media(tmp_path):
     assert in_progress.exists()
 
 
+def test_api_bulk_delete_media(tmp_path):
+    keep = tmp_path / "TK_alpha_2026.01.01_10-00-00.mp4"
+    keep.write_bytes(b"keep")
+    one = tmp_path / "TK_alpha_2026.01.01_12-00-00.mp4"
+    one.write_bytes(b"one")
+    two = tmp_path / "TK_beta_2026.01.01_12-00-00.mp4"
+    two.write_bytes(b"two")
+    in_progress = tmp_path / "TK_alpha_2026.01.01_13-00-00_flv.mp4"
+    in_progress.write_bytes(b"partial")
+    missing_name = "TK_alpha_2026.01.01_14-00-00.mp4"
+
+    recorder = StubRecorder()
+    recorder._active_paths = {str(in_progress.resolve())}
+    config = RecorderConfig(
+        mode=Mode.WATCHLIST,
+        users=["alpha", "beta"],
+        cookies={},
+        output=str(tmp_path),
+    )
+    client = TestClient(create_app(recorder, config))
+
+    response = client.post(
+        "/api/media/delete",
+        json={
+            "items": [
+                {"username": "alpha", "filename": one.name},
+                {"username": "beta", "filename": two.name},
+                {"username": "alpha", "filename": missing_name},
+                {"username": "alpha", "filename": in_progress.name},
+            ]
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["deleted"] == 2
+    assert payload["failed"] == 2
+    assert not one.exists()
+    assert not two.exists()
+    assert keep.exists()
+    assert in_progress.exists()
+    by_name = {item["filename"]: item for item in payload["results"]}
+    assert by_name[one.name]["ok"] is True
+    assert by_name[two.name]["ok"] is True
+    assert by_name[missing_name]["ok"] is False
+    assert "not found" in by_name[missing_name]["error"].lower()
+    assert by_name[in_progress.name]["ok"] is False
+    assert "in-progress" in by_name[in_progress.name]["error"].lower()
+
+
+def test_api_bulk_delete_media_legacy(tmp_path, monkeypatch):
+    output_base = tmp_path / "output"
+    legacy_dir = output_base / "alpha" / "legacy"
+    legacy_dir.mkdir(parents=True)
+    legacy = legacy_dir / "2026-07-13_22-50-16_IMG_7691.mp4"
+    legacy.write_bytes(b"legacy-video")
+
+    monkeypatch.setattr(
+        "tiktok_live_recorder.web.app.default_output_base",
+        lambda: output_base,
+    )
+
+    recorder = StubRecorder()
+    config = RecorderConfig(
+        mode=Mode.WATCHLIST,
+        users=["alpha"],
+        cookies={},
+    )
+    client = TestClient(create_app(recorder, config))
+    response = client.post(
+        "/api/media/delete",
+        json={
+            "items": [
+                {
+                    "username": "alpha",
+                    "filename": legacy.name,
+                    "legacy": True,
+                }
+            ]
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["deleted"] == 1
+    assert payload["failed"] == 0
+    assert not legacy.exists()
+
+
+def test_api_bulk_delete_media_validation():
+    recorder = StubRecorder()
+    config = RecorderConfig(mode=Mode.WATCHLIST, users=["alpha"], cookies={})
+    client = TestClient(create_app(recorder, config))
+
+    response = client.post("/api/media/delete", json={"items": []})
+    assert response.status_code == 422
+
+    response = client.post(
+        "/api/media/delete",
+        json={
+            "items": [
+                {"username": "alpha", "filename": f"TK_alpha_{i}.mp4"}
+                for i in range(201)
+            ]
+        },
+    )
+    assert response.status_code == 422
+
+
 def test_api_leftover_flv_and_move(tmp_path, monkeypatch):
     output_base = tmp_path / "output"
     to_fix = tmp_path / "to_fix"

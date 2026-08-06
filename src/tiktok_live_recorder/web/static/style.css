@@ -854,6 +854,28 @@ body.modal-open {
   transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
 }
 
+.media-card.is-selected {
+  border-color: rgba(63, 208, 201, 0.28);
+  background: rgba(63, 208, 201, 0.045);
+}
+
+.media-card-select {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  padding: 0 0.55rem 0 0.75rem;
+  cursor: pointer;
+}
+
+.media-card-select input {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--accent, #3fd0c9);
+}
+
 .media-card:hover {
   border-color: rgba(255, 255, 255, 0.14);
   background: rgba(255, 255, 255, 0.035);
@@ -1306,6 +1328,14 @@ td.col-room {
   align-items: center;
   gap: 0.65rem 0.75rem;
   margin-bottom: 0.75rem;
+}
+
+.library-selection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: auto;
 }
 
 .library-toolbar input {

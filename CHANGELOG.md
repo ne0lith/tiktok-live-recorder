@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 
+## [8.22.0] - 2026-08-06
+
+### Added
+
+- **Media library**: multi-select recordings and **Delete selected** to remove many files in one pass (Select all / Clear in the current filtered list)
+
 ## [8.21.1] - 2026-08-06
 
 ### Fixed
@@ -691,7 +697,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.21.1...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.22.0...HEAD
+[8.22.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.21.1...v8.22.0
 [8.21.1]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.21.0...v8.21.1
 [8.21.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.10...v8.21.0
 [8.20.10]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.9...v8.20.10

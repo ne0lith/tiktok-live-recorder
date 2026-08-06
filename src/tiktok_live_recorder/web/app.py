@@ -75,6 +75,19 @@ class RecordPayload(BaseModel):
     room_id: str | None = None
 
 
+BULK_DELETE_MAX_ITEMS = 200
+
+
+class MediaDeleteItem(BaseModel):
+    username: str = Field(min_length=1)
+    filename: str = Field(min_length=1)
+    legacy: bool = False
+
+
+class MediaBulkDeletePayload(BaseModel):
+    items: list[MediaDeleteItem] = Field(min_length=1, max_length=BULK_DELETE_MAX_ITEMS)
+
+
 def _normalize_username(username: str) -> str:
     return username.lstrip("@").strip()
 
@@ -433,6 +446,41 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
             subdir="legacy",
             active_output_paths=recorder.active_recording_output_paths(),
         )
+
+    @app.post("/api/media/delete")
+    def bulk_delete_media(payload: MediaBulkDeletePayload) -> dict[str, Any]:
+        active_paths = recorder.active_recording_output_paths()
+        results: list[dict[str, Any]] = []
+        deleted = 0
+        failed = 0
+        for item in payload.items:
+            username = _normalize_username(item.username)
+            entry: dict[str, Any] = {
+                "username": username,
+                "filename": item.filename,
+                "ok": False,
+                "error": None,
+            }
+            try:
+                _delete_media_file(
+                    output_base,
+                    custom_output,
+                    username,
+                    item.filename,
+                    subdir="legacy" if item.legacy else None,
+                    active_output_paths=active_paths,
+                )
+                entry["ok"] = True
+                deleted += 1
+            except HTTPException as exc:
+                detail = exc.detail
+                entry["error"] = detail if isinstance(detail, str) else str(detail)
+                failed += 1
+            except OSError as exc:
+                entry["error"] = str(exc)
+                failed += 1
+            results.append(entry)
+        return {"deleted": deleted, "failed": failed, "results": results}
 
     @app.post("/api/users")
     def add_user(payload: UsernamePayload) -> dict[str, Any]:

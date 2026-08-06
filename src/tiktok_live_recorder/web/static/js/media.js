@@ -33,6 +33,88 @@ const playerActions = document.getElementById("player-actions");
 const playerFileActions = document.getElementById("player-file-actions");
 const playerRepairBtn = document.getElementById("player-repair");
 const playerHideUserBtn = document.getElementById("player-hide-user");
+const librarySelectAllBtn = document.getElementById("library-select-all");
+const libraryClearSelectionBtn = document.getElementById("library-clear-selection");
+const libraryDeleteSelectedBtn = document.getElementById("library-delete-selected");
+
+function selectionEntry(username, item) {
+  return {
+    username,
+    filename: item.filename,
+    source: item.source || "recordings",
+    url: item.url,
+  };
+}
+
+function setMediaSelected(username, item, selected) {
+  if (!item?.url) return;
+  if (selected) {
+    libraryState.selectedMedia.set(item.url, selectionEntry(username, item));
+  } else {
+    libraryState.selectedMedia.delete(item.url);
+  }
+}
+
+function clearMediaSelection() {
+  libraryState.selectedMedia.clear();
+  updateSelectionToolbar();
+  mediaLibrary?.querySelectorAll(".media-card").forEach((card) => {
+    card.classList.remove("is-selected");
+    const checkbox = card.querySelector(".media-card-select input");
+    if (checkbox) checkbox.checked = false;
+  });
+}
+
+function updateSelectionToolbar() {
+  const count = libraryState.selectedMedia.size;
+  if (libraryClearSelectionBtn) libraryClearSelectionBtn.disabled = count === 0;
+  if (libraryDeleteSelectedBtn) {
+    libraryDeleteSelectedBtn.disabled = count === 0;
+    libraryDeleteSelectedBtn.textContent =
+      count > 0 ? `Delete selected (${count})` : "Delete selected";
+  }
+}
+
+function mediaUrlsInLibrary(media) {
+  const urls = new Set();
+  for (const items of Object.values(media || {})) {
+    for (const item of items) {
+      if (item?.url) urls.add(item.url);
+    }
+  }
+  return urls;
+}
+
+function pruneMediaSelection(availableUrls) {
+  const available =
+    availableUrls instanceof Set ? availableUrls : new Set(availableUrls || []);
+  for (const url of [...libraryState.selectedMedia.keys()]) {
+    if (!available.has(url)) {
+      libraryState.selectedMedia.delete(url);
+    }
+  }
+}
+
+function getVisibleMediaRows() {
+  const query = mediaSearch?.value || "";
+  const filtered = applyLibraryFilters(latestMedia, query);
+  return flattenAndSortMedia(filtered);
+}
+
+function selectAllVisibleMedia() {
+  const rows = getVisibleMediaRows();
+  for (const { item, username } of rows) {
+    setMediaSelected(username, item, true);
+  }
+  updateSelectionToolbar();
+  mediaLibrary?.querySelectorAll(".media-card").forEach((card) => {
+    const url = card.dataset.url;
+    const selected = url && libraryState.selectedMedia.has(url);
+    card.classList.toggle("is-selected", Boolean(selected));
+    const checkbox = card.querySelector(".media-card-select input");
+    if (checkbox) checkbox.checked = Boolean(selected);
+  });
+}
 
 function repairApiPath(username, item) {
   const encodedUser = encodeURIComponent(username);
@@ -483,6 +565,25 @@ function createMediaCard(item, username) {
   card.className = "media-card";
   card.dataset.url = item.url;
   card.dataset.username = username;
+  const isSelected = libraryState.selectedMedia.has(item.url);
+  if (isSelected) card.classList.add("is-selected");
+
+  const selectLabel = document.createElement("label");
+  selectLabel.className = "media-card-select";
+  selectLabel.title = "Select recording";
+  const checkbox = document.createElement("input");
+  checkbox.type = "checkbox";
+  checkbox.checked = isSelected;
+  checkbox.setAttribute("aria-label", `Select ${item.filename}`);
+  checkbox.addEventListener("click", (event) => event.stopPropagation());
+  checkbox.addEventListener("change", (event) => {
+    event.stopPropagation();
+    setMediaSelected(username, item, checkbox.checked);
+    card.classList.toggle("is-selected", checkbox.checked);
+    updateSelectionToolbar();
+  });
+  selectLabel.addEventListener("click", (event) => event.stopPropagation());
+  selectLabel.append(checkbox);
 
   const main = document.createElement("button");
   main.type = "button";
@@ -556,7 +657,7 @@ function createMediaCard(item, username) {
     });
     actions.append(hideBtn);
   }
-  card.append(main, actions);
+  card.append(selectLabel, main, actions);
 
   if (item.needs_convert) card.classList.add("media-card--needs-convert");
   if (item.url === libraryState.playingUrl) card.classList.add("is-active");
@@ -599,12 +700,65 @@ function removeMediaFromLibrary(username, item) {
 }
 
 async function handleMediaDeleted(username, item) {
+  if (item?.url) libraryState.selectedMedia.delete(item.url);
   setPendingMedia(null);
   removeMediaFromLibrary(username, item);
   if (libraryState.playingUrl === item.url) {
     closePlayer({ applyPending: false });
   }
+  updateSelectionToolbar();
   await refreshMedia({ force: true });
+}
+
+async function deleteSelectedMedia() {
+  const selected = [...libraryState.selectedMedia.values()];
+  if (!selected.length) return;
+  const count = selected.length;
+  if (!confirm(`Delete ${count} recording${count === 1 ? "" : "s"}?`)) return;
+  if (libraryDeleteSelectedBtn) {
+    libraryDeleteSelectedBtn.disabled = true;
+    libraryDeleteSelectedBtn.textContent = "Deleting…";
+  }
+  try {
+    const result = await api("/api/media/delete", {
+      method: "POST",
+      body: JSON.stringify({
+        items: selected.map((entry) => ({
+          username: entry.username,
+          filename: entry.filename,
+          legacy: entry.source === "legacy",
+        })),
+      }),
+    });
+    const deleted = result.deleted || 0;
+    const failed = result.failed || 0;
+    const deletedUrls = new Set();
+    for (const entry of result.results || []) {
+      if (!entry.ok) continue;
+      for (const [url, sel] of libraryState.selectedMedia) {
+        if (sel.filename === entry.filename && usernamesMatch(sel.username, entry.username)) {
+          deletedUrls.add(url);
+        }
+      }
+    }
+    for (const url of deletedUrls) {
+      const entry = libraryState.selectedMedia.get(url);
+      libraryState.selectedMedia.delete(url);
+      if (entry) removeMediaFromLibrary(entry.username, entry);
+      if (libraryState.playingUrl === url) {
+        closePlayer({ applyPending: false });
+      }
+    }
+    showToast(
+      `Deleted ${deleted} recording${deleted === 1 ? "" : "s"}${
+        failed ? `, ${failed} failed` : ""
+      }`,
+    );
+    await refreshMedia({ force: true });
+  } catch (error) {
+    showToast(error.message);
+    updateSelectionToolbar();
+  }
 }
 
 function renderMediaList(rows) {
@@ -647,6 +801,8 @@ export function renderMedia(media) {
 
   const usernames = Object.keys(filtered);
   if (!usernames.length) {
+    pruneMediaSelection(mediaUrlsInLibrary(latestMedia));
+    updateSelectionToolbar();
     if (mediaLibrary) {
       const visibleBeforeHide = Object.keys(
         stripLegacyItems(filterMedia(latestMedia || {}, query)),
@@ -670,6 +826,8 @@ export function renderMedia(media) {
   }
 
   const rows = flattenAndSortMedia(filtered);
+  pruneMediaSelection(mediaUrlsInLibrary(latestMedia));
+  updateSelectionToolbar();
   renderMediaList(rows);
 }
 
@@ -781,6 +939,20 @@ export function initMediaInteractions() {
   document.getElementById("library-sort")?.addEventListener("change", (event) => {
     saveLibrarySortMode(event.target.value);
     renderMedia(latestMedia);
+  });
+
+  librarySelectAllBtn?.addEventListener("click", () => {
+    selectAllVisibleMedia();
+    const count = libraryState.selectedMedia.size;
+    if (count) showToast(`Selected ${count} recording${count === 1 ? "" : "s"}`);
+  });
+
+  libraryClearSelectionBtn?.addEventListener("click", () => {
+    clearMediaSelection();
+  });
+
+  libraryDeleteSelectedBtn?.addEventListener("click", async () => {
+    await deleteSelectedMedia();
   });
 
   libraryHiddenUsers?.addEventListener("click", (event) => {

@@ -36,6 +36,8 @@ export const libraryState = {
   showLegacy: false,
   /** @type {Set<string>} normalized usernames excluded from library results */
   hiddenUsers: new Set(),
+  /** @type {Map<string, {username: string, filename: string, source: string, url: string}>} */
+  selectedMedia: new Map(),
 };
 
 export const logState = {
