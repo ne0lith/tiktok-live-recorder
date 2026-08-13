@@ -5,10 +5,12 @@
 # Forces H.264 (avc1) + yuv420p + AAC + faststart + fixed canvas; ffprobe-verified.
 # NVENC by default: NVDEC decode + scale_cuda/pad_cuda + h264_nvenc (frames stay on GPU).
 # No silent CPU fallback unless -AllowCpuFallback (software vf+NVENC, then libx264).
+# -AppPipeline: same salvage as the recorder (libx264, HEVC rewrite, MKV remux).
 #
 # Usage:
 #   uv run poe fix-mp4s -InputDir W:\to_fix -OutputDir W:\converted
 #   .\scripts\fix-mp4s.ps1 -InputDir W:\to_fix -OutputDir W:\converted
+#   .\scripts\fix-mp4s.ps1 -AppPipeline -InputDir W:\to_fix -OutputDir W:\converted
 # IMG phone exports (no username): 2025-12-29_23-54-18_IMG_6271.mp4 -> _unknown\
 
 param(
@@ -23,7 +25,9 @@ param(
     [ValidateRange(1, 16)]
     [int] $CpuThreads = 4,
     # When NVENC is in use, do NOT fall back to libx264 unless this is set.
-    [switch] $AllowCpuFallback
+    [switch] $AllowCpuFallback,
+    # Use VideoManagement.convert_flv_to_mp4 (HEVC rewrite + salvage) instead of NVENC.
+    [switch] $AppPipeline
 )
 
 $ErrorActionPreference = 'Continue'
@@ -44,6 +48,27 @@ if (-not (Test-Path -LiteralPath $routingScript)) {
     exit 2
 }
 . $routingScript
+
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$appPipeline = [bool]$AppPipeline
+$appFfmpegPath = ''
+
+if ($appPipeline) {
+    if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
+        Write-Error '-AppPipeline requires uv on PATH (run from the repo, or uv run poe fix-mp4s).'
+        exit 2
+    }
+    $appFfmpegPath = @(
+        & uv run --directory $repoRoot python -c "from tiktok_live_recorder.utils.dependencies import check_ffmpeg; print(check_ffmpeg(None))"
+    ) | ForEach-Object { "$_".Trim() } | Where-Object { $_ } | Select-Object -Last 1
+    if (-not $appFfmpegPath) {
+        Write-Error '-AppPipeline could not resolve a TikTok-capable FFmpeg via the recorder.'
+        exit 2
+    }
+    if ($Encoder -ne 'Auto' -or $AllowCpuFallback) {
+        Write-Host '-AppPipeline ignores -Encoder / -AllowCpuFallback (in-app libx264 salvage).' -ForegroundColor Yellow
+    }
+}
 
 function Format-Bytes([long] $Bytes) {
     if ($Bytes -ge 1GB) { return '{0:N2} GB' -f ($Bytes / 1GB) }
@@ -88,42 +113,48 @@ function Test-CudaPipelineAvailable {
     }
 }
 
-$preferNvenc = switch ($Encoder) {
-    'Nvenc' { $true }
-    'Cpu' { $false }
-    default { Test-NvencAvailable }
-}
-
-if ($Encoder -eq 'Nvenc' -and -not (Test-NvencAvailable)) {
-    Write-Error 'Encoder Nvenc requested but h264_nvenc is not usable (check NVIDIA drivers / ffmpeg build).'
-    exit 2
-}
+$preferNvenc = $false
 $allowCpuFallback = [bool]$AllowCpuFallback
-if ($Encoder -eq 'Cpu') {
-    $preferNvenc = $false
-    $allowCpuFallback = $true
-}
-
 $useCudaPipeline = $false
-if ($preferNvenc) {
-    $useCudaPipeline = Test-CudaPipelineAvailable
-    if (-not $useCudaPipeline -and -not $allowCpuFallback -and $Encoder -eq 'Nvenc') {
-        Write-Error 'Encoder Nvenc requested but CUDA filter pipeline (NVDEC/scale_cuda/pad_cuda) is not usable, and -AllowCpuFallback was not set.'
+
+if (-not $appPipeline) {
+    $preferNvenc = switch ($Encoder) {
+        'Nvenc' { $true }
+        'Cpu' { $false }
+        default { Test-NvencAvailable }
+    }
+
+    if ($Encoder -eq 'Nvenc' -and -not (Test-NvencAvailable)) {
+        Write-Error 'Encoder Nvenc requested but h264_nvenc is not usable (check NVIDIA drivers / ffmpeg build).'
         exit 2
     }
-}
-
-if ($Encoder -eq 'Auto' -and -not $preferNvenc) {
-    Write-Host 'NVENC not available; using libx264 (CPU).' -ForegroundColor Yellow
-} elseif ($preferNvenc -and $useCudaPipeline) {
-    $fbMsg = $allowCpuFallback ? 'CPU fallback ON' : 'no CPU fallback'
-    Write-Host "CUDA pipeline OK - NVDEC + scale_cuda/pad_cuda + NVENC ($fbMsg)." -ForegroundColor Green
-} elseif ($preferNvenc) {
-    if ($allowCpuFallback) {
-        Write-Host 'CUDA filters unavailable; NVENC encode with CPU scale (CPU fallback ON).' -ForegroundColor Yellow
-    } else {
-        Write-Host 'CUDA filters unavailable; NVENC encode with CPU scale (decode/scale on CPU).' -ForegroundColor Yellow
+    if ($Encoder -eq 'Cpu') {
+        $preferNvenc = $false
+        $allowCpuFallback = $true
     }
+
+    if ($preferNvenc) {
+        $useCudaPipeline = Test-CudaPipelineAvailable
+        if (-not $useCudaPipeline -and -not $allowCpuFallback -and $Encoder -eq 'Nvenc') {
+            Write-Error 'Encoder Nvenc requested but CUDA filter pipeline (NVDEC/scale_cuda/pad_cuda) is not usable, and -AllowCpuFallback was not set.'
+            exit 2
+        }
+    }
+
+    if ($Encoder -eq 'Auto' -and -not $preferNvenc) {
+        Write-Host 'NVENC not available; using libx264 (CPU).' -ForegroundColor Yellow
+    } elseif ($preferNvenc -and $useCudaPipeline) {
+        $fbMsg = $allowCpuFallback ? 'CPU fallback ON' : 'no CPU fallback'
+        Write-Host "CUDA pipeline OK - NVDEC + scale_cuda/pad_cuda + NVENC ($fbMsg)." -ForegroundColor Green
+    } elseif ($preferNvenc) {
+        if ($allowCpuFallback) {
+            Write-Host 'CUDA filters unavailable; NVENC encode with CPU scale (CPU fallback ON).' -ForegroundColor Yellow
+        } else {
+            Write-Host 'CUDA filters unavailable; NVENC encode with CPU scale (decode/scale on CPU).' -ForegroundColor Yellow
+        }
+    }
+} else {
+    Write-Host "App pipeline OK - recorder salvage (libx264, HEVC rewrite) via $appFfmpegPath" -ForegroundColor Green
 }
 
 $files = @(Get-ChildItem -LiteralPath $inputDir -File -Filter '*.mp4')
@@ -139,7 +170,9 @@ Write-Host ""
 Write-Host '┌─ fix-mp4s ─────────────────────────────────────────' -ForegroundColor Cyan
 Write-Host "│ Input:    $inputDir"
 Write-Host "│ Output:   $outputDir\<username>\"
-$encLabel = if (-not $preferNvenc) {
+$encLabel = if ($appPipeline) {
+    'in-app salvage (libx264 + HEVC rewrite)'
+} elseif (-not $preferNvenc) {
     'libx264'
 } elseif ($useCudaPipeline -and $allowCpuFallback) {
     'NVDEC+CUDA vf+NVENC (+ CPU fallback)'
@@ -188,6 +221,9 @@ $job = $work | ForEach-Object -Parallel {
     $NvencCq = $using:NvencCq
     $CpuThreads = $using:CpuThreads
     $Live = $using:live
+    $AppPipeline = $using:appPipeline
+    $RepoRoot = $using:repoRoot
+    $AppFfmpegPath = $using:appFfmpegPath
 
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
     $short = $File.Name
@@ -226,6 +262,75 @@ $job = $work | ForEach-Object -Parallel {
         $result.Detail = "exists: $user\$outName"
         $result.Elapsed = $sw.Elapsed
         return [pscustomobject]$result
+    }
+
+    if ($AppPipeline) {
+        if ($File.Name -notlike '*_flv.mp4') {
+            $result.Status = 'skip'
+            $result.Detail = 'not a leftover FLV (need *_flv.mp4 for -AppPipeline)'
+            $result.Elapsed = $sw.Elapsed
+            return [pscustomobject]$result
+        }
+
+        $staging = Join-Path $userDir $File.Name
+        $errFile = $null
+        $outLog = $null
+        $null = $Live.AddOrUpdate($File.Name, 'app', { param($k, $v) 'app' })
+        try {
+            if ($staging -ne $File.FullName) {
+                Copy-Item -LiteralPath $File.FullName -Destination $staging -Force
+            }
+            $errFile = Join-Path $env:TEMP ("fix-mp4s-app-{0}.txt" -f [guid]::NewGuid().ToString('n'))
+            $outLog = Join-Path $env:TEMP ("fix-mp4s-app-out-{0}.txt" -f [guid]::NewGuid().ToString('n'))
+            $uvArgs = @(
+                'run', '--directory', $RepoRoot,
+                'python', '-m', 'tiktok_live_recorder.convert_flv',
+                '--ffmpeg-path', $AppFfmpegPath,
+                '--', $staging
+            )
+            & uv @uvArgs 1>$outLog 2>$errFile
+            $code = $LASTEXITCODE
+            if ($code -eq 0 -and (Test-Path -LiteralPath $out)) {
+                $result.Status = 'ok'
+                $result.Encoder = 'app'
+                $result.Detail = "$user\$outName"
+                $result.OutBytes = [long](Get-Item -LiteralPath $out).Length
+                $result.Elapsed = $sw.Elapsed
+                return [pscustomobject]$result
+            }
+            $reason = $null
+            if (Test-Path -LiteralPath $errFile) {
+                $reason = @(Get-Content -LiteralPath $errFile -ErrorAction SilentlyContinue |
+                    ForEach-Object { "$_".Trim() } |
+                    Where-Object { $_ } |
+                    Select-Object -Last 4) -join ' | '
+            }
+            $failDir = Join-Path $OutputDir '_fix-mp4s-failures'
+            New-Item -ItemType Directory -Force -Path $failDir | Out-Null
+            $safe = ($File.Name -replace '[^\w.\-]', '_')
+            $logDest = Join-Path $failDir ("{0}.app.log" -f $safe)
+            if (Test-Path -LiteralPath $errFile) {
+                Copy-Item -LiteralPath $errFile -Destination $logDest -Force
+            }
+            if ($staging -ne $File.FullName -and (Test-Path -LiteralPath $staging)) {
+                Remove-Item -LiteralPath $staging -Force -ErrorAction SilentlyContinue
+            }
+            $result.Status = 'fail'
+            $detail = "in-app convert failed (exit $code)"
+            if ($reason) { $detail += ": $reason" }
+            if (Test-Path -LiteralPath $logDest) { $detail += " [log: $logDest]" }
+            $result.Detail = $detail
+            $result.Elapsed = $sw.Elapsed
+            return [pscustomobject]$result
+        } finally {
+            $null = $Live.TryRemove($File.Name, [ref]$null)
+            if ($errFile) {
+                Remove-Item -LiteralPath $errFile -Force -ErrorAction SilentlyContinue
+            }
+            if ($outLog) {
+                Remove-Item -LiteralPath $outLog -Force -ErrorAction SilentlyContinue
+            }
+        }
     }
 
     $probe = & ffprobe -v error -select_streams v:0 `
@@ -641,7 +746,7 @@ $job = $work | ForEach-Object -Parallel {
 } -ThrottleLimit $Parallel -AsJob
 
 $ok = 0; $skip = 0; $fail = 0
-$nv = 0; $fb = 0; $cpu = 0
+$nv = 0; $fb = 0; $cpu = 0; $app = 0
 $done = 0
 $seen = [System.Collections.Generic.HashSet[string]]::new()
 $swAll = [System.Diagnostics.Stopwatch]::StartNew()
@@ -693,6 +798,7 @@ function Receive-Batch {
                     'nvenc-swf' { $script:fb++ }
                     'x264-fallback' { $script:fb++ }
                     'x264' { $script:cpu++ }
+                    'app' { $script:app++ }
                 }
             }
             'skip' { $script:skip++ }
@@ -756,7 +862,7 @@ try {
 Write-Host ""
 Write-Host '┌─ summary ──────────────────────────────────────────' -ForegroundColor Cyan
 Write-Host ("│ Done in {0}" -f (Format-Duration $swAll.Elapsed))
-Write-Host ("│ ok={0}  (nvenc={1}  fallback={2}  x264={3})  skip={4}  fail={5}" -f $ok, $nv, $fb, $cpu, $skip, $fail)
+Write-Host ("│ ok={0}  (nvenc={1}  fallback={2}  x264={3}  app={4})  skip={5}  fail={6}" -f $ok, $nv, $fb, $cpu, $app, $skip, $fail)
 Write-Host "│ -> $outputDir"
 if ($fail -gt 0) {
     Write-Host "│ failure logs: $outputDir\_fix-mp4s-failures\"

@@ -53,7 +53,7 @@ testpaths = [
 ]
 
 [tool.poe.tasks]
-fix-mp4s.help = "Re-encode MP4s for the dashboard media library (NVENC by default)"
+fix-mp4s.help = "Re-encode MP4s for the dashboard (NVENC default; -AppPipeline for in-app salvage)"
 fix-mp4s.cmd = "pwsh -NoProfile -File scripts/fix-mp4s.ps1"
 
 delete-verified-sources.help = "Delete source MP4s when a verified output exists under -OutputDir"

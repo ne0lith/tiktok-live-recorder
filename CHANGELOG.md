@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Scripts**: `fix-mp4s -AppPipeline` runs leftover `*_flv.mp4` through the recorder salvage path (`VideoManagement.convert_flv_to_mp4`: libx264, HEVC rewrite, MKV remux) instead of NVENC
+
 ### Fixed
 
 - **Scripts**: `fix-mp4s` CUDA path drops mid-stream size/format-change frames (`-drop_changed:v 1`) so corrupt leftover FLVs no longer abort with ffmpeg -40 (`pad_cuda` / software `auto_scale`)

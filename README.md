@@ -382,7 +382,7 @@ Many TikTok lives use **HEVC in legacy FLV** (codec id 12). The in-app pipeline 
 1. Restart the recorder and check startup logs for `capable for TikTok HEVC FLV` vs `NOT capable`.
 2. On Linux, let the automatic BtbN install complete (first run may pause while downloading).
 3. Check the convert-queue strip for queued/converting jobs - conversion may still be in progress; raise **Max concurrent converts** in Settings if many streams ended at once.
-4. For leftover `*_flv.mp4` files after **`convert_failed`**, use the dashboard **Move leftover FLVs** button ([guide](docs/GUIDE.md#salvaging-leftover-recordings)), then run `fix-mp4s` against `to_fix/`.
+4. For leftover `*_flv.mp4` files after **`convert_failed`**, use the dashboard **Move leftover FLVs** button ([guide](docs/GUIDE.md#salvaging-leftover-recordings)), then run `fix-mp4s` against `to_fix/` (NVENC by default, or `-AppPipeline` for the same salvage the recorder uses).
 5. Or pass `-ffmpeg-path` to FFmpeg 8.0+ that supports legacy HEVC FLV.
 
 ### Log file growing large
