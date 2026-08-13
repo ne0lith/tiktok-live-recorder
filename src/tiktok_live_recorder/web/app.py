@@ -101,10 +101,15 @@ def _ensure_users_file(recorder: TikTokRecorder) -> str:
 
 
 def _scan_media(recorder: TikTokRecorder, output_base: Path, custom_output) -> dict:
+    from tiktok_live_recorder.utils.ffmpeg_setup import ffprobe_for
+
+    ffmpeg_path = getattr(recorder, "ffmpeg_path", None)
+    probe = ffprobe_for(ffmpeg_path) if ffmpeg_path else "ffprobe"
     return scan_media_library(
         output_base,
         custom_output,
         recorder.active_recording_output_paths(),
+        ffprobe_cmd=probe,
     )
 
 

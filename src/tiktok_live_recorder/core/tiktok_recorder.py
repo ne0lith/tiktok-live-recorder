@@ -1578,6 +1578,17 @@ class TikTokRecorder:
             raise ValueError("Cannot repair an in-progress recording")
 
         is_flv = path.name.endswith("_flv.mp4")
+        if not is_flv:
+            from tiktok_live_recorder.utils.ffmpeg_setup import ffprobe_for
+            from tiktok_live_recorder.utils.video_management import VideoManagement
+
+            probe = ffprobe_for(self.ffmpeg_path) if self.ffmpeg_path else "ffprobe"
+            if VideoManagement.is_library_playable(resolved, probe):
+                raise ValueError(
+                    "File is already library-playable (H.264 or AV1); "
+                    "server repair would re-encode to H.264 and is skipped"
+                )
+
         mode = "flv" if is_flv else "repair"
         label = "convert" if is_flv else "repair"
         media_key = str(path.resolve()) if path.exists() else str(path)

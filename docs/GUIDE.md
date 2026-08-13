@@ -297,6 +297,7 @@ Click a `@handle` to filter status and the media library to that user. Each prof
 ### Media library
 
 - Finished **MP4** files grouped by username under `output/<username>/`
+- **Codecs**: the library serves **H.264** (what the recorder/salvage/`fix-mp4s` produce) and **AV1-in-MP4** (e.g. after an external client-side `av1_qsv` convert that keeps the same `TK_*.mp4` name). The server never encodes AV1; browsers play AV1. Thumbnails use software AV1 decode (`libdav1d` in FFmpeg) when present.
 - **Legacy recordings** (`output/<username>/legacy/`) are **hidden by default**; enable **Settings -> Runtime -> Legacy recordings** to show them (saved in `localStorage`)
 - Sort: Newest, Oldest, Largest, A-Z user (preference saved in `localStorage`)
 - Search by username or filename (`/` focuses search)
@@ -304,7 +305,7 @@ Click a `@handle` to filter status and the media library to that user. Each prof
 - Thumbnail previews for finished recordings (server-generated `*.thumb.jpg` cache, lazy-loaded in the browser)
 - Orphan `*_flv.mp4` files pinned and styled (`needs convert`); legacy items show a `legacy` tag when visible. Active recordings are hidden until finalized (see Live status).
 - Docked in-browser player above the scrollable list (playback is not interrupted by library refreshes)
-- **Fix video** in the player when thumbnail generation fails (broken MP4) or for orphan `*_flv.mp4` files (**Convert**); queues the in-app salvage pipeline. Progress appears in **Recent activity** (Media), the Live status convert digest, and the summary meta line while jobs run.
+- **Fix video** / **Convert** only when the server marks the file `repairable` (orphan `*_flv.mp4`, or a finished file that is not already H.264/AV1). Missing thumbnails on an already-playable AV1/H.264 file do **not** offer Fix - salvage would re-encode to H.264. Progress appears in **Recent activity** (Media), the Live status convert digest, and the summary meta line while jobs run.
 - Player header links to the user's profile filter; watchlist user actions (Stop, Pause, Check, etc.) appear below the header while a file is playing
 - Download or delete files (delete requires confirmation; **Delete** is also available in the player panel)
 - Multi-select recordings (checkbox on each card) then **Select all** / **Clear** / **Delete selected** in the toolbar to remove many files in one pass

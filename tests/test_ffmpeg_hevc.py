@@ -70,8 +70,29 @@ def test_scan_media_library_marks_needs_convert(tmp_path):
     media = scan_media_library(tmp_path, None, active_output_paths=set())
     entry = media["creator"][0]
     assert entry["needs_convert"] is True
+    assert entry["repairable"] is True
     assert entry["in_progress"] is False
     assert "thumb_url" not in entry
+
+
+def test_scan_media_library_marks_av1_not_repairable(tmp_path, monkeypatch):
+    from tiktok_live_recorder.web import media as media_mod
+
+    user_dir = tmp_path / "alpha"
+    user_dir.mkdir()
+    clip = user_dir / "TK_alpha_2026.01.01_12-00-00.mp4"
+    clip.write_bytes(b"av1")
+    media_mod.clear_library_playable_cache()
+    monkeypatch.setattr(
+        media_mod.VideoManagement,
+        "is_library_playable",
+        staticmethod(lambda *_a, **_k: True),
+    )
+    media = scan_media_library(tmp_path, None, active_output_paths=set())
+    entry = media["alpha"][0]
+    assert entry["needs_convert"] is False
+    assert entry["repairable"] is False
+    assert "thumb_url" in entry
 
 
 def test_scan_media_library_hides_in_progress(tmp_path):
@@ -550,6 +571,43 @@ def test_output_is_dashboard_playable_requires_h264_yuv420p(tmp_path):
     assert (
         VideoManagement.output_is_dashboard_playable(str(missing), "ffprobe") is False
     )
+
+
+def test_is_library_playable_accepts_h264_and_av1(tmp_path, monkeypatch):
+    from tiktok_live_recorder.utils.video_management import VideoManagement
+
+    path = tmp_path / "clip.mp4"
+    path.write_bytes(b"x")
+
+    monkeypatch.setattr(
+        VideoManagement,
+        "_probe_video_info",
+        staticmethod(lambda *_a, **_k: ("h264", "yuv420p")),
+    )
+    assert VideoManagement.is_library_playable(str(path), "ffprobe") is True
+    assert VideoManagement.output_is_dashboard_playable(str(path), "ffprobe") is True
+
+    monkeypatch.setattr(
+        VideoManagement,
+        "_probe_video_info",
+        staticmethod(lambda *_a, **_k: ("av1", "yuv420p")),
+    )
+    assert VideoManagement.is_library_playable(str(path), "ffprobe") is True
+    assert VideoManagement.output_is_dashboard_playable(str(path), "ffprobe") is False
+
+    monkeypatch.setattr(
+        VideoManagement,
+        "_probe_video_info",
+        staticmethod(lambda *_a, **_k: ("av1", "yuv420p10le")),
+    )
+    assert VideoManagement.is_library_playable(str(path), "ffprobe") is True
+
+    monkeypatch.setattr(
+        VideoManagement,
+        "_probe_video_info",
+        staticmethod(lambda *_a, **_k: ("hevc", "yuv420p")),
+    )
+    assert VideoManagement.is_library_playable(str(path), "ffprobe") is False
 
 
 def test_describe_ffmpeg_binary_detects_vendor_path():

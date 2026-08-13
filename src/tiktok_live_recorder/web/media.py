@@ -1,8 +1,10 @@
 import re
 import shutil
+import threading
 from pathlib import Path
 from urllib.parse import quote
 
+from tiktok_live_recorder.utils.video_management import VideoManagement
 from tiktok_live_recorder.web.thumbnails import thumbnail_url
 
 # Username may contain underscores (including a leading `_`); anchor on the
@@ -12,6 +14,34 @@ MEDIA_PATTERN = re.compile(
     re.IGNORECASE,
 )
 LEGACY_SUBDIR = "legacy"
+
+# path + mtime_ns + size -> library_playable
+_playable_cache: dict[tuple[str, int, int], bool] = {}
+_playable_cache_lock = threading.Lock()
+_PLAYABLE_CACHE_MAX = 4096
+
+
+def _cached_library_playable(path: Path, ffprobe_cmd: str) -> bool:
+    try:
+        st = path.stat()
+        key = (str(path.resolve()), st.st_mtime_ns, st.st_size)
+    except OSError:
+        return False
+    with _playable_cache_lock:
+        cached = _playable_cache.get(key)
+        if cached is not None:
+            return cached
+    playable = VideoManagement.is_library_playable(str(path), ffprobe_cmd)
+    with _playable_cache_lock:
+        if len(_playable_cache) >= _PLAYABLE_CACHE_MAX:
+            _playable_cache.clear()
+        _playable_cache[key] = playable
+    return playable
+
+
+def clear_library_playable_cache() -> None:
+    with _playable_cache_lock:
+        _playable_cache.clear()
 
 
 def _is_safe_filename(filename: str) -> bool:
@@ -75,6 +105,7 @@ def _media_entry(
     *,
     subdir: str | None = None,
     active_paths: set[str] | None = None,
+    ffprobe_cmd: str = "ffprobe",
 ) -> dict:
     stat = path.stat()
     url = _encoded_media_url(username, path.name, subdir=subdir)
@@ -84,6 +115,14 @@ def _media_entry(
         resolved = str(path)
     is_flv = path.name.endswith("_flv.mp4")
     is_active = resolved in (active_paths or set())
+    needs_convert = is_flv and not is_active
+    if is_active:
+        repairable = False
+    elif needs_convert:
+        repairable = True
+    else:
+        # Already H.264/AV1: not repairable (server must not re-encode AV1 to H.264).
+        repairable = not _cached_library_playable(path, ffprobe_cmd)
     entry = {
         "filename": path.name,
         "username": username,
@@ -91,7 +130,8 @@ def _media_entry(
         "modified_at": stat.st_mtime,
         # Any path in active_paths (raw FLV *or* partial convert destination).
         "in_progress": is_active,
-        "needs_convert": is_flv and not is_active,
+        "needs_convert": needs_convert,
+        "repairable": repairable,
         "source": subdir or "recordings",
         "url": url,
         "path": resolved,
@@ -108,23 +148,40 @@ def _append_library_entry(
     *,
     subdir: str | None = None,
     active_paths: set[str] | None = None,
+    ffprobe_cmd: str = "ffprobe",
 ) -> None:
     # Repair writes ``*.repair.tmp.mp4`` beside the source; never list those.
     if path.name.endswith(".repair.tmp.mp4"):
         return
-    entry = _media_entry(path, username, subdir=subdir, active_paths=active_paths)
+    entry = _media_entry(
+        path,
+        username,
+        subdir=subdir,
+        active_paths=active_paths,
+        ffprobe_cmd=ffprobe_cmd,
+    )
     if entry["in_progress"]:
         return
     entries.append(entry)
 
 
 def _collect_user_media(
-    user_dir: Path, username: str, *, active_paths: set[str] | None = None
+    user_dir: Path,
+    username: str,
+    *,
+    active_paths: set[str] | None = None,
+    ffprobe_cmd: str = "ffprobe",
 ) -> list[dict]:
     entries: list[dict] = []
     for path in user_dir.glob("TK_*.mp4"):
         if path.is_file():
-            _append_library_entry(entries, path, username, active_paths=active_paths)
+            _append_library_entry(
+                entries,
+                path,
+                username,
+                active_paths=active_paths,
+                ffprobe_cmd=ffprobe_cmd,
+            )
     legacy_dir = user_dir / LEGACY_SUBDIR
     if legacy_dir.is_dir():
         for path in legacy_dir.glob("*.mp4"):
@@ -135,6 +192,7 @@ def _collect_user_media(
                     username,
                     subdir=LEGACY_SUBDIR,
                     active_paths=active_paths,
+                    ffprobe_cmd=ffprobe_cmd,
                 )
     return entries
 
@@ -272,6 +330,8 @@ def scan_media_library(
     output_base: Path,
     custom_output: str | Path | None,
     active_output_paths: set[str] | None = None,
+    *,
+    ffprobe_cmd: str = "ffprobe",
 ) -> dict[str, list[dict]]:
     """Return playable media grouped by username, newest first within each user."""
     active_paths = _normalize_active_paths(active_output_paths)
@@ -287,7 +347,13 @@ def scan_media_library(
             match = MEDIA_PATTERN.match(path.name)
             username = match.group("username") if match else "unknown"
             bucket = grouped.setdefault(username, [])
-            _append_library_entry(bucket, path, username, active_paths=active_paths)
+            _append_library_entry(
+                bucket,
+                path,
+                username,
+                active_paths=active_paths,
+                ffprobe_cmd=ffprobe_cmd,
+            )
     else:
         if not output_base.is_dir():
             return grouped
@@ -295,7 +361,10 @@ def scan_media_library(
             if not user_dir.is_dir():
                 continue
             entries = _collect_user_media(
-                user_dir, user_dir.name, active_paths=active_paths
+                user_dir,
+                user_dir.name,
+                active_paths=active_paths,
+                ffprobe_cmd=ffprobe_cmd,
             )
             if entries:
                 grouped[user_dir.name] = entries

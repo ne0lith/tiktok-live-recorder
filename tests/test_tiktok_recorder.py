@@ -861,6 +861,10 @@ def test_enqueue_media_repair_tracks_job_and_activity(tmp_path, monkeypatch):
         "tiktok_live_recorder.utils.video_management.VideoManagement.repair_mp4_file",
         lambda *_args, **_kwargs: True,
     )
+    monkeypatch.setattr(
+        "tiktok_live_recorder.utils.video_management.VideoManagement.is_library_playable",
+        staticmethod(lambda *_a, **_k: False),
+    )
 
     result = recorder.enqueue_media_repair("alpha", str(broken))
     assert result["queued"] is True
@@ -872,6 +876,28 @@ def test_enqueue_media_repair_tracks_job_and_activity(tmp_path, monkeypatch):
     assert any("Queued manual repair" in message for message in messages)
     assert any("Manual repair started" in message for message in messages)
     assert any("Manual repair succeeded" in message for message in messages)
+
+
+def test_enqueue_media_repair_refuses_library_playable_av1(tmp_path, monkeypatch):
+    recorder = TikTokRecorder(
+        RecorderConfig(mode=Mode.WATCHLIST, users=["alpha"], cookies={})
+    )
+    av1 = tmp_path / "TK_alpha_2026.01.01_12-00-00.mp4"
+    av1.write_bytes(b"av1")
+
+    monkeypatch.setattr(
+        "tiktok_live_recorder.utils.video_management.VideoManagement.is_library_playable",
+        staticmethod(lambda *_a, **_k: True),
+    )
+    repair = MagicMock(return_value=True)
+    monkeypatch.setattr(
+        "tiktok_live_recorder.utils.video_management.VideoManagement.repair_mp4_file",
+        repair,
+    )
+
+    with pytest.raises(ValueError, match="already library-playable"):
+        recorder.enqueue_media_repair("alpha", str(av1))
+    repair.assert_not_called()
 
 
 def test_start_recording_enqueues_conversion(tmp_path, monkeypatch):

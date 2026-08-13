@@ -7,13 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.23.0] - 2026-08-13
+
+### Added
+
+- **Media library**: treat AV1-in-MP4 as client-playable alongside H.264; `repairable` on media entries so Fix/Convert is not offered for already-playable files
+
 ### Changed
 
 - **Scripts**: `fix-mp4s` NVENC path uses a full CUDA pipeline (NVDEC decode + `scale_cuda`/`pad_cuda` + `h264_nvenc`) so resize/pad stay on the GPU; CPU scale/libx264 only with `-AllowCpuFallback` (or `-Encoder Cpu`)
+- **Docs**: GUIDE notes AV1 playback (clients) vs H.264-only server encode/salvage, and software AV1 decode for thumbs
 
 ### Fixed
 
 - **Scripts**: `fix-mp4s` no longer passes `-ignore_editlist` for real FLV leftovers (`*_flv.mp4`), which made every CUDA/NVENC open fail with `Option ignore_editlist not found`
+- **Media library**: manual repair refuses already library-playable H.264/AV1 files so missing thumbs cannot trigger a destructive H.264 re-encode of AV1 content
 
 ## [8.22.0] - 2026-08-06
 
@@ -704,7 +712,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.22.0...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.23.0...HEAD
+[8.23.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.22.0...v8.23.0
 [8.22.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.21.1...v8.22.0
 [8.21.1]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.21.0...v8.21.1
 [8.21.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.20.10...v8.21.0

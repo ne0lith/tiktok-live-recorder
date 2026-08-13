@@ -142,8 +142,15 @@ async function updatePlayerRepairButton(item) {
     playerRepairBtn.disabled = false;
     return;
   }
+  // Server decides: leftover FLV or non-playable codecs are repairable.
+  // Already H.264/AV1 is not - missing thumbs must not queue H.264 re-encode.
+  if (!item.repairable) {
+    playerRepairBtn.classList.add("hidden");
+    playerRepairBtn.disabled = false;
+    return;
+  }
   const hasThumb = await itemHasThumbnail(item);
-  const show = !hasThumb;
+  const show = !hasThumb || Boolean(item.needs_convert);
   playerRepairBtn.classList.toggle("hidden", !show);
   if (show) {
     playerRepairBtn.disabled = false;
