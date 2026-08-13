@@ -11,6 +11,7 @@ from tiktok_live_recorder.utils.ffmpeg_setup import (
 )
 from tiktok_live_recorder.utils.flv_hevc_rewrite import (
     file_needs_legacy_hevc_rewrite,
+    flv_has_video_tag,
     rewrite_legacy_hevc_video_body,
 )
 from tiktok_live_recorder.web.media import (
@@ -46,6 +47,19 @@ def test_file_needs_legacy_hevc_rewrite_detects_codec_12(tmp_path):
     flv_path = tmp_path / "test.flv"
     flv_path.write_bytes(build_legacy_hevc_probe_flv())
     assert file_needs_legacy_hevc_rewrite(flv_path) is True
+
+
+def test_flv_has_video_tag_detects_video_and_audio_only():
+    assert flv_has_video_tag(build_legacy_hevc_probe_flv()) is True
+    header = b"FLV\x01\x04\x00\x00\x00\x09"
+    prev = b"\x00\x00\x00\x00"
+    body = b"\xaf\x01" + bytes(8)
+    size = len(body)
+    tag = bytes([8, 0, 0, size, 0, 0, 0, 0, 0, 0, 0]) + body
+    audio_flv = header + prev + tag + (11 + size).to_bytes(4, "big")
+    assert flv_has_video_tag(audio_flv) is False
+    assert flv_has_video_tag(b"not-flv") is None
+    assert flv_has_video_tag(b"FLV\x01") is None
 
 
 def test_find_orphan_flv_files_skips_active(tmp_path):

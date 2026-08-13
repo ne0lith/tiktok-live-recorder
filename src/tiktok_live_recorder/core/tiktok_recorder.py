@@ -9,7 +9,7 @@ from threading import Event, Lock, Thread
 from requests import HTTPError, RequestException
 
 from tiktok_live_recorder.core.convert_queue import ConvertJob, ConvertQueue
-from tiktok_live_recorder.core.tiktok_api import TikTokAPI
+from tiktok_live_recorder.core.tiktok_api import TikTokAPI, is_unmarked_origin_flv_url
 from tiktok_live_recorder.utils.logger_manager import logger
 from tiktok_live_recorder.utils.recorder_config import RecorderConfig
 from tiktok_live_recorder.utils.ffmpeg_setup import (
@@ -17,6 +17,7 @@ from tiktok_live_recorder.utils.ffmpeg_setup import (
     get_startup_ffmpeg_info,
     normalize_cdn_url,
 )
+from tiktok_live_recorder.utils.flv_hevc_rewrite import flv_has_video_tag
 from tiktok_live_recorder.utils.utils import output_dir_for_user
 from tiktok_live_recorder.utils.custom_exceptions import (
     LiveNotFound,
@@ -1290,6 +1291,7 @@ class TikTokRecorder:
         buffer = bytearray()
         bytes_written = 0
         connected_logged = False
+        origin_checked = False
 
         self._log_recording(user, f"→ {Path(output).name} (Ctrl+C to stop)")
 
@@ -1301,6 +1303,7 @@ class TikTokRecorder:
                 stop_recording = False
                 while not stop_recording and not self._should_stop_user(user):
                     stream_ended = False
+                    origin_rejected = False
                     alive_check_interval = 30
                     last_alive_check = time.time()
                     bytes_before = bytes_written
@@ -1331,6 +1334,15 @@ class TikTokRecorder:
                             self._update_recording_entry(
                                 user, bytes_written=bytes_written
                             )
+                            if (
+                                not origin_checked
+                                and is_unmarked_origin_flv_url(live_url)
+                                and len(buffer) >= buffer_size
+                            ):
+                                origin_checked = True
+                                if flv_has_video_tag(bytes(buffer)) is False:
+                                    origin_rejected = True
+                                    break
                             if (
                                 not connected_logged
                                 and bytes_written >= min_stream_bytes
@@ -1368,6 +1380,37 @@ class TikTokRecorder:
                             stream_ended = True
 
                         if stop_recording or self._should_stop_user(user):
+                            break
+
+                        if (
+                            not origin_checked
+                            and is_unmarked_origin_flv_url(live_url)
+                            and buffer
+                        ):
+                            origin_checked = True
+                            if flv_has_video_tag(bytes(buffer)) is False:
+                                origin_rejected = True
+
+                        if origin_rejected:
+                            failed_urls.add(normalize_cdn_url(live_url))
+                            buffer.clear()
+                            bytes_written = 0
+                            connected_logged = False
+                            origin_checked = False
+                            out_file.seek(0)
+                            out_file.truncate()
+                            self._update_recording_entry(user, bytes_written=0)
+                            refreshed = self._refresh_live_urls(
+                                room_id, user, fallback=live_urls
+                            )
+                            nxt = self._pick_next_stream_url(refreshed, failed_urls)
+                            if nxt:
+                                live_url = nxt
+                                logger.debug(
+                                    f"[@{user}] origin stream has no video; "
+                                    "trying next CDN candidate"
+                                )
+                                continue
                             break
 
                         if stream_ended:

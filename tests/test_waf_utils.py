@@ -6,7 +6,9 @@ from tiktok_live_recorder.core.tiktok_api import (
     extract_user_live_context_from_obj,
     extract_user_live_context_from_page,
     is_audio_only_stream_url,
+    is_unmarked_origin_flv_url,
     order_stream_urls,
+    origin_url_from_audio_only,
     pick_preferred_stream_url,
 )
 from tiktok_live_recorder.utils.utils import cookie_key_summary, has_session_cookie
@@ -92,7 +94,7 @@ def test_extract_user_live_context_ignores_recommended_streams_for_offline_user(
         },
         "SuggestedLives": [
             {
-                "owner": {"uniqueId": "blackwidowink.la"},
+                "owner": {"uniqueId": "suggested_creator"},
                 "status": 2,
                 "stream": {"flv": "https://cdn.example.com/recommended_or4.flv"},
             }
@@ -181,19 +183,47 @@ def test_is_audio_only_stream_url_detects_only_audio_query():
     assert not is_audio_only_stream_url("https://cdn.example.com/stream_hd.flv")
 
 
-def test_order_stream_urls_prefers_hd_and_drops_audio():
+def test_origin_url_from_audio_only_strips_query_and_skips_ao_path():
+    assert (
+        origin_url_from_audio_only(
+            "https://cdn.example.com/stream.flv?expire=1&sign=abc&only_audio=1"
+        )
+        == "https://cdn.example.com/stream.flv?expire=1&sign=abc"
+    )
+    assert (
+        origin_url_from_audio_only("https://cdn.example.com/stream_ao.flv?only_audio=1")
+        is None
+    )
+    assert (
+        origin_url_from_audio_only(
+            "https://cdn.example.com/stream_ao/index.mpd?only_audio=1"
+        )
+        is None
+    )
+
+
+def test_is_unmarked_origin_flv_url_ignores_quality_suffixes():
+    assert is_unmarked_origin_flv_url("https://cdn.example.com/stream.flv?sign=abc")
+    assert not is_unmarked_origin_flv_url("https://cdn.example.com/stream_hd.flv")
+    assert not is_unmarked_origin_flv_url(
+        "https://cdn.example.com/stream.flv?only_audio=1"
+    )
+
+
+def test_order_stream_urls_prefers_origin_derived_from_audio():
     urls = [
         "https://cdn.example.com/stream.flv?only_audio=1",
         "https://cdn.example.com/stream_ld.flv",
         "https://cdn.example.com/stream_hd.flv",
     ]
     assert order_stream_urls(urls) == [
+        "https://cdn.example.com/stream.flv",
         "https://cdn.example.com/stream_hd.flv",
         "https://cdn.example.com/stream_ld.flv",
     ]
 
 
-def test_collect_stream_urls_skips_ao_sdk_track():
+def test_collect_stream_urls_derives_origin_from_ao_sdk_track():
     stream_data = json.dumps(
         {
             "data": {
@@ -209,6 +239,16 @@ def test_collect_stream_urls_skips_ao_sdk_track():
     )
     urls = collect_stream_urls_from_obj({"pull_data": {"stream_data": stream_data}})
     assert urls == [
+        "https://cdn.example.com/only.flv",
         "https://cdn.example.com/video_hd.flv",
         "https://cdn.example.com/video_ld.flv",
     ]
+
+
+def test_pick_preferred_stream_url_prefers_origin_over_or4():
+    urls = [
+        "https://cdn.example.com/live_or4.flv",
+        "https://cdn.example.com/live.flv",
+        "https://cdn.example.com/live_hd.flv",
+    ]
+    assert pick_preferred_stream_url(urls) == "https://cdn.example.com/live.flv"

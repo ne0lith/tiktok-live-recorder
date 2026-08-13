@@ -130,3 +130,33 @@ def file_needs_legacy_hevc_rewrite(path: str | Path) -> bool:
             return (data[body_start] & 0x0F) == FLV_CODECID_X_HEVC
         offset = body_start + data_size + 4
     return False
+
+
+def flv_has_video_tag(data: bytes) -> bool | None:
+    """Return whether a buffer contains an FLV video tag.
+
+    True: a complete video tag (type 9) is present.
+    False: at least one complete tag was scanned and none were video.
+    None: not FLV yet, or no complete tag in the buffer.
+    """
+    if len(data) < 13 or data[0:3] != b"FLV":
+        return None
+    offset = 9
+    saw_complete_tag = False
+    while offset + 15 <= len(data):
+        offset += 4
+        parsed = _read_flv_tag_header(data, offset)
+        if parsed is None:
+            break
+        tag_type, data_size, _timestamp = parsed
+        body_start = offset + 11
+        body_end = body_start + data_size
+        if body_end > len(data):
+            break
+        saw_complete_tag = True
+        if tag_type == 9:
+            return True
+        offset = body_end
+    if saw_complete_tag:
+        return False
+    return None

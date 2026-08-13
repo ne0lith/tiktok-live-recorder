@@ -2,6 +2,7 @@ import html
 import json
 import re
 import threading
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import requests
 
@@ -65,25 +66,77 @@ def collect_stream_urls_from_obj(obj) -> list[str]:
 
 _VIDEO_SDK_KEY_ORDER = ("uhd", "hd", "or4", "sd", "ld", "zsd")
 _FLV_QUALITY_MARKERS = ("_or4", "_hd", "_sd", "_ld", "_zsd", "_uhd")
+_ONLY_AUDIO_QUERY = re.compile(r"(?:^|&)only_audio=(?:1|true)(?:&|$)", re.IGNORECASE)
 
 
 def is_audio_only_stream_url(url: str) -> bool:
+    if not url:
+        return False
     lower = url.lower()
-    if "only_audio=1" in lower or "only_audio=true" in lower:
-        return True
     if "_ao.flv" in lower or "_ao/" in lower:
         return True
-    return False
+    for key, value in parse_qsl(urlsplit(url).query, keep_blank_values=True):
+        if key.lower() == "only_audio" and value.lower() in ("1", "true"):
+            return True
+    return "only_audio=1" in lower or "only_audio=true" in lower
+
+
+def origin_url_from_audio_only(url: str) -> str | None:
+    """Return the origin FLV URL by stripping only_audio from an ao pull URL."""
+    if not url:
+        return None
+    lower = url.lower()
+    if "_ao.flv" in lower or "_ao/" in lower:
+        return None
+
+    parts = urlsplit(url)
+    kept: list[tuple[str, str]] = []
+    saw_only_audio = False
+    for key, value in parse_qsl(parts.query, keep_blank_values=True):
+        if key.lower() == "only_audio" and value.lower() in ("1", "true"):
+            saw_only_audio = True
+            continue
+        kept.append((key, value))
+    if not saw_only_audio and not _ONLY_AUDIO_QUERY.search(parts.query):
+        return None
+
+    derived = urlunsplit(
+        (parts.scheme, parts.netloc, parts.path, urlencode(kept), parts.fragment)
+    )
+    derived = html.unescape(derived.rstrip("\\"))
+    if not derived or is_audio_only_stream_url(derived):
+        return None
+    return derived
+
+
+def video_stream_url_from_candidate(url: str | None) -> str | None:
+    """Keep a video pull URL, or derive origin video from an audio-only FLV."""
+    if not url:
+        return None
+    normalized = html.unescape(url.rstrip("\\"))
+    if is_audio_only_stream_url(normalized):
+        normalized = origin_url_from_audio_only(normalized) or ""
+    if not normalized or not _looks_like_stream_url(normalized):
+        return None
+    if is_audio_only_stream_url(normalized):
+        return None
+    return normalized
+
+
+def is_unmarked_origin_flv_url(url: str) -> bool:
+    """True for FLV URLs with no quality suffix (_hd, _or4, …) in the path."""
+    if not url or is_audio_only_stream_url(url):
+        return False
+    path = urlsplit(url).path.lower()
+    if ".flv" not in path:
+        return False
+    return not any(marker in path for marker in _FLV_QUALITY_MARKERS)
 
 
 def _append_stream_url(found: list[str], url: str | None) -> None:
-    if not url or not _looks_like_stream_url(url):
-        return
-    if is_audio_only_stream_url(url):
-        return
-    normalized = html.unescape(url.rstrip("\\"))
-    if normalized not in found:
-        found.append(normalized)
+    candidate = video_stream_url_from_candidate(url)
+    if candidate and candidate not in found:
+        found.append(candidate)
 
 
 def collect_video_stream_urls_from_sdk_data(sdk_root: dict) -> list[str]:
@@ -101,8 +154,6 @@ def collect_video_stream_urls_from_sdk_data(sdk_root: dict) -> list[str]:
         ),
     )
     for sdk_key in ordered_keys:
-        if sdk_key == "ao":
-            continue
         entry = sdk_data.get(sdk_key)
         if not isinstance(entry, dict):
             continue
@@ -118,8 +169,16 @@ def order_stream_urls(urls: list[str]) -> list[str]:
     if not urls:
         return []
 
-    video_urls = [url for url in urls if not is_audio_only_stream_url(url)]
-    pool = video_urls or urls
+    expanded: list[str] = []
+    for url in urls:
+        candidate = video_stream_url_from_candidate(url)
+        if candidate:
+            expanded.append(candidate)
+        elif url and not is_audio_only_stream_url(url):
+            expanded.append(url)
+
+    video_urls = [url for url in expanded if not is_audio_only_stream_url(url)]
+    pool = video_urls or expanded
 
     def priority(url: str) -> tuple[int, int]:
         lower = url.lower()
@@ -127,10 +186,11 @@ def order_stream_urls(urls: list[str]) -> list[str]:
             return (999, 0)
         if ".flv" not in lower:
             return (200, 0)
+        path = urlsplit(url).path.lower()
         for idx, marker in enumerate(_FLV_QUALITY_MARKERS):
-            if marker in lower:
-                return (idx, 0)
-        return (100, 0)
+            if marker in path:
+                return (idx + 1, 0)
+        return (0, 0)
 
     seen: set[str] = set()
     ordered: list[str] = []
@@ -765,8 +825,9 @@ class TikTokAPI:
         return chosen
 
     def _add_live_url_candidate(self, candidates: list[str], url: str | None) -> None:
-        if url and url not in candidates:
-            candidates.append(url)
+        candidate = video_stream_url_from_candidate(url)
+        if candidate and candidate not in candidates:
+            candidates.append(candidate)
 
     def get_live_urls(self, room_id: str, user: str = None) -> list[str]:
         """

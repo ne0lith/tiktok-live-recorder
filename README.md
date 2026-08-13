@@ -338,6 +338,7 @@ Only one recorder process can use a given output directory at a time. If you see
 
 - Rejects ended TikTok rooms that still expose stale stream URLs
 - Tries alternate stream URLs when a CDN pull fails; normalizes signed query params so URL rotation does not cause endless retries
+- Prefers origin/source FLV (from the audio-only SDK URL with `only_audio` removed) over advertised `hd` 720p, and falls back to `hd`/`or4` if that URL fails or has no video
 - Stops recording after repeated CDN failures with no new bytes written
 - Skips empty CDN responses
 - Falls back to page HTML parsing when the API is blocked by WAF (`4003110`)

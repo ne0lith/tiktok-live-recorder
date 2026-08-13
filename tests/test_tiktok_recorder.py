@@ -1160,6 +1160,62 @@ def test_cdn_404_tries_all_refreshed_candidates_before_giving_up(tmp_path, monke
     assert fake.tried == urls
 
 
+def _audio_only_flv(min_size: int) -> bytes:
+    header = b"FLV\x01\x04\x00\x00\x00\x09"
+    prev = b"\x00\x00\x00\x00"
+    body = b"\xaf\x01" + bytes(32)
+    size = len(body)
+    tag = bytes([8, 0, 0, size, 0, 0, 0, 0, 0, 0, 0]) + body
+    payload = header + prev + tag + (11 + size).to_bytes(4, "big")
+    if min_size > len(payload):
+        payload += b"\x00" * (min_size - len(payload))
+    return payload
+
+
+def test_audio_only_origin_fails_over_to_hd(tmp_path, monkeypatch):
+    recorder = TikTokRecorder(
+        RecorderConfig(
+            mode=Mode.AUTOMATIC, user="alpha", output=str(tmp_path), cookies={}
+        )
+    )
+    origin = "https://cdn.example.com/stream.flv?sign=abc"
+    hd = "https://cdn.example.com/stream_hd.flv?sign=def"
+    audio_chunk = _audio_only_flv(64 * 1024)
+
+    class FakeAPI:
+        def __init__(self):
+            self.tried = []
+
+        def get_live_url_candidates(self, room_id, user=None):
+            return [origin, hd]
+
+        def check_alive(self, room_id, **kwargs):
+            return hd not in self.tried
+
+        def download_live_stream(self, live_url):
+            self.tried.append(live_url)
+            if live_url == origin:
+                yield audio_chunk
+                return
+            yield b"v" * 5000
+
+    fake = FakeAPI()
+    recorder.tiktok = fake
+    convert = MagicMock()
+    monkeypatch.setattr(
+        "tiktok_live_recorder.utils.video_management.VideoManagement.convert_flv_to_mp4",
+        convert,
+    )
+
+    recorder.start_recording("alpha", "room-alpha")
+
+    assert fake.tried == [origin, hd]
+    files = list(tmp_path.glob("TK_alpha_*_flv.mp4"))
+    assert len(files) == 1
+    assert files[0].read_bytes() == b"v" * 5000
+    convert.assert_called_once()
+
+
 def test_404_after_data_finalizes_then_poll_can_start_again(tmp_path, monkeypatch):
     """Simulate: record → CDN 404 while offline → finalize → later live starts clean."""
     recorder = TikTokRecorder(

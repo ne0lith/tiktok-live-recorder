@@ -217,6 +217,49 @@ def test_get_live_url_candidates_returns_ordered_unique_streams():
     ]
 
 
+def test_get_live_url_candidates_prefers_origin_from_ao_only_audio():
+    api = build_api(
+        {
+            "data": {
+                "status": 2,
+                "stream_url": {
+                    "live_core_sdk_data": {
+                        "pull_data": {
+                            "stream_data": (
+                                '{"data": {'
+                                '"hd": {"main": {"flv": '
+                                '"https://cdn/stream-1_hd.flv"}},'
+                                '"ld": {"main": {"flv": '
+                                '"https://cdn/stream-1_ld.flv"}},'
+                                '"ao": {"main": {"flv": '
+                                '"https://cdn/stream-1.flv?sign=abc&only_audio=1"}}'
+                                "}}"
+                            ),
+                            "options": {
+                                "qualities": [
+                                    {"sdk_key": "hd", "level": 3},
+                                    {"sdk_key": "ld", "level": 1},
+                                ]
+                            },
+                        }
+                    },
+                    "flv_pull_url": {
+                        "HD1": "https://cdn/stream-1_hd.flv",
+                        "SD1": "https://cdn/stream-1_ld.flv",
+                    },
+                },
+            },
+            "status_code": 0,
+        },
+    )
+
+    assert api.get_live_url_candidates("123", user="creator") == [
+        "https://cdn/stream-1.flv?sign=abc",
+        "https://cdn/stream-1_hd.flv",
+        "https://cdn/stream-1_ld.flv",
+    ]
+
+
 def test_get_room_id_from_user_uses_api_timeout():
     api = TikTokAPI.__new__(TikTokAPI)
     api._http_lock = __import__("threading").Lock()

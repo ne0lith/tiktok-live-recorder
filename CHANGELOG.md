@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.24.0] - 2026-08-13
+
+### Added
+
+- **Capture quality**: derive origin/source FLV from the audio-only (`ao`) SDK URL by stripping `only_audio=1`, prefer that unmarked stream over advertised `hd` (720p), and fall back to `hd`/`or4` if the origin URL fails or has no video
+
+### Changed
+
+- **Docs**: README notes origin FLV preference over advertised hd, with automatic fallback
+
 ## [8.23.0] - 2026-08-13
 
 ### Added
@@ -712,7 +722,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.23.0...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.24.0...HEAD
+[8.24.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.23.0...v8.24.0
 [8.23.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.22.0...v8.23.0
 [8.22.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.21.1...v8.22.0
 [8.21.1]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.21.0...v8.21.1
