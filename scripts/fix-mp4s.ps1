@@ -271,7 +271,11 @@ $job = $work | ForEach-Object -Parallel {
     $cudaHwArgs = @(
         '-hwaccel', 'cuda',
         '-hwaccel_output_format', 'cuda',
-        '-extra_hw_frames', '8'
+        '-extra_hw_frames', '8',
+        # Corrupt leftover FLVs often change size/format mid-stream (packet mismatch).
+        # CUDA graphs cannot reinit (pad_cuda -> software auto_scale, ffmpeg -40).
+        # Drop the changed frame instead of rebuilding the filtergraph.
+        '-drop_changed:v', '1'
     )
 
     $encodeTailCpu = @(

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Scripts**: `fix-mp4s` CUDA path drops mid-stream size/format-change frames (`-drop_changed:v 1`) so corrupt leftover FLVs no longer abort with ffmpeg -40 (`pad_cuda` / software `auto_scale`)
+
 ## [8.24.0] - 2026-08-13
 
 ### Added
