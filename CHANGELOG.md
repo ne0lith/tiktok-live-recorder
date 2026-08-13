@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Scripts**: `fix-mp4s` NVENC path uses a full CUDA pipeline (NVDEC decode + `scale_cuda`/`pad_cuda` + `h264_nvenc`) so resize/pad stay on the GPU; CPU scale/libx264 only with `-AllowCpuFallback` (or `-Encoder Cpu`)
+
+### Fixed
+
+- **Scripts**: `fix-mp4s` no longer passes `-ignore_editlist` for real FLV leftovers (`*_flv.mp4`), which made every CUDA/NVENC open fail with `Option ignore_editlist not found`
 
 ## [8.22.0] - 2026-08-06
 

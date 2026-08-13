@@ -3,8 +3,8 @@
 #
 # Target player: THIS project's media library - plain <video> in Chromium/Edge.
 # Forces H.264 (avc1) + yuv420p + AAC + faststart + fixed canvas; ffprobe-verified.
-# NVENC by default when available. No silent CPU fallback unless -AllowCpuFallback
-# (so -NvencCq actually means GPU quality, not "maybe x264 CRF 20").
+# NVENC by default: NVDEC decode + scale_cuda/pad_cuda + h264_nvenc (frames stay on GPU).
+# No silent CPU fallback unless -AllowCpuFallback (software vf+NVENC, then libx264).
 #
 # Usage:
 #   uv run poe fix-mp4s -InputDir W:\to_fix -OutputDir W:\converted
@@ -71,6 +71,23 @@ function Test-NvencAvailable {
     }
 }
 
+function Test-CudaPipelineAvailable {
+    # NVDEC + scale_cuda + pad_cuda + NVENC; lavfi upload keeps the probe self-contained.
+    $filters = & ffmpeg -hide_banner -filters 2>$null | Out-String
+    if ($filters -notmatch 'scale_cuda' -or $filters -notmatch 'pad_cuda') { return $false }
+    $hw = @(& ffmpeg -hide_banner -hwaccels 2>$null | ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+    if ($hw -notcontains 'cuda') { return $false }
+    $probeLog = Join-Path $env:TEMP ("cuda-pipe-probe-{0}.log" -f [guid]::NewGuid().ToString('n'))
+    try {
+        & ffmpeg -hide_banner -loglevel error -f lavfi -i 'color=c=black:s=256x256:d=0.2' `
+            -vf 'hwupload_cuda,scale_cuda=256:256:format=nv12,pad_cuda=256:256:0:0:black' `
+            -frames:v 1 -c:v h264_nvenc -f null - 2>$probeLog | Out-Null
+        return ($LASTEXITCODE -eq 0)
+    } finally {
+        Remove-Item -LiteralPath $probeLog -Force -ErrorAction SilentlyContinue
+    }
+}
+
 $preferNvenc = switch ($Encoder) {
     'Nvenc' { $true }
     'Cpu' { $false }
@@ -87,11 +104,26 @@ if ($Encoder -eq 'Cpu') {
     $allowCpuFallback = $true
 }
 
+$useCudaPipeline = $false
+if ($preferNvenc) {
+    $useCudaPipeline = Test-CudaPipelineAvailable
+    if (-not $useCudaPipeline -and -not $allowCpuFallback -and $Encoder -eq 'Nvenc') {
+        Write-Error 'Encoder Nvenc requested but CUDA filter pipeline (NVDEC/scale_cuda/pad_cuda) is not usable, and -AllowCpuFallback was not set.'
+        exit 2
+    }
+}
+
 if ($Encoder -eq 'Auto' -and -not $preferNvenc) {
     Write-Host 'NVENC not available; using libx264 (CPU).' -ForegroundColor Yellow
-} elseif ($preferNvenc) {
+} elseif ($preferNvenc -and $useCudaPipeline) {
     $fbMsg = $allowCpuFallback ? 'CPU fallback ON' : 'no CPU fallback'
-    Write-Host "NVENC OK - GPU encode enabled ($fbMsg)." -ForegroundColor Green
+    Write-Host "CUDA pipeline OK - NVDEC + scale_cuda/pad_cuda + NVENC ($fbMsg)." -ForegroundColor Green
+} elseif ($preferNvenc) {
+    if ($allowCpuFallback) {
+        Write-Host 'CUDA filters unavailable; NVENC encode with CPU scale (CPU fallback ON).' -ForegroundColor Yellow
+    } else {
+        Write-Host 'CUDA filters unavailable; NVENC encode with CPU scale (decode/scale on CPU).' -ForegroundColor Yellow
+    }
 }
 
 $files = @(Get-ChildItem -LiteralPath $inputDir -File -Filter '*.mp4')
@@ -109,10 +141,14 @@ Write-Host "│ Input:    $inputDir"
 Write-Host "│ Output:   $outputDir\<username>\"
 $encLabel = if (-not $preferNvenc) {
     'libx264'
+} elseif ($useCudaPipeline -and $allowCpuFallback) {
+    'NVDEC+CUDA vf+NVENC (+ CPU fallback)'
+} elseif ($useCudaPipeline) {
+    'NVDEC+CUDA vf+NVENC only'
 } elseif ($allowCpuFallback) {
-    'h264_nvenc + libx264 fallback'
+    'h264_nvenc (CPU vf) + libx264 fallback'
 } else {
-    'h264_nvenc only'
+    'h264_nvenc (CPU vf) only'
 }
 Write-Host "│ Encoder:  $encLabel"
 Write-Host "│ Parallel: $Parallel   CQ: $($preferNvenc ? $NvencCq : 'n/a')   CPU threads: $CpuThreads"
@@ -147,6 +183,7 @@ $job = $work | ForEach-Object -Parallel {
     $OutPath = $_.OutPath
     $Pattern = $_.Pattern
     $PreferNvenc = $using:preferNvenc
+    $UseCudaPipeline = $using:useCudaPipeline
     $AllowCpuFallback = $using:allowCpuFallback
     $NvencCq = $using:NvencCq
     $CpuThreads = $using:CpuThreads
@@ -215,20 +252,44 @@ $job = $work | ForEach-Object -Parallel {
         -show_entries stream=codec_name -of csv=p=0 -- $File.FullName 2>$null
     $srcAudioCodec = "$srcAudio".Trim().ToLowerInvariant()
 
-    # Always re-encode video at the requested quality. setpts resets broken timestamps.
+    # -ignore_editlist is a mov/mp4 demuxer option only. Leftover recordings are often
+    # real FLV bytes with a .mp4 name (format_name=flv); passing it there fails open.
+    $srcFormat = & ffprobe -v error -show_entries format=format_name -of default=nk=1:nw=1 -- $File.FullName 2>$null
+    $srcFormat = "$srcFormat".Trim().ToLowerInvariant()
+    $useIgnoreEditlist = $srcFormat -match '(^|,)(mov|mp4|m4a|3gp|3g2|mj2)(,|$)'
+
+    # Always re-encode video at the requested quality. setpts resets broken timestamps (CPU path).
+    # CUDA path keeps frames on GPU (NVDEC -> scale_cuda/pad_cuda -> NVENC); genpts/reset_timestamps
+    # cover broken input timing without a software setpts filter.
     $rangeFix = if ($srcPixFmt -eq 'yuvj420p') {
         ',scale=in_range=full:out_range=limited'
     } else {
         ''
     }
-    $vf = "scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2,format=yuv420p${rangeFix},setsar=1,setpts=PTS-STARTPTS"
+    $vfCpu = "scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2,format=yuv420p${rangeFix},setsar=1,setpts=PTS-STARTPTS"
+    $vfCuda = "scale_cuda=${w}:${h}:force_original_aspect_ratio=decrease:force_divisible_by=2:format=nv12,pad_cuda=${w}:${h}:(ow-iw)/2:(oh-ih)/2:black"
+    $cudaHwArgs = @(
+        '-hwaccel', 'cuda',
+        '-hwaccel_output_format', 'cuda',
+        '-extra_hw_frames', '8'
+    )
 
-    $encodeTailArgs = @(
+    $encodeTailCpu = @(
         '-avoid_negative_ts', 'make_zero',
         '-reset_timestamps', '1',
         '-pix_fmt', 'yuv420p',
         '-profile:v', 'high',
         '-tag:v', 'avc1',
+        '-max_muxing_queue_size', '9999'
+    )
+    # Do not force -pix_fmt yuv420p on CUDA frames (inserts a software auto_scale).
+    # Clear full-range flag so ffprobe/dashboard see yuv420p (phone HEVC is often yuvj420p/pc).
+    $encodeTailCuda = @(
+        '-avoid_negative_ts', 'make_zero',
+        '-reset_timestamps', '1',
+        '-profile:v', 'high',
+        '-tag:v', 'avc1',
+        '-bsf:v', 'h264_metadata=video_full_range_flag=0',
         '-max_muxing_queue_size', '9999'
     )
 
@@ -297,6 +358,7 @@ $job = $work | ForEach-Object -Parallel {
         param(
             [string] $Phase,
             [string[]] $MiddleArgs,
+            [string[]] $BeforeInputArgs = @(),
             [string] $InputPath = $File.FullName,
             [string] $OutputPath = $out,
             [switch] $TrackProgress,
@@ -318,7 +380,11 @@ $job = $work | ForEach-Object -Parallel {
         }
         $argList += '-fflags', '+genpts+igndts+discardcorrupt'
         $argList += '-err_detect', 'ignore_err'
-        if ($InputPath -ceq $File.FullName) {
+        if ($BeforeInputArgs -and $BeforeInputArgs.Count) {
+            $argList += $BeforeInputArgs
+        }
+        # mov/mp4 only - must stay immediately before -i for the next input.
+        if ($InputPath -ceq $File.FullName -and $useIgnoreEditlist) {
             $argList += '-ignore_editlist', '1'
         }
         $argList += '-i', $InputPath
@@ -413,8 +479,8 @@ $job = $work | ForEach-Object -Parallel {
             if ($a.LogFile) { $bit += " [log: $($a.LogFile)]" }
             $bit
         }
-        $head = if ($NoCpuFallback -and $Attempts.Count -eq 1 -and $Attempts[0].Phase -eq 'nvenc') {
-            'NVENC failed (no CPU fallback)'
+        $head = if ($NoCpuFallback -and $Attempts.Count -ge 1 -and ($Attempts[0].Phase -match '^nvenc')) {
+            'NVENC/CUDA pipeline failed (no CPU fallback)'
         } else {
             'could not produce dashboard-playable H.264'
         }
@@ -446,16 +512,25 @@ $job = $work | ForEach-Object -Parallel {
         )
     }
 
-    function Invoke-VideoEncode([string] $Phase, [string[]] $VideoArgs, [string[]] $AudioArgs) {
+    function Invoke-VideoEncode {
+        param(
+            [string] $Phase,
+            [string[]] $VideoArgs,
+            [string[]] $AudioArgs,
+            [string] $Vf,
+            [string[]] $EncodeTailArgs,
+            [string[]] $BeforeInputArgs = @()
+        )
         $tempMkv = Join-Path $env:TEMP ("fix-mp4s-{0}-{1}.mkv" -f [guid]::NewGuid().ToString('n'), $Phase)
         try {
             # Corrupt salvaged MP4s often fail the MP4 muxer during NVENC. Encode to MKV
             # at the requested quality, then remux to dashboard MP4 without re-encoding.
             $encodeMiddle = (Get-StreamMapArgs -AudioArgs $AudioArgs) + @(
-                '-vf', $vf
-            ) + $VideoArgs + $AudioArgs + $encodeTailArgs
+                '-vf', $Vf
+            ) + $VideoArgs + $AudioArgs + $EncodeTailArgs
             $encode = Invoke-FfmpegJob -Phase $Phase -TrackProgress `
                 -OutputPath $tempMkv `
+                -BeforeInputArgs $BeforeInputArgs `
                 -MiddleArgs $encodeMiddle `
                 -VerifyDashboardPlayable:$false
             if (-not $encode.Ok) {
@@ -479,11 +554,19 @@ $job = $work | ForEach-Object -Parallel {
         }
     }
 
-    function Try-VideoEncode([string] $EncoderPhase, [string[]] $VideoArgs) {
+    function Try-VideoEncode {
+        param(
+            [string] $EncoderPhase,
+            [string[]] $VideoArgs,
+            [string] $Vf,
+            [string[]] $EncodeTailArgs,
+            [string[]] $BeforeInputArgs = @()
+        )
         $failed = @()
         foreach ($audio in (Get-AudioEncodeAttempts -Codec $srcAudioCodec)) {
             $phase = if ($audio.Label -eq 'aac-copy') { $EncoderPhase } else { "$EncoderPhase+$($audio.Label)" }
-            $enc = Invoke-VideoEncode -Phase $phase -VideoArgs $VideoArgs -AudioArgs $audio.Args
+            $enc = Invoke-VideoEncode -Phase $phase -VideoArgs $VideoArgs -AudioArgs $audio.Args `
+                -Vf $Vf -EncodeTailArgs $EncodeTailArgs -BeforeInputArgs $BeforeInputArgs
             if ($enc.Ok) {
                 return [pscustomobject]@{ Result = $enc; Failures = $failed }
             }
@@ -496,8 +579,9 @@ $job = $work | ForEach-Object -Parallel {
     $ok = $false
     $failures = @()
 
-    if ($PreferNvenc) {
-        $try = Try-VideoEncode -EncoderPhase 'nvenc' -VideoArgs $nvencVideoArgs
+    if ($PreferNvenc -and $UseCudaPipeline) {
+        $try = Try-VideoEncode -EncoderPhase 'nvenc' -VideoArgs $nvencVideoArgs `
+            -Vf $vfCuda -EncodeTailArgs $encodeTailCuda -BeforeInputArgs $cudaHwArgs
         if ($try.Result) {
             $ok = $true
             $used = 'nvenc'
@@ -506,10 +590,24 @@ $job = $work | ForEach-Object -Parallel {
         }
     }
 
-    # CPU only when Encoder=Cpu / NVENC unavailable, or -AllowCpuFallback.
+    # Software vf + NVENC: only when CUDA pipeline is off, or -AllowCpuFallback after CUDA failed.
+    if (-not $ok -and $PreferNvenc -and (-not $UseCudaPipeline -or $AllowCpuFallback)) {
+        $swPhase = if ($UseCudaPipeline) { 'nvenc-swf' } else { 'nvenc' }
+        $try = Try-VideoEncode -EncoderPhase $swPhase -VideoArgs $nvencVideoArgs `
+            -Vf $vfCpu -EncodeTailArgs $encodeTailCpu
+        if ($try.Result) {
+            $ok = $true
+            $used = if ($UseCudaPipeline) { 'nvenc-swf' } else { 'nvenc' }
+        } else {
+            $failures += $try.Failures
+        }
+    }
+
+    # libx264 only when Encoder=Cpu / NVENC unavailable, or -AllowCpuFallback.
     if (-not $ok -and (-not $PreferNvenc -or $AllowCpuFallback)) {
         $cpuPhase = $PreferNvenc ? 'x264-fb' : 'x264'
-        $try = Try-VideoEncode -EncoderPhase $cpuPhase -VideoArgs $x264VideoArgs
+        $try = Try-VideoEncode -EncoderPhase $cpuPhase -VideoArgs $x264VideoArgs `
+            -Vf $vfCpu -EncodeTailArgs $encodeTailCpu
         if ($try.Result) {
             $ok = $true
             $used = $PreferNvenc ? 'x264-fallback' : 'x264'
@@ -588,6 +686,7 @@ function Receive-Batch {
                 $script:ok++
                 switch ($r.Encoder) {
                     'nvenc' { $script:nv++ }
+                    'nvenc-swf' { $script:fb++ }
                     'x264-fallback' { $script:fb++ }
                     'x264' { $script:cpu++ }
                 }
