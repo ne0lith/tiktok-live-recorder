@@ -303,7 +303,7 @@ Click a `@handle` to filter status and the media library to that user. Each prof
 - Search by username or filename (`/` focuses search)
 - **Hide** a user from results (card **Hide** or player **Hide user**) to browse largest/newest without that account; chips under the toolbar restore them (saved in `localStorage`). Focusing a `@handle` unhides that user if needed.
 - Thumbnail previews for finished recordings (server-generated `*.thumb.jpg` cache, lazy-loaded in the browser)
-- Orphan `*_flv.mp4` files pinned and styled (`needs convert`); legacy items show a `legacy` tag when visible. Active recordings are hidden until finalized (see Live status).
+- Orphan `*_flv.mp4` files pinned and styled (`needs convert`); legacy items show a `legacy` tag when visible. Active recordings and in-flight temps (`*.av1temp.mp4`, `*.repair.tmp.mp4`) are hidden until finalized (see Live status).
 - Docked in-browser player above the scrollable list (playback is not interrupted by library refreshes)
 - **Fix video** / **Convert** only when the server marks the file `repairable` (orphan `*_flv.mp4`, or a finished file that is not already H.264/AV1). Missing thumbnails on an already-playable AV1/H.264 file do **not** offer Fix - salvage would re-encode to H.264. Progress appears in **Recent activity** (Media), the Live status convert digest, and the summary meta line while jobs run.
 - Player header links to the user's profile filter; watchlist user actions (Stop, Pause, Check, etc.) appear below the header while a file is playing

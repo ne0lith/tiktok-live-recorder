@@ -7,12 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.25.0] - 2026-08-14
+
 ### Added
 
 - **Scripts**: `fix-mp4s -AppPipeline` runs leftover `*_flv.mp4` through the recorder salvage path (`VideoManagement.convert_flv_to_mp4`: libx264, HEVC rewrite, MKV remux) instead of NVENC
 
 ### Fixed
 
+- **Media library**: hide in-flight `*.av1temp.mp4` files (external AV1 re-encodes) the same way `*.repair.tmp.mp4` temps are already omitted
 - **Scripts**: `fix-mp4s` CUDA path drops mid-stream size/format-change frames (`-drop_changed:v 1`) so corrupt leftover FLVs no longer abort with ffmpeg -40 (`pad_cuda` / software `auto_scale`)
 
 ## [8.24.0] - 2026-08-13
@@ -730,7 +733,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.24.0...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.25.0...HEAD
+[8.25.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.24.0...v8.25.0
 [8.24.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.23.0...v8.24.0
 [8.23.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.22.0...v8.23.0
 [8.22.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.21.1...v8.22.0

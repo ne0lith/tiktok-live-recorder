@@ -14,6 +14,8 @@ MEDIA_PATTERN = re.compile(
     re.IGNORECASE,
 )
 LEGACY_SUBDIR = "legacy"
+# In-flight encodes written beside the finished TK_*.mp4; never list or serve these.
+_TRANSIENT_MEDIA_SUFFIXES = (".repair.tmp.mp4", ".av1temp.mp4")
 
 # path + mtime_ns + size -> library_playable
 _playable_cache: dict[tuple[str, int, int], bool] = {}
@@ -44,6 +46,11 @@ def clear_library_playable_cache() -> None:
         _playable_cache.clear()
 
 
+def _is_transient_media_name(name: str) -> bool:
+    lower = name.lower()
+    return any(lower.endswith(suffix) for suffix in _TRANSIENT_MEDIA_SUFFIXES)
+
+
 def _is_safe_filename(filename: str) -> bool:
     """Reject path separators / traversal names, not embedded '..' in TikTok usernames."""
     if not filename or filename in {".", ".."}:
@@ -52,6 +59,8 @@ def _is_safe_filename(filename: str) -> bool:
         return False
     # Path(filename).name strips dirs; mismatch means a separator slipped through.
     if Path(filename).name != filename:
+        return False
+    if _is_transient_media_name(filename):
         return False
     return filename.lower().endswith(".mp4")
 
@@ -150,8 +159,8 @@ def _append_library_entry(
     active_paths: set[str] | None = None,
     ffprobe_cmd: str = "ffprobe",
 ) -> None:
-    # Repair writes ``*.repair.tmp.mp4`` beside the source; never list those.
-    if path.name.endswith(".repair.tmp.mp4"):
+    # Repair / external AV1 encodes write temp MP4s beside the source; never list those.
+    if _is_transient_media_name(path.name):
         return
     entry = _media_entry(
         path,

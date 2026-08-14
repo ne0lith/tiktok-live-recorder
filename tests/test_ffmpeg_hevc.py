@@ -123,6 +123,8 @@ def test_scan_media_library_hides_in_progress(tmp_path):
     orphan_flv.write_bytes(b"orphan")
     repair_tmp = user_dir / "TK_alpha_2026.01.01_12-00-00.repair.tmp.mp4"
     repair_tmp.write_bytes(b"tmp")
+    av1_temp = user_dir / "TK_alpha_2026.01.01_12-00-00.av1temp.mp4"
+    av1_temp.write_bytes(b"av1tmp")
 
     media = scan_media_library(
         tmp_path, None, active_output_paths={str(active_flv.resolve())}
@@ -134,6 +136,7 @@ def test_scan_media_library_hides_in_progress(tmp_path):
     assert active_flv.name not in filenames
     assert converting_mp4.name not in filenames
     assert repair_tmp.name not in filenames
+    assert av1_temp.name not in filenames
 
 
 def test_move_orphan_flv_files_moves_to_flat_dir(tmp_path):
