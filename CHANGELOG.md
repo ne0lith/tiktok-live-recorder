@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Runtime setting**: `use_identity_tracking` (default on) disables secUid rename following and restores legacy username-only watchlist polling; also available as `-no-identity-tracking`
-- **Dashboard**: Settings → Runtime toggle **Follow username renames** to turn identity tracking on or off live
+- **Dashboard**: Settings -> Runtime toggle **Follow username renames** to turn identity tracking on or off live
 
 ### Changed
 
