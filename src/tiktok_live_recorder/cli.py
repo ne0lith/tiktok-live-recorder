@@ -64,6 +64,9 @@ def _build_config(args, mode, cookies, user=None, users=None):
 
     runtime = read_runtime_settings()
     use_telegram = args.telegram or runtime["use_telegram"]
+    use_identity_tracking = runtime["use_identity_tracking"] and not getattr(
+        args, "no_identity_tracking", False
+    )
 
     return RecorderConfig(
         url=args.url,
@@ -79,6 +82,7 @@ def _build_config(args, mode, cookies, user=None, users=None):
         output=args.output,
         duration=args.duration,
         use_telegram=use_telegram,
+        use_identity_tracking=use_identity_tracking,
         bitrate=args.bitrate,
         ffmpeg_path=args.ffmpeg_path,
         web_host=args.web_host,

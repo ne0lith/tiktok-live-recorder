@@ -1,5 +1,6 @@
 {
   "automatic_interval_minutes": 5,
   "use_telegram": false,
+  "use_identity_tracking": true,
   "max_concurrent_converts": 1
 }

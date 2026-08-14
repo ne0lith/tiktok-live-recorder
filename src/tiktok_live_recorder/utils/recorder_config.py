@@ -17,6 +17,7 @@ class RecorderConfig:
     output: str | None = None
     duration: int | None = None
     use_telegram: bool = False
+    use_identity_tracking: bool = True
     bitrate: str | None = None
     ffmpeg_path: str | None = None
     users_file: str | None = None

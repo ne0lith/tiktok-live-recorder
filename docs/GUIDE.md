@@ -185,6 +185,8 @@ A plain JSON array also works: `["creator1", "creator2"]`.
 
 Watchlist names are **local aliases**. Recordings, pause state, and dashboard labels stay under the name you added (`output/<name>/`). The recorder stores TikTok's stable `secUid` in `config/user_identities.json` and treats it as the source of truth: when a `secUid` is known, it refreshes the current `@uniqueId` via TikWM (`/api/user/posts?sec_uid=…`) using the same HTTP client as other API calls, then polls that handle. If TikWM is blocked (e.g. Cloudflare), it soft-falls back to the stored handle. Do not hand-edit `user_identities.json`; it is updated on each successful lookup.
 
+To restore legacy username-only polling (ignore stored `secUid` / renames), turn off **Follow username renames** in dashboard Settings -> Runtime, set `"use_identity_tracking": false` in `config/runtime_settings.json`, or pass `-no-identity-tracking`. Existing identity data is left on disk so re-enabling resumes tracking.
+
 2. Start watchlist mode:
 
 ```bash

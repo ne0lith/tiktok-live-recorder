@@ -192,7 +192,7 @@
                 <div class="settings-block">
                   <div class="settings-block-head">
                     <h4>Runtime</h4>
-                    <p class="meta">Poll interval and Telegram uploads.</p>
+                    <p class="meta">Poll interval, identity tracking, and Telegram uploads.</p>
                   </div>
                   <div class="settings-field">
                     <label class="field-label" for="interval-input">Poll interval</label>
@@ -206,6 +206,16 @@
                     <input id="max-converts-input" type="number" min="1" step="1" value="1" />
                     <p class="meta">How many FLV-to-MP4 jobs run at once when streams end.</p>
                   </div>
+                  <label class="toggle-row" for="identity-tracking-enabled">
+                    <span class="toggle-copy">
+                      <span class="toggle-title">Follow username renames</span>
+                      <span class="toggle-hint">Track secUid and poll the current handle; off uses legacy username-only lookup</span>
+                    </span>
+                    <span class="toggle">
+                      <input id="identity-tracking-enabled" type="checkbox" checked />
+                      <span class="toggle-slider" aria-hidden="true"></span>
+                    </span>
+                  </label>
                   <label class="toggle-row" for="telegram-enabled">
                     <span class="toggle-copy">
                       <span class="toggle-title">Telegram uploads</span>

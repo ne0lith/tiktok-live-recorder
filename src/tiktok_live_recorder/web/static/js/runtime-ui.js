@@ -87,12 +87,16 @@ export function syncStartupFfmpegFromDom() {
 export function syncRuntimeControls(status) {
   const intervalInput = document.getElementById("interval-input");
   const telegramEnabled = document.getElementById("telegram-enabled");
+  const identityTrackingEnabled = document.getElementById("identity-tracking-enabled");
   const maxConvertsInput = document.getElementById("max-converts-input");
   if (intervalInput && document.activeElement !== intervalInput) {
     intervalInput.value = String(status.automatic_interval_minutes ?? 5);
   }
   if (telegramEnabled && document.activeElement !== telegramEnabled) {
     telegramEnabled.checked = Boolean(status.use_telegram);
+  }
+  if (identityTrackingEnabled && document.activeElement !== identityTrackingEnabled) {
+    identityTrackingEnabled.checked = status.use_identity_tracking !== false;
   }
   if (maxConvertsInput && document.activeElement !== maxConvertsInput) {
     maxConvertsInput.value = String(status.max_concurrent_converts ?? 1);

@@ -68,6 +68,7 @@ class TikTokRecorder:
         )
         self._stopped_by_signal: int | None = None
         self.use_telegram = config.use_telegram
+        self.use_identity_tracking = config.use_identity_tracking
         self._proxy = config.proxy
         self._cookies = config.cookies
         self._recording_results: dict[str, str] = {}
@@ -458,6 +459,7 @@ class TikTokRecorder:
             "users_file": self.users_file,
             "automatic_interval_minutes": self.automatic_interval,
             "use_telegram": self.use_telegram,
+            "use_identity_tracking": self.use_identity_tracking,
             "max_concurrent_converts": self.max_concurrent_converts,
             "convert_queue": convert_queue,
             "media_jobs": self._media_jobs_snapshot(),
@@ -488,6 +490,7 @@ class TikTokRecorder:
         *,
         automatic_interval_minutes: int | None = None,
         use_telegram: bool | None = None,
+        use_identity_tracking: bool | None = None,
         max_concurrent_converts: int | None = None,
     ) -> dict:
         from tiktok_live_recorder.utils.utils import write_runtime_settings
@@ -498,6 +501,10 @@ class TikTokRecorder:
             self.automatic_interval = automatic_interval_minutes
         if use_telegram is not None:
             self.use_telegram = use_telegram
+        if use_identity_tracking is not None:
+            self.use_identity_tracking = use_identity_tracking
+            if not use_identity_tracking:
+                self._lookup_users.clear()
         if max_concurrent_converts is not None:
             if max_concurrent_converts < 1:
                 raise ValueError("max_concurrent_converts must be at least 1")
@@ -506,6 +513,7 @@ class TikTokRecorder:
         settings = {
             "automatic_interval_minutes": self.automatic_interval,
             "use_telegram": self.use_telegram,
+            "use_identity_tracking": self.use_identity_tracking,
             "max_concurrent_converts": self.max_concurrent_converts,
         }
         write_runtime_settings(settings)
@@ -570,6 +578,9 @@ class TikTokRecorder:
 
     def _status_identities(self, users: list[str]) -> dict[str, dict]:
         """Map original watchlist handles to stored TikTok identity (for the dashboard)."""
+        if not self.use_identity_tracking:
+            return {}
+
         from tiktok_live_recorder.utils.utils import (
             get_user_identity,
             read_user_identities,
@@ -596,6 +607,9 @@ class TikTokRecorder:
 
     def _lookup_user_for(self, original: str) -> str:
         """Current TikTok handle used for API calls (falls back to original)."""
+        if not self.use_identity_tracking:
+            return original
+
         from tiktok_live_recorder.utils.utils import get_user_identity
 
         cached = self._lookup_users.get(original)
@@ -709,11 +723,16 @@ class TikTokRecorder:
         """
         Resolve room + identity for a watchlist username.
 
-        When secUid is known, refresh the current uniqueId via TikWM (TTL / recycle),
-        then use that handle for room APIs. Otherwise bootstrap from the watchlist name.
+        When identity tracking is enabled and secUid is known, refresh the current
+        uniqueId via TikWM (TTL / recycle), then use that handle for room APIs.
+        Otherwise bootstrap from the watchlist name (legacy username-only path).
         """
         from tiktok_live_recorder.core.tiktok_api import UserRoomInfo
         from tiktok_live_recorder.utils.utils import get_user_identity
+
+        if not self.use_identity_tracking:
+            info = self.tiktok.get_user_room_info(original)
+            return info, original
 
         stored = get_user_identity(original) or {}
         stored_sec = stored.get("secUid")
@@ -1020,20 +1039,20 @@ class TikTokRecorder:
                 if lookup is None:
                     return None
 
-                sec_uid = None
-                from tiktok_live_recorder.utils.utils import get_user_identity
+                if self.use_identity_tracking:
+                    from tiktok_live_recorder.utils.utils import get_user_identity
 
-                stored = get_user_identity(username) or {}
-                sec_uid = stored.get("secUid")
-                if sec_uid and sec_uid in self._claimed_sec_uids:
-                    # Another watchlist entry already owns this account this cycle.
-                    logger.info(
-                        f"@{username}: skipping duplicate account "
-                        f"(same secUid as another watchlist user)"
-                    )
-                    return None
-                if sec_uid:
-                    self._claimed_sec_uids.add(sec_uid)
+                    stored = get_user_identity(username) or {}
+                    sec_uid = stored.get("secUid")
+                    if sec_uid and sec_uid in self._claimed_sec_uids:
+                        # Another watchlist entry already owns this account this cycle.
+                        logger.info(
+                            f"@{username}: skipping duplicate account "
+                            f"(same secUid as another watchlist user)"
+                        )
+                        return None
+                    if sec_uid:
+                        self._claimed_sec_uids.add(sec_uid)
 
                 room_id = info.room_id
                 if not room_id or not self.tiktok.is_room_alive(room_id, user=lookup):

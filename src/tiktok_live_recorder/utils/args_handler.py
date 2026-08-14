@@ -132,6 +132,16 @@ def parse_args():
     )
 
     parser.add_argument(
+        "-no-identity-tracking",
+        dest="no_identity_tracking",
+        action="store_true",
+        help=(
+            "Disable secUid identity tracking for this run; poll watchlist "
+            "usernames only (legacy). Overrides runtime_settings.json."
+        ),
+    )
+
+    parser.add_argument(
         "-bitrate",
         dest="bitrate",
         help="Specify the bitrate for the output file (e.g. 1000k, 1M). Default: None (keep original)",

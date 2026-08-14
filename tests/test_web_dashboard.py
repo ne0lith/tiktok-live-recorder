@@ -361,6 +361,7 @@ class StubRecorder:
     users_file = None
     automatic_interval = 5
     use_telegram = False
+    use_identity_tracking = True
     max_concurrent_converts = 1
     _telegram_uploads: list = []
 
@@ -372,6 +373,7 @@ class StubRecorder:
             "recordings": [],
             "automatic_interval_minutes": self.automatic_interval,
             "use_telegram": self.use_telegram,
+            "use_identity_tracking": self.use_identity_tracking,
             "max_concurrent_converts": self.max_concurrent_converts,
             "convert_queue": {"pending": 0, "active": 0, "max_concurrent": 1},
             "media_jobs": list(getattr(self, "media_jobs", [])),
@@ -445,11 +447,14 @@ class StubRecorder:
             self.automatic_interval = kwargs["automatic_interval_minutes"]
         if kwargs.get("use_telegram") is not None:
             self.use_telegram = kwargs["use_telegram"]
+        if kwargs.get("use_identity_tracking") is not None:
+            self.use_identity_tracking = kwargs["use_identity_tracking"]
         if kwargs.get("max_concurrent_converts") is not None:
             self.max_concurrent_converts = kwargs["max_concurrent_converts"]
         return {
             "automatic_interval_minutes": self.automatic_interval,
             "use_telegram": self.use_telegram,
+            "use_identity_tracking": self.use_identity_tracking,
             "max_concurrent_converts": self.max_concurrent_converts,
         }
 
@@ -805,12 +810,14 @@ def test_api_runtime_settings(api_client):
         json={
             "automatic_interval_minutes": 10,
             "use_telegram": True,
+            "use_identity_tracking": False,
             "max_concurrent_converts": 2,
         },
     )
     assert response.status_code == 200
     assert recorder.automatic_interval == 10
     assert recorder.use_telegram is True
+    assert recorder.use_identity_tracking is False
     assert recorder.max_concurrent_converts == 2
 
 

@@ -117,6 +117,49 @@ def test_check_user_live_follows_renamed_handle(identities_dir, monkeypatch):
     assert recorder._lookup_users["alice"] == "alice_v2"
 
 
+def test_identity_tracking_disabled_uses_original_handle(identities_dir, monkeypatch):
+    upsert_user_identity(
+        "alice",
+        unique_id="alice_v2",
+        sec_uid="SEC_ALICE",
+        unique_id_resolved_at=__import__("time").time(),
+    )
+    recorder = TikTokRecorder(
+        RecorderConfig(
+            mode=Mode.WATCHLIST,
+            users=["alice"],
+            cookies={},
+            use_identity_tracking=False,
+        )
+    )
+    fake = IdentityFakeAPI(
+        {
+            "alice": UserRoomInfo(
+                room_id="room-legacy",
+                unique_id="alice",
+                sec_uid="SEC_OTHER",
+            ),
+            "alice_v2": UserRoomInfo(
+                room_id="room-1",
+                unique_id="alice_v2",
+                sec_uid="SEC_ALICE",
+            ),
+        },
+        sec_uid_map={"SEC_ALICE": "alice_v2"},
+    )
+    recorder.tiktok = fake
+    monkeypatch.setattr(
+        "tiktok_live_recorder.core.tiktok_recorder.time.sleep", lambda *_: None
+    )
+
+    assert recorder._check_user_live("alice") == "room-legacy"
+    assert fake.room_calls == ["alice"]
+    assert fake.resolve_calls == []
+    assert get_user_identity("alice")["uniqueId"] == "alice_v2"
+    assert recorder.get_status()["identities"] == {}
+    assert recorder.get_status()["use_identity_tracking"] is False
+
+
 def test_check_user_live_updates_identity_on_rename(
     identities_dir, monkeypatch, caplog
 ):

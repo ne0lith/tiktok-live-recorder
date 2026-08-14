@@ -94,6 +94,7 @@ def test_runtime_settings_round_trip(monkeypatch, tmp_path):
         {
             "automatic_interval_minutes": 7,
             "use_telegram": True,
+            "use_identity_tracking": False,
             "max_concurrent_converts": 3,
         }
     )
@@ -102,5 +103,6 @@ def test_runtime_settings_round_trip(monkeypatch, tmp_path):
     assert settings == {
         "automatic_interval_minutes": 7,
         "use_telegram": True,
+        "use_identity_tracking": False,
         "max_concurrent_converts": 3,
     }
