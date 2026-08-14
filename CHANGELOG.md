@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.26.0] - 2026-08-14
+
+### Added
+
+- **Watchlist identity**: persist TikTok `secUid` / current `uniqueId` in `config/user_identities.json` so handle renames are followed automatically; recordings, pause state, and dashboard labels stay under the original watchlist name
+- **Dashboard**: show `now @current` and link the TikTok profile to the current handle when a watched creator renames
+
+### Changed
+
+- **Docs**: GUIDE notes watchlist names as local aliases and documents `user_identities.json`
+
 ## [8.25.0] - 2026-08-14
 
 ### Added
@@ -733,7 +744,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.25.0...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.26.0...HEAD
+[8.26.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.25.0...v8.26.0
 [8.25.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.24.0...v8.25.0
 [8.24.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.23.0...v8.24.0
 [8.23.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.22.0...v8.23.0

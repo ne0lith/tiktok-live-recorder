@@ -22,7 +22,8 @@ All user-specific settings live in `config/` at the project root:
 | File | Template | Purpose |
 |------|----------|---------|
 | `cookies.json` | `cookies.json.example` | TikTok session cookies |
-| `users.json` | `users.json.example` | Watchlist usernames |
+| `users.json` | `users.json.example` | Watchlist usernames (local aliases) |
+| `user_identities.json` | `user_identities.json.example` | Stable TikTok IDs / current handles (auto-managed) |
 | `watchlist_state.json` | `watchlist_state.json.example` | Paused users (auto-managed by the dashboard) |
 | `runtime_settings.json` | `runtime_settings.json.example` | Poll interval, Telegram uploads, max concurrent converts |
 | `telegram.json` | `telegram.json.example` | Telegram API credentials |
@@ -182,6 +183,8 @@ Watchlist mode polls multiple creators in one process and records each one that 
 
 A plain JSON array also works: `["creator1", "creator2"]`.
 
+Watchlist names are **local aliases**. Recordings, pause state, and dashboard labels stay under the name you added (`output/<name>/`). The recorder also stores TikTok's stable `secUid` in `config/user_identities.json` and follows handle renames automatically - polls and TikTok profile links use the current `@uniqueId` while your local folder name stays put. Do not hand-edit `user_identities.json`; it is updated on each successful lookup.
+
 2. Start watchlist mode:
 
 ```bash
@@ -292,7 +295,7 @@ Shown directly under the top bar. Feed of recent polls, recording starts/stops, 
 
 ### User focus
 
-Click a `@handle` to filter status and the media library to that user. Each profile includes a TikTok link and shareable URL: `http://localhost:8787/#user/<username>`. Press **Esc** or use **<- All users** to clear the filter.
+Click a `@handle` to filter status and the media library to that user. Each profile includes a TikTok link (current handle when the creator renamed) and shareable URL: `http://localhost:8787/#user/<username>`. If the TikTok handle changed, the status line shows a quiet `now @current`. Press **Esc** or use **<- All users** to clear the filter.
 
 ### Media library
 

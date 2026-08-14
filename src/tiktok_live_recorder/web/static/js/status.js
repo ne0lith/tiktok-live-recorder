@@ -5,7 +5,10 @@ import {
   formatDuration,
   formatNextPoll,
   formatTimestamp,
+  hasRenamedHandle,
   normalizeUsername,
+  tiktokProfileUrl,
+  currentTikTokHandle,
   usernamesMatch,
 } from "./format.js";
 import {
@@ -413,6 +416,12 @@ function renderStatusLine(row, status) {
       details.push(`${formatBytes(libraryBytes)} library`);
     }
   }
+  const renamed = hasRenamedHandle(row.username, status);
+  const tiktokHandle = currentTikTokHandle(row.username, status);
+  const renameMarkup = renamed
+    ? `<span class="status-rename">now @${tiktokHandle}</span>`
+    : "";
+  const tiktokLink = `<a class="profile-tiktok-link" href="${tiktokProfileUrl(tiktokHandle)}" target="_blank" rel="noopener noreferrer" title="Open TikTok profile">TikTok</a>`;
   const detailMarkup = details.length
     ? `<p class="status-line-detail">${details.join(" · ")}</p>`
     : "";
@@ -422,6 +431,8 @@ function renderStatusLine(row, status) {
       <div class="status-line-body">
         <div class="status-line-main">
           ${profileLinkMarkup(row.username, { active: focused })}
+          ${renameMarkup}
+          ${tiktokLink}
           <span class="badge ${row.state}">${formatStateLabel(row)}</span>
         </div>
         ${detailMarkup}

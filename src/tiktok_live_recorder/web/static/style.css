@@ -347,6 +347,14 @@ th {
   text-decoration: underline;
 }
 
+.status-rename {
+  color: var(--muted, #8b8b9a);
+  font-size: 0.8rem;
+  font-weight: 400;
+  margin-left: 0.25rem;
+  white-space: nowrap;
+}
+
 .settings-panel {
   scroll-margin-top: 1rem;
 }

@@ -1,3 +1,4 @@
+import json
 import pytest
 from unittest.mock import MagicMock, patch
 
@@ -300,17 +301,25 @@ def test_get_room_id_from_user_falls_back_when_signed_fetch_fails():
     api._api_get = MagicMock(
         side_effect=requests.ConnectionError("connection reset"),
     )
-    api._old_get_room_id_from_user = MagicMock(return_value="room-99")
+    api._old_get_user_room_info = MagicMock(
+        return_value=__import__(
+            "tiktok_live_recorder.core.tiktok_api", fromlist=["UserRoomInfo"]
+        ).UserRoomInfo(room_id="room-99")
+    )
 
     assert api.get_room_id_from_user("creator") == "room-99"
-    api._old_get_room_id_from_user.assert_called_once_with("creator")
+    api._old_get_user_room_info.assert_called_once_with("creator")
 
 
 def test_get_room_id_from_user_logs_tikrec_warning_once_per_cycle():
     api = TikTokAPI.__new__(TikTokAPI)
     api._http_lock = __import__("threading").Lock()
     api._tikrec_warned_this_cycle = False
-    api._old_get_room_id_from_user = MagicMock(return_value=None)
+    api._old_get_user_room_info = MagicMock(
+        return_value=__import__(
+            "tiktok_live_recorder.core.tiktok_api", fromlist=["UserRoomInfo"]
+        ).UserRoomInfo()
+    )
 
     def fail_sign(_user):
         raise TikRecUnavailableError("503")
@@ -322,6 +331,81 @@ def test_get_room_id_from_user_logs_tikrec_warning_once_per_cycle():
         api.get_room_id_from_user("beta")
 
     assert mock_logger.warning.call_count == 1
+
+
+def test_get_user_room_info_parses_identity_fields():
+    api = TikTokAPI.__new__(TikTokAPI)
+    api._http_lock = __import__("threading").Lock()
+    response = MagicMock()
+    response.text = json.dumps(
+        {
+            "data": {
+                "user": {
+                    "roomId": "42",
+                    "uniqueId": "creator_v2",
+                    "secUid": "MS4wLjABAAAA",
+                }
+            }
+        }
+    )
+    response.json.return_value = {
+        "data": {
+            "user": {
+                "roomId": "42",
+                "uniqueId": "creator_v2",
+                "secUid": "MS4wLjABAAAA",
+            }
+        }
+    }
+    api._api_get = MagicMock(return_value=response)
+    api._tikrec_get_room_id_signed_url = lambda user: "https://www.tiktok.com/signed"
+
+    info = api.get_user_room_info("creator")
+    assert info.room_id == "42"
+    assert info.unique_id == "creator_v2"
+    assert info.sec_uid == "MS4wLjABAAAA"
+
+
+def test_parse_user_room_info_from_euler_payload():
+    from tiktok_live_recorder.core.tiktok_api import parse_user_room_info_from_payload
+
+    info = parse_user_room_info_from_payload(
+        {
+            "data": {
+                "room_info": {
+                    "id": "99",
+                    "owner": {"unique_id": "euler_user", "sec_uid": "sec-euler"},
+                }
+            }
+        }
+    )
+    assert info.room_id == "99"
+    assert info.unique_id == "euler_user"
+    assert info.sec_uid == "sec-euler"
+
+
+def test_extract_user_identity_from_page_universal_data():
+    from tiktok_live_recorder.core.tiktok_api import extract_user_identity_from_page
+
+    payload = {
+        "__DEFAULT_SCOPE__": {
+            "webapp.user-detail": {
+                "userInfo": {
+                    "user": {
+                        "uniqueId": "renamed",
+                        "secUid": "MS4wLjABAAAAstable",
+                    }
+                }
+            }
+        }
+    }
+    html = (
+        '<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__" type="application/json">'
+        + json.dumps(payload)
+        + "</script>"
+    )
+    identity = extract_user_identity_from_page(html)
+    assert identity == {"uniqueId": "renamed", "secUid": "MS4wLjABAAAAstable"}
 
 
 def test_get_room_id_from_user_euler_non_200_raises_room_id_error():

@@ -177,6 +177,21 @@ class PollFakeTikTokAPI:
         self.calls.append(f"get_room_id_from_user:{user}")
         return f"room-{user}"
 
+    def get_user_room_info(self, user):
+        from tiktok_live_recorder.core.tiktok_api import UserRoomInfo
+
+        self.calls.append(f"get_user_room_info:{user}")
+        room_id = self.get_room_id_from_user(user)
+        return UserRoomInfo(
+            room_id=room_id,
+            unique_id=user,
+            sec_uid=f"sec-{user}",
+        )
+
+    def get_user_identity_from_profile(self, user):
+        self.calls.append(f"get_user_identity_from_profile:{user}")
+        return None
+
     def is_room_alive(self, room_id, user=None):
         self.calls.append(f"is_room_alive:{room_id}")
         user = user or room_id.removeprefix("room-")
@@ -255,6 +270,7 @@ def test_poll_users_once_keeps_recording_user_removed_from_watchlist():
 
     assert "alpha" in active_recordings
     assert recorder.tiktok.calls == [
+        "get_user_room_info:beta",
         "get_room_id_from_user:beta",
         "is_room_alive:room-beta",
     ]
@@ -278,6 +294,7 @@ def test_poll_users_once_logs_offline_and_skips_active_recording(monkeypatch):
     )
 
     assert recorder.tiktok.calls == [
+        "get_user_room_info:beta",
         "get_room_id_from_user:beta",
         "is_room_alive:room-beta",
     ]
@@ -306,8 +323,14 @@ def test_poll_users_once_handles_network_error_per_user():
         def reset_tikrec_warn_flag(self):
             return None
 
+        def get_user_room_info(self, user):
+            raise __import__("requests").ConnectionError("dns down")
+
         def get_room_id_from_user(self, user):
             raise __import__("requests").ConnectionError("dns down")
+
+        def get_user_identity_from_profile(self, user):
+            return None
 
         def is_room_alive(self, room_id, user=None):
             return True
@@ -329,11 +352,21 @@ def test_poll_users_once_retries_transient_network_error(monkeypatch):
         def reset_tikrec_warn_flag(self):
             return None
 
-        def get_room_id_from_user(self, user):
+        def get_user_room_info(self, user):
+            from tiktok_live_recorder.core.tiktok_api import UserRoomInfo
+
             attempts["count"] += 1
             if attempts["count"] == 1:
                 raise __import__("requests").ConnectionError("timeout")
-            return "room-alpha"
+            return UserRoomInfo(
+                room_id="room-alpha", unique_id=user, sec_uid=f"sec-{user}"
+            )
+
+        def get_room_id_from_user(self, user):
+            return self.get_user_room_info(user).room_id
+
+        def get_user_identity_from_profile(self, user):
+            return None
 
         def is_room_alive(self, room_id, user=None):
             return True
@@ -342,15 +375,15 @@ def test_poll_users_once_retries_transient_network_error(monkeypatch):
     monkeypatch.setattr(
         "tiktok_live_recorder.core.tiktok_recorder.time.sleep", lambda *_: None
     )
-    recorder._spawn_recording_thread = lambda user, room_id: (
-        recorder._active_recordings.__setitem__(
-            user,
-            {
-                "thread": MagicMock(is_alive=MagicMock(return_value=True)),
-                "room_id": room_id,
-            },
-        )
-    )
+
+    def spawn(user, room_id, lookup_user=None):
+        recorder._active_recordings[user] = {
+            "thread": MagicMock(is_alive=MagicMock(return_value=True)),
+            "room_id": room_id,
+            "lookup_user": lookup_user or user,
+        }
+
+    recorder._spawn_recording_thread = spawn
 
     recorder._poll_users_once(["alpha"], {}, label="Watchlist")
 
@@ -386,7 +419,7 @@ def test_poll_users_once_rechecks_finished_user_same_cycle(monkeypatch):
     recorder.tiktok = PollFakeTikTokAPI(live_users={"alpha"})
     started = {}
 
-    def fake_worker(user, room_id):
+    def fake_worker(user, room_id, lookup_user=None):
         started["user"] = user
         started["room_id"] = room_id
 
@@ -778,7 +811,7 @@ def test_poll_users_once_starts_recording_for_live_user(monkeypatch):
     recorder.tiktok = PollFakeTikTokAPI(live_users={"alpha"})
     started = {}
 
-    def fake_worker(user, room_id):
+    def fake_worker(user, room_id, lookup_user=None):
         started["user"] = user
         started["room_id"] = room_id
 
@@ -997,7 +1030,7 @@ def test_poll_starts_recording_while_convert_media_job_pending(tmp_path, monkeyp
     recorder.tiktok = PollFakeTikTokAPI(live_users={"alpha"})
     started = {}
 
-    def fake_worker(user, room_id):
+    def fake_worker(user, room_id, lookup_user=None):
         started["user"] = user
         started["room_id"] = room_id
 
@@ -1232,8 +1265,18 @@ def test_404_after_data_finalizes_then_poll_can_start_again(tmp_path, monkeypatc
             self.live = True
             self.download_calls = 0
 
+        def get_user_room_info(self, user):
+            from tiktok_live_recorder.core.tiktok_api import UserRoomInfo
+
+            return UserRoomInfo(
+                room_id="room-alpha", unique_id=user, sec_uid=f"sec-{user}"
+            )
+
         def get_room_id_from_user(self, user):
             return "room-alpha"
+
+        def get_user_identity_from_profile(self, user):
+            return None
 
         def is_room_alive(self, room_id, user=None):
             return self.live
@@ -1352,10 +1395,13 @@ def test_poll_users_once_spaces_checks_and_logs_plan(monkeypatch, caplog):
         )
 
     assert recorder.tiktok.calls == [
+        "get_user_room_info:gamma",
         "get_room_id_from_user:gamma",
         "is_room_alive:room-gamma",
+        "get_user_room_info:beta",
         "get_room_id_from_user:beta",
         "is_room_alive:room-beta",
+        "get_user_room_info:alpha",
         "get_room_id_from_user:alpha",
         "is_room_alive:room-alpha",
     ]

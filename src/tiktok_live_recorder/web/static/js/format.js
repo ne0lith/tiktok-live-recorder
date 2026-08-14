@@ -53,3 +53,18 @@ export function usernamesMatch(a, b) {
 export function tiktokProfileUrl(username) {
   return `https://tiktok.com/@${encodeURIComponent(normalizeUsername(username))}`;
 }
+
+export function currentTikTokHandle(original, status) {
+  const identities = status?.identities || {};
+  const entry = identities[original] || identities[normalizeUsername(original)];
+  const current = entry?.uniqueId;
+  if (current && !usernamesMatch(current, original)) {
+    return normalizeUsername(current);
+  }
+  return normalizeUsername(original);
+}
+
+export function hasRenamedHandle(original, status) {
+  const current = currentTikTokHandle(original, status);
+  return Boolean(current) && !usernamesMatch(current, original);
+}

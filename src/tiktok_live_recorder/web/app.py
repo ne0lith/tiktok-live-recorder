@@ -33,6 +33,7 @@ from tiktok_live_recorder.utils.utils import (
     read_paused_users,
     read_telegram_config,
     remove_user_from_file,
+    remove_user_identity,
     telegram_file_path,
     users_file_path,
     write_cookies,
@@ -517,6 +518,8 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
         username = _normalize_username(username)
         users_path = _ensure_users_file(recorder)
         users = remove_user_from_file(users_path, username)
+        remove_user_identity(username)
+        getattr(recorder, "_lookup_users", {}).pop(username, None)
 
         paused = read_paused_users()
         if username.lower() in paused:

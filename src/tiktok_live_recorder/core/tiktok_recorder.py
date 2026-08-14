@@ -92,6 +92,10 @@ class TikTokRecorder:
         self._update_state = "idle"
         self._update_error: str | None = None
         self._restart_after_update = False
+        # original watchlist name -> current TikTok uniqueId (for API / page scrape)
+        self._lookup_users: dict[str, str] = {}
+        # secUid values already claimed by another watchlist entry this poll
+        self._claimed_sec_uids: set[str] = set()
 
     @staticmethod
     def _entry_still_active(entry: dict) -> bool:
@@ -448,6 +452,7 @@ class TikTokRecorder:
             "mode": self.mode.name.lower(),
             "users": users,
             "paused": paused,
+            "identities": self._status_identities(users),
             "users_file": self.users_file,
             "automatic_interval_minutes": self.automatic_interval,
             "use_telegram": self.use_telegram,
@@ -561,12 +566,150 @@ class TikTokRecorder:
                 return name
         return None
 
-    def _spawn_recording_thread(self, username: str, room_id: str) -> None:
+    def _status_identities(self, users: list[str]) -> dict[str, dict]:
+        """Map original watchlist handles to stored TikTok identity (for the dashboard)."""
+        from tiktok_live_recorder.utils.utils import (
+            get_user_identity,
+            read_user_identities,
+        )
+
+        stored = read_user_identities()
+        result: dict[str, dict] = {}
+        for username in users:
+            entry = get_user_identity(username, stored)
+            if not entry:
+                continue
+            unique_id = entry.get("uniqueId")
+            payload: dict[str, str] = {}
+            if unique_id:
+                payload["uniqueId"] = unique_id
+            if entry.get("secUid"):
+                payload["secUid"] = entry["secUid"]
+            current = self._lookup_users.get(username) or unique_id
+            if current:
+                payload["uniqueId"] = current
+            if payload:
+                result[username] = payload
+        return result
+
+    def _lookup_user_for(self, original: str) -> str:
+        """Current TikTok handle used for API calls (falls back to original)."""
+        from tiktok_live_recorder.utils.utils import get_user_identity
+
+        cached = self._lookup_users.get(original)
+        if cached:
+            return cached
+        entry = get_user_identity(original)
+        if entry and entry.get("uniqueId"):
+            return entry["uniqueId"]
+        return original
+
+    def _apply_resolved_identity(
+        self,
+        original: str,
+        *,
+        unique_id: str | None,
+        sec_uid: str | None,
+    ) -> str | None:
+        """
+        Persist identity when secUid matches (or is new).
+        Returns None when the handle resolved to a different account (recycled).
+        Returns the current uniqueId to use for API calls otherwise.
+        """
+        from tiktok_live_recorder.utils.utils import (
+            get_user_identity,
+            upsert_user_identity,
+        )
+
+        stored = get_user_identity(original) or {}
+        stored_sec = stored.get("secUid")
+        stored_unique = stored.get("uniqueId")
+
+        if sec_uid and stored_sec and sec_uid != stored_sec:
+            logger.warning(
+                f"@{original}: handle now points to a different account "
+                f"(secUid changed); not following the new account"
+            )
+            return None
+
+        current = (unique_id or stored_unique or original).lstrip("@").strip()
+        if not current:
+            current = original
+
+        should_write = False
+        if sec_uid and sec_uid != stored_sec:
+            should_write = True
+        if unique_id and unique_id != stored_unique:
+            should_write = True
+
+        if should_write and (unique_id or sec_uid):
+            previous = stored_unique or original
+            upsert_user_identity(
+                original,
+                unique_id=unique_id or stored_unique,
+                sec_uid=sec_uid or stored_sec,
+            )
+            if unique_id and previous and unique_id.lower() != previous.lower():
+                logger.info(f"@{original} is now @{unique_id}")
+
+        self._lookup_users[original] = current
+        return current
+
+    def _resolve_user_room(self, original: str):
+        """
+        Resolve room + identity for a watchlist username.
+        Uses stored uniqueId when present; falls back to profile scrape.
+        """
+        from tiktok_live_recorder.core.tiktok_api import UserRoomInfo
+
+        lookup = self._lookup_user_for(original)
+        info = self.tiktok.get_user_room_info(lookup)
+
+        unique_id = info.unique_id
+        sec_uid = info.sec_uid
+
+        if not unique_id or not sec_uid:
+            for candidate in dict.fromkeys([lookup, original]):
+                profile = self.tiktok.get_user_identity_from_profile(candidate)
+                if not profile:
+                    continue
+                unique_id = unique_id or profile.get("uniqueId")
+                sec_uid = sec_uid or profile.get("secUid")
+                if unique_id and sec_uid:
+                    break
+
+        current = self._apply_resolved_identity(
+            original, unique_id=unique_id, sec_uid=sec_uid
+        )
+        if current is None:
+            return UserRoomInfo(), None
+
+        # If we discovered a rename, re-query room info with the current handle.
+        if current.lower() != lookup.lower():
+            refreshed_info = self.tiktok.get_user_room_info(current)
+            if refreshed_info.unique_id or refreshed_info.sec_uid:
+                new_current = self._apply_resolved_identity(
+                    original,
+                    unique_id=refreshed_info.unique_id or current,
+                    sec_uid=refreshed_info.sec_uid or sec_uid,
+                )
+                if new_current is None:
+                    return UserRoomInfo(), None
+                current = new_current
+            if refreshed_info.room_id is not None:
+                info = refreshed_info
+
+        return info, current
+
+    def _spawn_recording_thread(
+        self, username: str, room_id: str, *, lookup_user: str | None = None
+    ) -> None:
         if not self._should_accept_new_work():
             return
+        api_user = (lookup_user or self._lookup_user_for(username)).lstrip("@").strip()
         thread = Thread(
             target=self._recording_worker,
-            args=(username, room_id),
+            args=(username, room_id, api_user),
             daemon=False,
             name=f"record-{username}",
         )
@@ -581,6 +724,7 @@ class TikTokRecorder:
             "bytes_written": 0,
             "status": "recording",
             "stop_event": stop_event,
+            "lookup_user": api_user,
         }
         self.record_activity(
             "recording",
@@ -745,7 +889,7 @@ class TikTokRecorder:
         if not self.users_file:
             return self.users or []
 
-        from tiktok_live_recorder.utils.utils import read_users
+        from tiktok_live_recorder.utils.utils import prune_user_identities, read_users
 
         loaded = read_users(self.users_file)
         previous = set(self.users or [])
@@ -763,7 +907,10 @@ class TikTokRecorder:
                 + ", ".join(f"@{username}" for username in removed)
                 + " (active recordings finish before being dropped)"
             )
+            for username in removed:
+                self._lookup_users.pop(username, None)
 
+        prune_user_identities(loaded)
         self.users = loaded
         return loaded
 
@@ -780,8 +927,27 @@ class TikTokRecorder:
         """Return room_id when the user is live, or None when offline."""
         for attempt in range(2):
             try:
-                room_id = self.tiktok.get_room_id_from_user(username)
-                if not room_id or not self.tiktok.is_room_alive(room_id, user=username):
+                info, lookup = self._resolve_user_room(username)
+                if lookup is None:
+                    return None
+
+                sec_uid = None
+                from tiktok_live_recorder.utils.utils import get_user_identity
+
+                stored = get_user_identity(username) or {}
+                sec_uid = stored.get("secUid")
+                if sec_uid and sec_uid in self._claimed_sec_uids:
+                    # Another watchlist entry already owns this account this cycle.
+                    logger.info(
+                        f"@{username}: skipping duplicate account "
+                        f"(same secUid as another watchlist user)"
+                    )
+                    return None
+                if sec_uid:
+                    self._claimed_sec_uids.add(sec_uid)
+
+                room_id = info.room_id
+                if not room_id or not self.tiktok.is_room_alive(room_id, user=lookup):
                     return None
                 return room_id
             except RequestException:
@@ -817,6 +983,7 @@ class TikTokRecorder:
         reset_warn = getattr(self.tiktok, "reset_tikrec_warn_flag", None)
         if callable(reset_warn):
             reset_warn()
+        self._claimed_sec_uids.clear()
         paused_users = read_paused_users()
         counts = {"recording": 0, "offline": 0, "started": 0, "error": 0, "skipped": 0}
         groups = {
@@ -992,7 +1159,11 @@ class TikTokRecorder:
         for username, room_id in groups["starting"]:
             if self._should_stop():
                 break
-            self._spawn_recording_thread(username, room_id)
+            self._spawn_recording_thread(
+                username,
+                room_id,
+                lookup_user=self._lookup_user_for(username),
+            )
             active_recordings[username] = self._active_recordings[username]
             time.sleep(2.5)
 
@@ -1144,9 +1315,9 @@ class TikTokRecorder:
     def _log_recording(self, user, message, level="info"):
         getattr(logger, level)(f"[@{user}] {message}")
 
-    def _recording_worker(self, user, room_id):
+    def _recording_worker(self, user, room_id, lookup_user=None):
         try:
-            self.start_recording(user, room_id)
+            self.start_recording(user, room_id, lookup_user=lookup_user)
         except (UserLiveError, LiveNotFound) as ex:
             self._recording_results[user] = "error"
             self._log_recording(user, str(ex), "error")
@@ -1261,11 +1432,17 @@ class TikTokRecorder:
         except (UserLiveError, LiveNotFound):
             return []
 
-    def start_recording(self, user, room_id):
+    def start_recording(self, user, room_id, lookup_user=None):
         """
-        Start recording live
+        Start recording live.
+
+        ``user`` is the local/watchlist name (output folders, logs).
+        ``lookup_user`` is the current TikTok uniqueId used for WAF page scrape / stream URLs.
         """
-        live_urls = self.tiktok.get_live_url_candidates(room_id, user=user)
+        api_user = (
+            (lookup_user or self._lookup_user_for(user) or user).lstrip("@").strip()
+        )
+        live_urls = self.tiktok.get_live_url_candidates(room_id, user=api_user)
         if not live_urls:
             raise LiveNotFound(TikTokError.RETRIEVE_LIVE_URL)
 
@@ -1276,6 +1453,7 @@ class TikTokRecorder:
             status="recording",
             bytes_written=0,
             started_at=time.time(),
+            lookup_user=api_user,
         )
         min_stream_bytes = 4096
         buffer_size = 64 * 1024
@@ -1297,6 +1475,10 @@ class TikTokRecorder:
 
         def _assume_live_on_check_error() -> bool:
             return bytes_written >= min_stream_bytes
+
+        def _api_user() -> str:
+            entry = self._active_recordings.get(user) or {}
+            return entry.get("lookup_user") or api_user
 
         try:
             with open(output, "wb") as out_file:
@@ -1401,7 +1583,7 @@ class TikTokRecorder:
                             out_file.truncate()
                             self._update_recording_entry(user, bytes_written=0)
                             refreshed = self._refresh_live_urls(
-                                room_id, user, fallback=live_urls
+                                room_id, _api_user(), fallback=live_urls
                             )
                             nxt = self._pick_next_stream_url(refreshed, failed_urls)
                             if nxt:
@@ -1420,7 +1602,7 @@ class TikTokRecorder:
                             if bytes_written < min_stream_bytes:
                                 failed_urls.add(normalize_cdn_url(live_url))
                                 refreshed = self._refresh_live_urls(
-                                    room_id, user, fallback=live_urls
+                                    room_id, _api_user(), fallback=live_urls
                                 )
                                 nxt = self._pick_next_stream_url(refreshed, failed_urls)
                                 if nxt:
@@ -1509,7 +1691,7 @@ class TikTokRecorder:
                                 )
                                 break
 
-                            refreshed = self._refresh_live_urls(room_id, user)
+                            refreshed = self._refresh_live_urls(room_id, _api_user())
                             nxt = self._pick_next_stream_url(refreshed, failed_urls)
                             if nxt:
                                 live_url = nxt

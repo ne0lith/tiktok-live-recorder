@@ -2,6 +2,7 @@ import html
 import json
 import re
 import threading
+from dataclasses import dataclass
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import requests
@@ -22,6 +23,15 @@ from tiktok_live_recorder.utils.custom_exceptions import (
 )
 
 DEFAULT_API_TIMEOUT = (10, 20)
+
+
+@dataclass(frozen=True)
+class UserRoomInfo:
+    """Room lookup plus stable TikTok identity fields when available."""
+
+    room_id: str | None = None
+    unique_id: str | None = None
+    sec_uid: str | None = None
 
 
 _STREAM_URL_PATTERN = re.compile(
@@ -238,6 +248,139 @@ def extract_embedded_json_from_page(content: str) -> list[dict]:
 
 def _normalize_username(user: str) -> str:
     return user.lower().lstrip("@")
+
+
+def _identity_from_user_obj(user_obj: dict | None) -> tuple[str | None, str | None]:
+    """Return (unique_id, sec_uid) from a TikTok user-like dict."""
+    if not isinstance(user_obj, dict):
+        return None, None
+
+    nested = user_obj.get("user")
+    if isinstance(nested, dict):
+        user_obj = nested
+
+    unique_id = None
+    for key in ("uniqueId", "unique_id", "display_id", "displayId"):
+        value = user_obj.get(key)
+        if value:
+            unique_id = str(value).lstrip("@").strip()
+            break
+
+    sec_uid = None
+    for key in ("secUid", "sec_uid"):
+        value = user_obj.get(key)
+        if value:
+            sec_uid = str(value).strip()
+            break
+
+    return unique_id or None, sec_uid or None
+
+
+def parse_user_room_info_from_payload(data: dict | None) -> UserRoomInfo:
+    """Extract roomId / uniqueId / secUid from tikrec or Euler-style JSON."""
+    if not isinstance(data, dict):
+        return UserRoomInfo()
+
+    payload = data.get("data") if isinstance(data.get("data"), dict) else data
+    if not isinstance(payload, dict):
+        return UserRoomInfo()
+
+    user = payload.get("user")
+    room_info = payload.get("room_info")
+    if not isinstance(room_info, dict):
+        room_info = {}
+
+    room_id = None
+    if isinstance(user, dict):
+        for key in ("roomId", "room_id"):
+            value = user.get(key)
+            if value is not None and str(value).strip():
+                room_id = str(value)
+                break
+    if room_id is None:
+        for key in ("id", "roomId", "room_id"):
+            value = room_info.get(key)
+            if value is not None and str(value).strip():
+                room_id = str(value)
+                break
+
+    unique_id, sec_uid = _identity_from_user_obj(
+        user if isinstance(user, dict) else None
+    )
+    if unique_id is None or sec_uid is None:
+        owner = (
+            room_info.get("owner") or room_info.get("anchor") or payload.get("owner")
+        )
+        alt_unique, alt_sec = _identity_from_user_obj(
+            owner if isinstance(owner, dict) else None
+        )
+        unique_id = unique_id or alt_unique
+        sec_uid = sec_uid or alt_sec
+
+    return UserRoomInfo(room_id=room_id, unique_id=unique_id, sec_uid=sec_uid)
+
+
+def extract_user_identity_from_obj(obj) -> dict | None:
+    """
+    Find uniqueId + secUid from embedded profile/live page JSON.
+    Prefers webapp.user-detail.userInfo.user when present.
+    """
+    preferred: dict | None = None
+    fallback: dict | None = None
+
+    def consider(node: dict) -> None:
+        nonlocal preferred, fallback
+        user_info = node.get("userInfo")
+        if isinstance(user_info, dict) and isinstance(user_info.get("user"), dict):
+            unique_id, sec_uid = _identity_from_user_obj(user_info.get("user"))
+            if unique_id and sec_uid:
+                preferred = preferred or {"uniqueId": unique_id, "secUid": sec_uid}
+                return
+
+        unique_id, sec_uid = _identity_from_user_obj(node)
+        if not unique_id or not sec_uid:
+            return
+        if ("secUid" in node or "sec_uid" in node) and (
+            "uniqueId" in node or "unique_id" in node
+        ):
+            fallback = fallback or {"uniqueId": unique_id, "secUid": sec_uid}
+
+    def walk(node):
+        if isinstance(node, dict):
+            consider(node)
+            if preferred:
+                return
+            for value in node.values():
+                walk(value)
+                if preferred:
+                    return
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+                if preferred:
+                    return
+
+    if isinstance(obj, dict):
+        scope = obj.get("__DEFAULT_SCOPE__")
+        if isinstance(scope, dict):
+            detail = scope.get("webapp.user-detail")
+            if isinstance(detail, dict):
+                user_info = detail.get("userInfo")
+                if isinstance(user_info, dict):
+                    unique_id, sec_uid = _identity_from_user_obj(user_info.get("user"))
+                    if unique_id and sec_uid:
+                        return {"uniqueId": unique_id, "secUid": sec_uid}
+        walk(obj)
+
+    return preferred or fallback
+
+
+def extract_user_identity_from_page(content: str) -> dict | None:
+    for blob in extract_embedded_json_from_page(content):
+        identity = extract_user_identity_from_obj(blob)
+        if identity:
+            return identity
+    return None
 
 
 def _owner_unique_id(owner) -> str | None:
@@ -642,7 +785,7 @@ class TikTokAPI:
             "Falling back to unsigned API — recording continues but may be less reliable."
         )
 
-    def _old_get_room_id_from_user(self, user: str) -> str | None:
+    def _old_get_user_room_info(self, user: str) -> UserRoomInfo:
         params = {"uniqueId": user, "giftInfo": "false"}
 
         response = self._api_get(
@@ -654,13 +797,10 @@ class TikTokAPI:
         if response.status_code != 200:
             raise UserLiveError(TikTokError.ROOM_ID_ERROR)
 
-        data = response.json()
+        return parse_user_room_info_from_payload(response.json())
 
-        room_id = data.get("data", {}).get("room_info", {}).get("id")
-        if not room_id:
-            return None
-
-        return room_id
+    def _old_get_room_id_from_user(self, user: str) -> str | None:
+        return self._old_get_user_room_info(user).room_id
 
     def _tikrec_get_room_id_signed_url(self, user: str) -> str:
         try:
@@ -691,26 +831,44 @@ class TikTokAPI:
 
         return f"{self.BASE_URL}{signed_path}"
 
-    def get_room_id_from_user(self, user: str) -> str | None:
-        """Given a username, get the room_id."""
+    def get_user_room_info(self, user: str) -> UserRoomInfo:
+        """Given a username, get room_id and identity fields when available."""
         try:
             signed_url = self._tikrec_get_room_id_signed_url(user)
         except TikRecUnavailableError as e:
             self._log_tikrec_unavailable(e)
-            return self._old_get_room_id_from_user(user)
+            return self._old_get_user_room_info(user)
 
         try:
             response = self._api_get(signed_url)
         except requests.RequestException:
-            return self._old_get_room_id_from_user(user)
+            return self._old_get_user_room_info(user)
 
         content = response.text
 
         if not content or "Please wait" in content:
             raise UserLiveError(TikTokError.WAF_BLOCKED)
 
-        data = response.json()
-        return (data.get("data") or {}).get("user", {}).get("roomId")
+        return parse_user_room_info_from_payload(response.json())
+
+    def get_room_id_from_user(self, user: str) -> str | None:
+        """Given a username, get the room_id."""
+        return self.get_user_room_info(user).room_id
+
+    def get_user_identity_from_profile(self, user: str) -> dict | None:
+        """
+        Scrape tiktok.com/@user for uniqueId + secUid.
+        Useful when a renamed handle still redirects, or room APIs omit identity.
+        """
+        handle = user.lstrip("@").strip()
+        if not handle:
+            return None
+        try:
+            response = self.http_client.get(f"{self.BASE_URL}/@{handle}")
+            return extract_user_identity_from_page(response.text)
+        except Exception as e:
+            logger.debug(f"Failed to extract identity from @{handle} profile: {e}")
+            return None
 
     def get_followers_list(self, sec_uid) -> list:
         """

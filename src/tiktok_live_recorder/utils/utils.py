@@ -226,6 +226,142 @@ def watchlist_state_path() -> str:
     return str(config_dir() / "watchlist_state.json")
 
 
+def user_identities_path() -> str:
+    return str(config_dir() / "user_identities.json")
+
+
+def read_user_identities(file_path: str | None = None) -> dict[str, dict]:
+    """Load auto-managed watchlist identity map: original handle -> {secUid, uniqueId}."""
+    from tiktok_live_recorder.utils.logger_manager import logger
+
+    path = file_path or user_identities_path()
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        return {}
+    except json.JSONDecodeError as exc:
+        logger.error(f"user identities at {path} are invalid JSON: {exc}")
+        return {}
+
+    if not isinstance(data, dict):
+        logger.error(f"user identities at {path} must be a JSON object")
+        return {}
+
+    result: dict[str, dict] = {}
+    for key, value in data.items():
+        if not key or not isinstance(key, str) or not isinstance(value, dict):
+            continue
+        original = key.lstrip("@").strip()
+        if not original:
+            continue
+        entry: dict[str, str] = {}
+        unique_id = value.get("uniqueId") or value.get("unique_id")
+        sec_uid = value.get("secUid") or value.get("sec_uid")
+        if unique_id and str(unique_id).strip():
+            entry["uniqueId"] = str(unique_id).lstrip("@").strip()
+        if sec_uid and str(sec_uid).strip():
+            entry["secUid"] = str(sec_uid).strip()
+        if entry:
+            result[original] = entry
+    return result
+
+
+def write_user_identities(
+    identities: dict[str, dict], file_path: str | None = None
+) -> None:
+    path = file_path or user_identities_path()
+    config_dir().mkdir(parents=True, exist_ok=True)
+    payload: dict[str, dict[str, str]] = {}
+    for key, value in identities.items():
+        if not key or not isinstance(value, dict):
+            continue
+        original = str(key).lstrip("@").strip()
+        if not original:
+            continue
+        entry: dict[str, str] = {}
+        unique_id = value.get("uniqueId") or value.get("unique_id")
+        sec_uid = value.get("secUid") or value.get("sec_uid")
+        if unique_id and str(unique_id).strip():
+            entry["uniqueId"] = str(unique_id).lstrip("@").strip()
+        if sec_uid and str(sec_uid).strip():
+            entry["secUid"] = str(sec_uid).strip()
+        if entry:
+            payload[original] = entry
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2, sort_keys=True)
+        f.write("\n")
+
+
+def get_user_identity(
+    original: str, identities: dict[str, dict] | None = None
+) -> dict | None:
+    """Look up identity by original watchlist name (case-insensitive fallback)."""
+    handle = original.lstrip("@").strip()
+    if not handle:
+        return None
+    data = identities if identities is not None else read_user_identities()
+    if handle in data:
+        return data[handle]
+    lower = handle.lower()
+    for key, value in data.items():
+        if key.lower() == lower:
+            return value
+    return None
+
+
+def upsert_user_identity(
+    original: str,
+    *,
+    unique_id: str | None = None,
+    sec_uid: str | None = None,
+    file_path: str | None = None,
+) -> dict:
+    """Create or update identity for a watchlist username. Returns the stored entry."""
+    handle = original.lstrip("@").strip()
+    identities = read_user_identities(file_path)
+    # Preserve existing key casing when matching case-insensitively.
+    key = handle
+    for existing in identities:
+        if existing.lower() == handle.lower():
+            key = existing
+            break
+    entry = dict(identities.get(key) or {})
+    if unique_id and str(unique_id).strip():
+        entry["uniqueId"] = str(unique_id).lstrip("@").strip()
+    if sec_uid and str(sec_uid).strip():
+        entry["secUid"] = str(sec_uid).strip()
+    identities[key] = entry
+    write_user_identities(identities, file_path)
+    return entry
+
+
+def remove_user_identity(original: str, file_path: str | None = None) -> None:
+    handle = original.lstrip("@").strip()
+    if not handle:
+        return
+    identities = read_user_identities(file_path)
+    keys = [k for k in identities if k == handle or k.lower() == handle.lower()]
+    if not keys:
+        return
+    for key in keys:
+        del identities[key]
+    write_user_identities(identities, file_path)
+
+
+def prune_user_identities(
+    keep_usernames: list[str] | set[str], file_path: str | None = None
+) -> None:
+    """Drop identity entries whose original handle is no longer on the watchlist."""
+    keep = {
+        u.lstrip("@").strip().lower() for u in keep_usernames if u and str(u).strip()
+    }
+    identities = read_user_identities(file_path)
+    pruned = {k: v for k, v in identities.items() if k.lower() in keep}
+    if len(pruned) != len(identities):
+        write_user_identities(pruned, file_path)
+
+
 def read_paused_users(file_path: str | None = None) -> set[str]:
     """Load paused usernames from the auto-managed watchlist state file."""
     from tiktok_live_recorder.utils.logger_manager import logger
