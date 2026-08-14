@@ -183,7 +183,7 @@ Watchlist mode polls multiple creators in one process and records each one that 
 
 A plain JSON array also works: `["creator1", "creator2"]`.
 
-Watchlist names are **local aliases**. Recordings, pause state, and dashboard labels stay under the name you added (`output/<name>/`). The recorder also stores TikTok's stable `secUid` in `config/user_identities.json` and follows handle renames automatically - polls and TikTok profile links use the current `@uniqueId` while your local folder name stays put. Do not hand-edit `user_identities.json`; it is updated on each successful lookup.
+Watchlist names are **local aliases**. Recordings, pause state, and dashboard labels stay under the name you added (`output/<name>/`). The recorder stores TikTok's stable `secUid` in `config/user_identities.json` and treats it as the source of truth: when a `secUid` is known, it refreshes the current `@uniqueId` via TikWM (`/api/user/posts?sec_uid=…`) using the same HTTP client as other API calls, then polls that handle. If TikWM is blocked (e.g. Cloudflare), it soft-falls back to the stored handle. Do not hand-edit `user_identities.json`; it is updated on each successful lookup.
 
 2. Start watchlist mode:
 

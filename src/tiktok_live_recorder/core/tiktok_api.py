@@ -576,6 +576,40 @@ def extract_user_live_context_from_page(
     return best
 
 
+def parse_unique_id_from_tikwm_posts(data: dict | None) -> str | None:
+    """Extract author.unique_id from a TikWM /api/user/posts JSON body."""
+    if not isinstance(data, dict):
+        return None
+    payload = data.get("data") if isinstance(data.get("data"), dict) else data
+    if not isinstance(payload, dict):
+        return None
+    videos = payload.get("videos")
+    if not isinstance(videos, list) or not videos:
+        return None
+    first = videos[0]
+    if not isinstance(first, dict):
+        return None
+    author = first.get("author")
+    if not isinstance(author, dict):
+        return None
+    unique_id = author.get("unique_id") or author.get("uniqueId")
+    if unique_id and str(unique_id).strip():
+        return str(unique_id).lstrip("@").strip()
+    return None
+
+
+def _looks_like_cf_challenge(text: str, status_code: int | None = None) -> bool:
+    if status_code == 403:
+        return True
+    if not text:
+        return False
+    lower = text.lower()
+    return any(
+        marker in lower
+        for marker in ("just a moment", "cf-challenge", "challenge-platform")
+    )
+
+
 class TikTokAPI:
     def __init__(self, proxy, cookies):
         self.BASE_URL = "https://www.tiktok.com"
@@ -583,9 +617,11 @@ class TikTokAPI:
         self.API_URL = "https://www.tiktok.com/api-live/user/room/"
         self.EULER_API = "https://tiktok.eulerstream.com"
         self.TIKREC_API = "https://tikrec.com"
+        self.TIKWM_API = "https://www.tikwm.com"
         self._cookies = cookies
         self._http_lock = threading.Lock()
         self._tikrec_warned_this_cycle = False
+        self._tikwm_warned = False
 
         self.http_client = HttpClient(proxy, cookies).req
         self._http_client_stream = HttpClient(proxy, cookies).req_stream
@@ -869,6 +905,69 @@ class TikTokAPI:
         except Exception as e:
             logger.debug(f"Failed to extract identity from @{handle} profile: {e}")
             return None
+
+    def _log_tikwm_unavailable(self, reason: str) -> None:
+        if self._tikwm_warned:
+            return
+        self._tikwm_warned = True
+        logger.warning(
+            f"[!] TikWM secUid resolver unavailable ({reason}). "
+            "Falling back to stored handle — identity tracking continues without "
+            "secUid→uniqueId refresh until the next successful lookup."
+        )
+
+    def resolve_unique_id_from_sec_uid(self, sec_uid: str) -> str | None:
+        """
+        Resolve the current TikTok uniqueId for a stable secUid via TikWM.
+
+        Uses the same HttpClient (UA / proxy / curl_cffi) as other API calls.
+        Soft-fails on Cloudflare or network errors (returns None).
+        """
+        sec = (sec_uid or "").strip()
+        if not sec:
+            return None
+
+        param_tries = [("sec_uid", sec), ("unique_id", sec)]
+        last_reason = "no response"
+        for param_name, param_value in param_tries:
+            try:
+                response = self._api_get(
+                    f"{self.TIKWM_API}/api/user/posts",
+                    params={param_name: param_value, "count": "1", "cursor": "0"},
+                    headers={
+                        "Referer": f"{self.TIKWM_API}/",
+                        "Accept": "application/json, text/plain, */*",
+                    },
+                )
+            except requests.RequestException as e:
+                last_reason = str(e)
+                continue
+
+            text = response.text or ""
+            if _looks_like_cf_challenge(text, response.status_code):
+                self._log_tikwm_unavailable("Cloudflare challenge")
+                return None
+            if response.status_code != 200:
+                last_reason = f"HTTP {response.status_code}"
+                continue
+
+            try:
+                data = response.json()
+            except ValueError:
+                last_reason = "invalid JSON"
+                continue
+
+            unique_id = parse_unique_id_from_tikwm_posts(data)
+            if unique_id:
+                return unique_id
+            last_reason = (
+                f"code={data.get('code')!r} msg={data.get('msg')!r}"
+                if isinstance(data, dict)
+                else "empty videos"
+            )
+
+        logger.debug(f"TikWM secUid resolve failed: {last_reason}")
+        return None
 
     def get_followers_list(self, sec_uid) -> list:
         """

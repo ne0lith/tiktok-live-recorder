@@ -418,3 +418,57 @@ def test_get_room_id_from_user_euler_non_200_raises_room_id_error():
 
     with pytest.raises(UserLiveError, match="Error extracting RoomID"):
         api._old_get_room_id_from_user("creator")
+
+
+def test_parse_unique_id_from_tikwm_posts():
+    from tiktok_live_recorder.core.tiktok_api import parse_unique_id_from_tikwm_posts
+
+    assert (
+        parse_unique_id_from_tikwm_posts(
+            {
+                "code": 0,
+                "data": {"videos": [{"author": {"unique_id": "alice_v2", "id": "1"}}]},
+            }
+        )
+        == "alice_v2"
+    )
+    assert parse_unique_id_from_tikwm_posts({"data": {"videos": []}}) is None
+    assert parse_unique_id_from_tikwm_posts(None) is None
+
+
+def test_resolve_unique_id_from_sec_uid_uses_tikwm():
+    api = TikTokAPI.__new__(TikTokAPI)
+    api.TIKWM_API = "https://www.tikwm.com"
+    api._http_lock = __import__("threading").Lock()
+    api._tikwm_warned = False
+    response = MagicMock()
+    response.status_code = 200
+    response.text = '{"code":0}'
+    response.json.return_value = {
+        "code": 0,
+        "data": {"videos": [{"author": {"unique_id": "kat_pesch"}}]},
+    }
+    api._api_get = MagicMock(return_value=response)
+
+    assert api.resolve_unique_id_from_sec_uid("SEC123") == "kat_pesch"
+    kwargs = api._api_get.call_args
+    assert kwargs[0][0] == "https://www.tikwm.com/api/user/posts"
+    assert kwargs[1]["params"]["sec_uid"] == "SEC123"
+    assert kwargs[1]["headers"]["Referer"] == "https://www.tikwm.com/"
+
+
+def test_resolve_unique_id_from_sec_uid_soft_fails_on_cloudflare():
+    api = TikTokAPI.__new__(TikTokAPI)
+    api.TIKWM_API = "https://www.tikwm.com"
+    api._http_lock = __import__("threading").Lock()
+    api._tikwm_warned = False
+    response = MagicMock()
+    response.status_code = 403
+    response.text = "<html>Just a moment...</html>"
+    api._api_get = MagicMock(return_value=response)
+
+    with patch("tiktok_live_recorder.core.tiktok_api.logger") as mock_logger:
+        assert api.resolve_unique_id_from_sec_uid("SEC123") is None
+        assert mock_logger.warning.call_count == 1
+        assert api.resolve_unique_id_from_sec_uid("SEC123") is None
+        assert mock_logger.warning.call_count == 1

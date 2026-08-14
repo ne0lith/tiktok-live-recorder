@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.27.0] - 2026-08-14
+
+### Added
+
+- **Watchlist identity**: resolve current `uniqueId` from stored `secUid` via TikWM using the existing HTTP client (secUid-first), so recycled old handles cannot strand a watched account
+
+### Changed
+
+- **Docs**: GUIDE notes secUid as source of truth and soft-fallback when TikWM is unavailable
+
 ## [8.26.0] - 2026-08-14
 
 ### Added
@@ -744,7 +754,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.26.0...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.27.0...HEAD
+[8.27.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.26.0...v8.27.0
 [8.26.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.25.0...v8.26.0
 [8.25.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.24.0...v8.25.0
 [8.24.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.23.0...v8.24.0

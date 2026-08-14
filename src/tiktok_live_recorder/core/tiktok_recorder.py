@@ -28,6 +28,8 @@ from tiktok_live_recorder.utils.enums import Mode, Error, TimeOut, TikTokError
 
 # Pause between watchlist/followers poll steps to avoid bursting TikTok/tikrec APIs.
 POLL_USER_DELAY_SECONDS = 0.5
+# How often to refresh uniqueId from secUid via TikWM (seconds).
+UNIQUE_ID_RESOLVE_TTL_SECONDS = 3600
 
 # Only live capture occupies the per-username recording slot. Convert jobs live in
 # `_media_jobs` / ConvertQueue and must not block polling or a new live.
@@ -610,6 +612,7 @@ class TikTokRecorder:
         *,
         unique_id: str | None,
         sec_uid: str | None,
+        touch_resolved_at: bool = False,
     ) -> str | None:
         """
         Persist identity when secUid matches (or is new).
@@ -641,13 +644,16 @@ class TikTokRecorder:
             should_write = True
         if unique_id and unique_id != stored_unique:
             should_write = True
+        if touch_resolved_at:
+            should_write = True
 
-        if should_write and (unique_id or sec_uid):
+        if should_write and (unique_id or sec_uid or touch_resolved_at):
             previous = stored_unique or original
             upsert_user_identity(
                 original,
                 unique_id=unique_id or stored_unique,
                 sec_uid=sec_uid or stored_sec,
+                unique_id_resolved_at=time.time() if touch_resolved_at else None,
             )
             if unique_id and previous and unique_id.lower() != previous.lower():
                 logger.info(f"@{original} is now @{unique_id}")
@@ -655,12 +661,65 @@ class TikTokRecorder:
         self._lookup_users[original] = current
         return current
 
+    def _should_refresh_unique_id_from_sec_uid(self, stored: dict) -> bool:
+        """True when we should ask TikWM for the current handle of a known secUid."""
+        if not stored.get("secUid"):
+            return False
+        if not stored.get("uniqueId"):
+            return True
+        resolved_at = stored.get("uniqueIdResolvedAt")
+        if resolved_at is None:
+            return True
+        try:
+            age = time.time() - float(resolved_at)
+        except (TypeError, ValueError):
+            return True
+        return age >= UNIQUE_ID_RESOLVE_TTL_SECONDS
+
+    def _touch_unique_id_resolved_at(self, original: str) -> None:
+        """Stamp resolver clock so we do not hammer TikWM when it fails."""
+        from tiktok_live_recorder.utils.utils import (
+            get_user_identity,
+            upsert_user_identity,
+        )
+
+        if not get_user_identity(original):
+            return
+        upsert_user_identity(original, unique_id_resolved_at=time.time())
+
+    def _refresh_unique_id_from_sec_uid(
+        self, original: str, sec_uid: str
+    ) -> str | None:
+        """Ask TikWM for the current uniqueId; persist on success. Returns handle or None."""
+        resolve = getattr(self.tiktok, "resolve_unique_id_from_sec_uid", None)
+        if not callable(resolve):
+            return None
+        resolved = resolve(sec_uid)
+        if not resolved:
+            self._touch_unique_id_resolved_at(original)
+            return None
+        return self._apply_resolved_identity(
+            original,
+            unique_id=resolved,
+            sec_uid=sec_uid,
+            touch_resolved_at=True,
+        )
+
     def _resolve_user_room(self, original: str):
         """
         Resolve room + identity for a watchlist username.
-        Uses stored uniqueId when present; falls back to profile scrape.
+
+        When secUid is known, refresh the current uniqueId via TikWM (TTL / recycle),
+        then use that handle for room APIs. Otherwise bootstrap from the watchlist name.
         """
         from tiktok_live_recorder.core.tiktok_api import UserRoomInfo
+        from tiktok_live_recorder.utils.utils import get_user_identity
+
+        stored = get_user_identity(original) or {}
+        stored_sec = stored.get("secUid")
+
+        if stored_sec and self._should_refresh_unique_id_from_sec_uid(stored):
+            self._refresh_unique_id_from_sec_uid(original, stored_sec)
 
         lookup = self._lookup_user_for(original)
         info = self.tiktok.get_user_room_info(lookup)
@@ -681,6 +740,28 @@ class TikTokRecorder:
         current = self._apply_resolved_identity(
             original, unique_id=unique_id, sec_uid=sec_uid
         )
+
+        # Recycled handle: rediscover via stored secUid, then retry room lookup.
+        if current is None and stored_sec:
+            recovered = self._refresh_unique_id_from_sec_uid(original, stored_sec)
+            if recovered:
+                info = self.tiktok.get_user_room_info(recovered)
+                if info.sec_uid and info.sec_uid != stored_sec:
+                    logger.warning(
+                        f"@{original}: secUid resolver returned @{recovered} but "
+                        "room lookup points at a different account; skipping"
+                    )
+                    return UserRoomInfo(), None
+                current = self._apply_resolved_identity(
+                    original,
+                    unique_id=info.unique_id or recovered,
+                    sec_uid=stored_sec,
+                )
+                if current is None:
+                    return UserRoomInfo(), None
+                return info, current
+            return UserRoomInfo(), None
+
         if current is None:
             return UserRoomInfo(), None
 
@@ -694,6 +775,14 @@ class TikTokRecorder:
                     sec_uid=refreshed_info.sec_uid or sec_uid,
                 )
                 if new_current is None:
+                    # Recycle on re-query — try secUid resolver once.
+                    if stored_sec or sec_uid:
+                        recovered = self._refresh_unique_id_from_sec_uid(
+                            original, stored_sec or sec_uid
+                        )
+                        if recovered:
+                            info = self.tiktok.get_user_room_info(recovered)
+                            return info, recovered
                     return UserRoomInfo(), None
                 current = new_current
             if refreshed_info.room_id is not None:

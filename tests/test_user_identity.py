@@ -54,11 +54,18 @@ def test_users_json_format_unchanged_by_identity_sidecar(identities_dir):
 
 
 class IdentityFakeAPI:
-    def __init__(self, rooms: dict[str, UserRoomInfo], profiles: dict | None = None):
+    def __init__(
+        self,
+        rooms: dict[str, UserRoomInfo],
+        profiles: dict | None = None,
+        sec_uid_map: dict | None = None,
+    ):
         self.rooms = rooms
         self.profiles = profiles or {}
+        self.sec_uid_map = sec_uid_map or {}
         self.room_calls: list[str] = []
         self.alive_calls: list[tuple[str, str | None]] = []
+        self.resolve_calls: list[str] = []
 
     def reset_tikrec_warn_flag(self):
         return None
@@ -70,13 +77,22 @@ class IdentityFakeAPI:
     def get_user_identity_from_profile(self, user):
         return self.profiles.get(user)
 
+    def resolve_unique_id_from_sec_uid(self, sec_uid):
+        self.resolve_calls.append(sec_uid)
+        return self.sec_uid_map.get(sec_uid)
+
     def is_room_alive(self, room_id, user=None):
         self.alive_calls.append((room_id, user))
         return bool(room_id)
 
 
 def test_check_user_live_follows_renamed_handle(identities_dir, monkeypatch):
-    upsert_user_identity("alice", unique_id="alice_v2", sec_uid="SEC_ALICE")
+    upsert_user_identity(
+        "alice",
+        unique_id="alice_v2",
+        sec_uid="SEC_ALICE",
+        unique_id_resolved_at=__import__("time").time(),
+    )
     recorder = TikTokRecorder(
         RecorderConfig(mode=Mode.WATCHLIST, users=["alice"], cookies={})
     )
@@ -96,6 +112,7 @@ def test_check_user_live_follows_renamed_handle(identities_dir, monkeypatch):
 
     assert recorder._check_user_live("alice") == "room-1"
     assert fake.room_calls == ["alice_v2"]
+    assert fake.resolve_calls == []
     assert fake.alive_calls == [("room-1", "alice_v2")]
     assert recorder._lookup_users["alice"] == "alice_v2"
 
@@ -135,7 +152,12 @@ def test_check_user_live_updates_identity_on_rename(
 def test_check_user_live_rejects_recycled_handle(identities_dir, monkeypatch, caplog):
     import logging
 
-    upsert_user_identity("alice", unique_id="alice", sec_uid="SEC_ORIGINAL")
+    upsert_user_identity(
+        "alice",
+        unique_id="alice",
+        sec_uid="SEC_ORIGINAL",
+        unique_id_resolved_at=__import__("time").time(),
+    )
     recorder = TikTokRecorder(
         RecorderConfig(mode=Mode.WATCHLIST, users=["alice"], cookies={})
     )
@@ -159,6 +181,81 @@ def test_check_user_live_rejects_recycled_handle(identities_dir, monkeypatch, ca
     assert "different account" in caplog.text
     # Stored identity must not be overwritten by the recycled handle.
     assert get_user_identity("alice")["secUid"] == "SEC_ORIGINAL"
+
+
+def test_check_user_live_recovers_via_secuid_resolver(
+    identities_dir, monkeypatch, caplog
+):
+    import logging
+
+    upsert_user_identity(
+        "alice",
+        unique_id="alice",
+        sec_uid="SEC_ALICE",
+        unique_id_resolved_at=__import__("time").time(),
+    )
+    recorder = TikTokRecorder(
+        RecorderConfig(mode=Mode.WATCHLIST, users=["alice"], cookies={})
+    )
+    fake = IdentityFakeAPI(
+        rooms={
+            "alice": UserRoomInfo(
+                room_id="room-impostor",
+                unique_id="alice",
+                sec_uid="SEC_OTHER",
+            ),
+            "alice_v2": UserRoomInfo(
+                room_id="room-1",
+                unique_id="alice_v2",
+                sec_uid="SEC_ALICE",
+            ),
+        },
+        sec_uid_map={"SEC_ALICE": "alice_v2"},
+    )
+    recorder.tiktok = fake
+    monkeypatch.setattr(
+        "tiktok_live_recorder.core.tiktok_recorder.time.sleep", lambda *_: None
+    )
+
+    with caplog.at_level(logging.INFO):
+        assert recorder._check_user_live("alice") == "room-1"
+
+    assert "SEC_ALICE" in fake.resolve_calls
+    assert "alice_v2" in fake.room_calls
+    assert get_user_identity("alice")["uniqueId"] == "alice_v2"
+    assert get_user_identity("alice")["secUid"] == "SEC_ALICE"
+    assert "@alice is now @alice_v2" in caplog.text
+
+
+def test_secuid_resolver_runs_when_ttl_expired(identities_dir, monkeypatch):
+    upsert_user_identity(
+        "alice",
+        unique_id="alice_old",
+        sec_uid="SEC_ALICE",
+        unique_id_resolved_at=0,
+    )
+    recorder = TikTokRecorder(
+        RecorderConfig(mode=Mode.WATCHLIST, users=["alice"], cookies={})
+    )
+    fake = IdentityFakeAPI(
+        rooms={
+            "alice_v2": UserRoomInfo(
+                room_id="room-1",
+                unique_id="alice_v2",
+                sec_uid="SEC_ALICE",
+            )
+        },
+        sec_uid_map={"SEC_ALICE": "alice_v2"},
+    )
+    recorder.tiktok = fake
+    monkeypatch.setattr(
+        "tiktok_live_recorder.core.tiktok_recorder.time.sleep", lambda *_: None
+    )
+
+    assert recorder._check_user_live("alice") == "room-1"
+    assert fake.resolve_calls == ["SEC_ALICE"]
+    assert fake.room_calls[0] == "alice_v2"
+    assert get_user_identity("alice")["uniqueIdResolvedAt"] > 0
 
 
 def test_check_user_live_profile_fallback_discovers_rename(identities_dir, monkeypatch):

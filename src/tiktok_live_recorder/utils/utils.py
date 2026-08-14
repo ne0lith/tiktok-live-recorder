@@ -255,13 +255,19 @@ def read_user_identities(file_path: str | None = None) -> dict[str, dict]:
         original = key.lstrip("@").strip()
         if not original:
             continue
-        entry: dict[str, str] = {}
+        entry: dict = {}
         unique_id = value.get("uniqueId") or value.get("unique_id")
         sec_uid = value.get("secUid") or value.get("sec_uid")
         if unique_id and str(unique_id).strip():
             entry["uniqueId"] = str(unique_id).lstrip("@").strip()
         if sec_uid and str(sec_uid).strip():
             entry["secUid"] = str(sec_uid).strip()
+        resolved_at = value.get("uniqueIdResolvedAt")
+        if resolved_at is not None:
+            try:
+                entry["uniqueIdResolvedAt"] = float(resolved_at)
+            except (TypeError, ValueError):
+                pass
         if entry:
             result[original] = entry
     return result
@@ -272,20 +278,26 @@ def write_user_identities(
 ) -> None:
     path = file_path or user_identities_path()
     config_dir().mkdir(parents=True, exist_ok=True)
-    payload: dict[str, dict[str, str]] = {}
+    payload: dict[str, dict] = {}
     for key, value in identities.items():
         if not key or not isinstance(value, dict):
             continue
         original = str(key).lstrip("@").strip()
         if not original:
             continue
-        entry: dict[str, str] = {}
+        entry: dict = {}
         unique_id = value.get("uniqueId") or value.get("unique_id")
         sec_uid = value.get("secUid") or value.get("sec_uid")
         if unique_id and str(unique_id).strip():
             entry["uniqueId"] = str(unique_id).lstrip("@").strip()
         if sec_uid and str(sec_uid).strip():
             entry["secUid"] = str(sec_uid).strip()
+        resolved_at = value.get("uniqueIdResolvedAt")
+        if resolved_at is not None:
+            try:
+                entry["uniqueIdResolvedAt"] = float(resolved_at)
+            except (TypeError, ValueError):
+                pass
         if entry:
             payload[original] = entry
     with open(path, "w", encoding="utf-8") as f:
@@ -315,6 +327,7 @@ def upsert_user_identity(
     *,
     unique_id: str | None = None,
     sec_uid: str | None = None,
+    unique_id_resolved_at: float | None = None,
     file_path: str | None = None,
 ) -> dict:
     """Create or update identity for a watchlist username. Returns the stored entry."""
@@ -331,6 +344,8 @@ def upsert_user_identity(
         entry["uniqueId"] = str(unique_id).lstrip("@").strip()
     if sec_uid and str(sec_uid).strip():
         entry["secUid"] = str(sec_uid).strip()
+    if unique_id_resolved_at is not None:
+        entry["uniqueIdResolvedAt"] = float(unique_id_resolved_at)
     identities[key] = entry
     write_user_identities(identities, file_path)
     return entry
