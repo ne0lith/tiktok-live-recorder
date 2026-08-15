@@ -27,6 +27,7 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PATH="/app/.venv/bin:$PATH"
 ENV TIKTOK_RECORDER_CONFIG_DIR=/app/config
+ENV TIKTOK_RECORDER_IN_DOCKER=1
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \

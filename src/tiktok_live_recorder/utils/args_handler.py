@@ -144,6 +144,17 @@ def parse_args():
     )
 
     parser.add_argument(
+        "-auto-update-when-idle",
+        dest="auto_update_when_idle",
+        action="store_true",
+        help=(
+            "When a GitHub update is available, wait until no recordings or "
+            "converts are running, then apply a full restart update. Also "
+            "toggleable from the dashboard."
+        ),
+    )
+
+    parser.add_argument(
         "-bitrate",
         dest="bitrate",
         help="Specify the bitrate for the output file (e.g. 1000k, 1M). Default: None (keep original)",

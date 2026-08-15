@@ -30,6 +30,8 @@ from tiktok_live_recorder.utils.enums import Mode, Error, TimeOut, TikTokError
 POLL_USER_DELAY_SECONDS = 0.5
 # How often to refresh uniqueId from secUid via TikWM (seconds).
 UNIQUE_ID_RESOLVE_TTL_SECONDS = 3600
+# How often auto-update-when-idle rechecks GitHub for a new release.
+AUTO_UPDATE_CHECK_SECONDS = 30 * 60
 
 # Only live capture occupies the per-username recording slot. Convert jobs live in
 # `_media_jobs` / ConvertQueue and must not block polling or a new live.
@@ -69,6 +71,16 @@ class TikTokRecorder:
         self._stopped_by_signal: int | None = None
         self.use_telegram = config.use_telegram
         self.use_identity_tracking = config.use_identity_tracking
+        self.auto_update_when_idle = bool(config.auto_update_when_idle)
+        if self.auto_update_when_idle:
+            from tiktok_live_recorder.updater import is_updatable_install
+
+            if not is_updatable_install():
+                logger.info(
+                    "Ignoring auto-update-when-idle: in-app updates need a git "
+                    "clone (Docker and other packaged installs are immutable)."
+                )
+                self.auto_update_when_idle = False
         if self.use_identity_tracking:
             logger.info(
                 "Identity tracking (use_identity_tracking) is experimental "
@@ -100,6 +112,8 @@ class TikTokRecorder:
         self._update_state = "idle"
         self._update_error: str | None = None
         self._restart_after_update = False
+        self._idle_update_requested = False
+        self._last_auto_update_check_at = 0.0
         # original watchlist name -> current TikTok uniqueId (for API / page scrape)
         self._lookup_users: dict[str, str] = {}
         # secUid values already claimed by another watchlist entry this poll
@@ -136,7 +150,107 @@ class TikTokRecorder:
             self._update_pending = True
             self._update_state = "waiting"
             self._update_error = None
+            self._idle_update_requested = False
         self.request_stop()
+
+    def queue_update_when_idle(self) -> dict:
+        """Keep polling until no recordings/converts, then full restart-update."""
+        if self._update_pending:
+            raise RuntimeError("Update already in progress")
+        with self._update_lock:
+            self._idle_update_requested = True
+            self._update_state = "waiting_idle"
+            self._update_error = None
+        logger.info(
+            "Update queued for the next idle window (no recordings or converts)."
+        )
+        started = self._try_start_idle_update()
+        if started:
+            return {
+                "status": "waiting",
+                "message": (
+                    "Idle now — stopping polling and waiting for any remaining "
+                    "work before restarting."
+                ),
+            }
+        return {
+            "status": "waiting_idle",
+            "message": (
+                "Waiting until no recordings or converts are running, "
+                "then applying a full restart update."
+            ),
+        }
+
+    def _is_idle_for_update(self) -> bool:
+        if self._poll_in_progress:
+            return False
+        for entry in self._active_recordings.values():
+            if self._entry_still_active(entry):
+                return False
+        stats = self._convert_queue.stats()
+        return stats.get("pending", 0) == 0 and stats.get("active", 0) == 0
+
+    def _try_start_idle_update(self) -> bool:
+        """If an idle update is queued and the process is idle, begin restart-update."""
+        if self._update_pending:
+            return False
+        if not self._idle_update_requested:
+            return False
+        if not self._is_idle_for_update():
+            return False
+        with self._update_lock:
+            if self._update_pending:
+                return False
+            if not self._is_idle_for_update():
+                return False
+            self._update_pending = True
+            self._update_state = "waiting"
+            self._update_error = None
+            self._idle_update_requested = False
+        if not self._is_idle_for_update():
+            with self._update_lock:
+                self._update_pending = False
+                self._idle_update_requested = True
+                self._update_state = "waiting_idle"
+            return False
+        logger.info("Idle window reached — starting graceful restart update.")
+        self.request_stop()
+        return True
+
+    def _maybe_check_auto_update(self) -> None:
+        if not self.auto_update_when_idle:
+            return
+        if self._update_pending or self._idle_update_requested:
+            return
+        now = time.time()
+        if now - self._last_auto_update_check_at < AUTO_UPDATE_CHECK_SECONDS:
+            return
+        self._last_auto_update_check_at = now
+        try:
+            from tiktok_live_recorder.updater import (
+                is_updatable_install,
+                preview_update_scope,
+            )
+
+            if not is_updatable_install():
+                logger.debug("Auto-update skipped: install is not updatable.")
+                return
+            preview = preview_update_scope()
+        except Exception as ex:
+            logger.warning("Auto-update check failed: %s", ex)
+            return
+        if not preview.update_available:
+            logger.debug("Auto-update check: already up to date.")
+            return
+        logger.info(
+            "Update available (v%s, running v%s); will apply when idle.",
+            preview.latest_version,
+            preview.current_version,
+        )
+        try:
+            self.queue_update_when_idle()
+        except RuntimeError:
+            return
 
     def get_update_status(self) -> dict:
         with self._update_lock:
@@ -168,6 +282,24 @@ class TikTokRecorder:
                 message = f"Waiting for {' and '.join(parts)}…"
             else:
                 message = "Finalizing shutdown…"
+        elif state == "waiting_idle":
+            parts = []
+            if recordings_waiting:
+                parts.append(
+                    f"{recordings_waiting} recording"
+                    f"{'s' if recordings_waiting != 1 else ''}"
+                )
+            pending = converts.get("pending", 0)
+            active = converts.get("active", 0)
+            convert_total = pending + active
+            if convert_total:
+                parts.append(
+                    f"{convert_total} convert{'s' if convert_total != 1 else ''}"
+                )
+            if parts:
+                message = f"Update queued — waiting until {' and '.join(parts)} finish…"
+            else:
+                message = "Update queued — waiting until idle…"
 
         return {
             "phase": state,
@@ -258,6 +390,9 @@ class TikTokRecorder:
         """Sleep until the poll interval elapses, handling priority single-user polls."""
         deadline = time.time() + seconds
         while not self._should_stop():
+            self._try_start_idle_update()
+            if self._should_stop():
+                return
             remaining = deadline - time.time()
             if remaining <= 0:
                 return
@@ -465,6 +600,7 @@ class TikTokRecorder:
             "automatic_interval_minutes": self.automatic_interval,
             "use_telegram": self.use_telegram,
             "use_identity_tracking": self.use_identity_tracking,
+            "auto_update_when_idle": self.auto_update_when_idle,
             "max_concurrent_converts": self.max_concurrent_converts,
             "convert_queue": convert_queue,
             "media_jobs": self._media_jobs_snapshot(),
@@ -477,7 +613,11 @@ class TikTokRecorder:
             "activity": activity,
             "ffmpeg": self.get_ffmpeg_info(),
         }
-        if self._update_pending or self._update_state != "idle":
+        if (
+            self._update_pending
+            or self._update_state != "idle"
+            or self._idle_update_requested
+        ):
             status["update"] = self.get_update_status()
         return status
 
@@ -496,6 +636,7 @@ class TikTokRecorder:
         automatic_interval_minutes: int | None = None,
         use_telegram: bool | None = None,
         use_identity_tracking: bool | None = None,
+        auto_update_when_idle: bool | None = None,
         max_concurrent_converts: int | None = None,
     ) -> dict:
         from tiktok_live_recorder.utils.utils import write_runtime_settings
@@ -515,6 +656,23 @@ class TikTokRecorder:
                     "Identity tracking (use_identity_tracking) is experimental "
                     "and not guaranteed to be developed further."
                 )
+        if auto_update_when_idle is not None:
+            from tiktok_live_recorder.updater import is_updatable_install
+
+            if auto_update_when_idle and not is_updatable_install():
+                logger.info(
+                    "Ignoring auto-update-when-idle: in-app updates need a git "
+                    "clone (Docker and other packaged installs are immutable)."
+                )
+                auto_update_when_idle = False
+            self.auto_update_when_idle = auto_update_when_idle
+            if auto_update_when_idle:
+                self._last_auto_update_check_at = 0.0
+                logger.info(
+                    "Auto-update when idle enabled: the recorder will apply a "
+                    "full restart update at the next window with no recordings "
+                    "or converts."
+                )
         if max_concurrent_converts is not None:
             if max_concurrent_converts < 1:
                 raise ValueError("max_concurrent_converts must be at least 1")
@@ -524,9 +682,12 @@ class TikTokRecorder:
             "automatic_interval_minutes": self.automatic_interval,
             "use_telegram": self.use_telegram,
             "use_identity_tracking": self.use_identity_tracking,
+            "auto_update_when_idle": self.auto_update_when_idle,
             "max_concurrent_converts": self.max_concurrent_converts,
         }
         write_runtime_settings(settings)
+        if auto_update_when_idle:
+            self._maybe_check_auto_update()
         return settings
 
     def _record_telegram_upload(
@@ -1348,6 +1509,11 @@ class TikTokRecorder:
                         break
                     logger.info(f"{label} poll restarting immediately (force check)")
 
+                if self._should_stop():
+                    break
+
+                self._maybe_check_auto_update()
+                self._try_start_idle_update()
                 if self._should_stop():
                     break
 

@@ -99,6 +99,7 @@ def test_runtime_settings_round_trip(monkeypatch, tmp_path):
             "automatic_interval_minutes": 7,
             "use_telegram": True,
             "use_identity_tracking": True,
+            "auto_update_when_idle": True,
             "max_concurrent_converts": 3,
         }
     )
@@ -108,5 +109,6 @@ def test_runtime_settings_round_trip(monkeypatch, tmp_path):
         "automatic_interval_minutes": 7,
         "use_telegram": True,
         "use_identity_tracking": True,
+        "auto_update_when_idle": True,
         "max_concurrent_converts": 3,
     }

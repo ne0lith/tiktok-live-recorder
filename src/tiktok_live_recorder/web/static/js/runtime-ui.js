@@ -98,6 +98,10 @@ export function syncRuntimeControls(status) {
   if (identityTrackingEnabled && document.activeElement !== identityTrackingEnabled) {
     identityTrackingEnabled.checked = Boolean(status.use_identity_tracking);
   }
+  const autoUpdateIdle = document.getElementById("auto-update-idle-enabled");
+  if (autoUpdateIdle && document.activeElement !== autoUpdateIdle) {
+    autoUpdateIdle.checked = Boolean(status.auto_update_when_idle);
+  }
   if (maxConvertsInput && document.activeElement !== maxConvertsInput) {
     maxConvertsInput.value = String(status.max_concurrent_converts ?? 1);
   }

@@ -2,6 +2,7 @@ from tiktok_live_recorder.updater import (
     classify_changed_files,
     compare_versions,
     is_updatable_install,
+    running_in_docker,
 )
 
 
@@ -51,6 +52,7 @@ def test_is_updatable_install_requires_git_and_writable(tmp_path, monkeypatch):
         "tiktok_live_recorder.updater._command_available",
         lambda name: name in {"git", "uv"},
     )
+    monkeypatch.delenv("TIKTOK_RECORDER_IN_DOCKER", raising=False)
     assert is_updatable_install(repo) is True
 
     read_only = tmp_path / "readonly"
@@ -61,6 +63,22 @@ def test_is_updatable_install_requires_git_and_writable(tmp_path, monkeypatch):
     (read_only / ".git").mkdir()
     monkeypatch.setattr("os.access", lambda *_args, **_kwargs: False)
     assert is_updatable_install(read_only) is False
+
+
+def test_is_updatable_install_false_in_docker(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "pyproject.toml").write_text(
+        '[project]\nname = "x"\nversion = "1.0.0"\n', encoding="utf-8"
+    )
+    (repo / ".git").mkdir()
+    monkeypatch.setattr(
+        "tiktok_live_recorder.updater._command_available",
+        lambda name: name in {"git", "uv"},
+    )
+    monkeypatch.setenv("TIKTOK_RECORDER_IN_DOCKER", "1")
+    assert running_in_docker() is True
+    assert is_updatable_install(repo) is False
 
 
 def test_apply_hot_update_runs_uv_sync_when_lock_changes(tmp_path, monkeypatch):

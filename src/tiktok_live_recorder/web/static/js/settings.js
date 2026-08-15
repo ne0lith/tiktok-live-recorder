@@ -55,6 +55,10 @@ export async function loadSettings() {
     if (identityTrackingEnabled) {
       identityTrackingEnabled.checked = Boolean(runtime.use_identity_tracking);
     }
+    const autoUpdateIdle = document.getElementById("auto-update-idle-enabled");
+    if (autoUpdateIdle) {
+      autoUpdateIdle.checked = Boolean(runtime.auto_update_when_idle);
+    }
     if (maxConvertsInput) {
       maxConvertsInput.value = String(runtime.max_concurrent_converts ?? 1);
     }

@@ -67,6 +67,9 @@ def _build_config(args, mode, cookies, user=None, users=None):
     use_identity_tracking = runtime["use_identity_tracking"] and not getattr(
         args, "no_identity_tracking", False
     )
+    auto_update_when_idle = getattr(
+        args, "auto_update_when_idle", False
+    ) or runtime.get("auto_update_when_idle", False)
 
     return RecorderConfig(
         url=args.url,
@@ -83,6 +86,7 @@ def _build_config(args, mode, cookies, user=None, users=None):
         duration=args.duration,
         use_telegram=use_telegram,
         use_identity_tracking=use_identity_tracking,
+        auto_update_when_idle=auto_update_when_idle,
         bitrate=args.bitrate,
         ffmpeg_path=args.ffmpeg_path,
         web_host=args.web_host,

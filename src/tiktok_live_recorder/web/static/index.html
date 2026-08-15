@@ -295,16 +295,31 @@
                   <dd id="update-repo-version" class="hidden">-</dd>
                 </dl>
                 <p id="update-not-updatable-hint" class="meta update-hint hidden">
-                  In-app updates require a git clone install with git and uv on PATH.
+                  In-app apply is for git clone installs with git and uv. Docker images are immutable - rebuild or pull a new image instead.
                 </p>
                 <p id="update-check-result" class="update-check-result hidden" aria-live="polite"></p>
                 <span id="update-scope-badge" class="update-scope-badge hidden" aria-hidden="true"></span>
                 <div id="update-progress" class="update-progress hidden" aria-live="polite">
                   <p id="update-progress-message" class="meta"></p>
                 </div>
+                <div id="in-app-apply-controls" class="hidden">
+                  <label class="toggle-row" for="auto-update-idle-enabled">
+                    <span class="toggle-copy">
+                      <span class="toggle-title">Auto-update when idle</span>
+                      <span class="toggle-hint">When a release is available, wait until no one is recording or converting, then apply a full restart update</span>
+                    </span>
+                    <span class="toggle">
+                      <input id="auto-update-idle-enabled" type="checkbox" />
+                      <span class="toggle-slider" aria-hidden="true"></span>
+                    </span>
+                  </label>
+                </div>
                 <div class="settings-block-footer update-actions">
                   <button id="update-check-btn" class="btn btn-ghost btn-small" type="button">
                     Check for updates
+                  </button>
+                  <button id="update-idle-btn" class="btn btn-ghost btn-small hidden" type="button">
+                    Update when idle
                   </button>
                   <button id="update-apply-btn" class="btn btn-primary btn-small hidden" type="button">
                     Update now

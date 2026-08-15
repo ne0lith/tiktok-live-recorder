@@ -379,6 +379,7 @@ class StubRecorder:
     automatic_interval = 5
     use_telegram = False
     use_identity_tracking = False
+    auto_update_when_idle = False
     max_concurrent_converts = 1
     _telegram_uploads: list = []
 
@@ -391,6 +392,7 @@ class StubRecorder:
             "automatic_interval_minutes": self.automatic_interval,
             "use_telegram": self.use_telegram,
             "use_identity_tracking": self.use_identity_tracking,
+            "auto_update_when_idle": self.auto_update_when_idle,
             "max_concurrent_converts": self.max_concurrent_converts,
             "convert_queue": {"pending": 0, "active": 0, "max_concurrent": 1},
             "media_jobs": list(getattr(self, "media_jobs", [])),
@@ -466,12 +468,15 @@ class StubRecorder:
             self.use_telegram = kwargs["use_telegram"]
         if kwargs.get("use_identity_tracking") is not None:
             self.use_identity_tracking = kwargs["use_identity_tracking"]
+        if kwargs.get("auto_update_when_idle") is not None:
+            self.auto_update_when_idle = kwargs["auto_update_when_idle"]
         if kwargs.get("max_concurrent_converts") is not None:
             self.max_concurrent_converts = kwargs["max_concurrent_converts"]
         return {
             "automatic_interval_minutes": self.automatic_interval,
             "use_telegram": self.use_telegram,
             "use_identity_tracking": self.use_identity_tracking,
+            "auto_update_when_idle": self.auto_update_when_idle,
             "max_concurrent_converts": self.max_concurrent_converts,
         }
 
@@ -491,6 +496,16 @@ class StubRecorder:
         if self.is_update_pending():
             raise RuntimeError("Update already in progress")
         self._update_pending = True
+        self._idle_update_requested = False
+
+    def queue_update_when_idle(self):
+        if self.is_update_pending():
+            raise RuntimeError("Update already in progress")
+        self._idle_update_requested = True
+        return {
+            "status": "waiting_idle",
+            "message": "Waiting until no recordings or converts are running.",
+        }
 
     def get_update_status(self):
         return {
@@ -836,6 +851,53 @@ def test_api_runtime_settings(api_client):
     assert recorder.use_telegram is True
     assert recorder.use_identity_tracking is False
     assert recorder.max_concurrent_converts == 2
+
+
+def test_api_update_apply_rejected_when_not_updatable(api_client, monkeypatch):
+    client, _, _ = api_client
+    monkeypatch.setattr(
+        "tiktok_live_recorder.web.app.is_updatable_install", lambda: False
+    )
+    for path in ("/api/update/apply", "/api/update/when-idle"):
+        response = client.post(path)
+        assert response.status_code == 422
+        assert "immutable" in response.json()["detail"].lower()
+
+
+def test_api_update_when_idle_queues(api_client, monkeypatch):
+    from tiktok_live_recorder.updater import UpdatePreview
+
+    client, recorder, _ = api_client
+    monkeypatch.setattr(
+        "tiktok_live_recorder.web.app.is_updatable_install", lambda: True
+    )
+    monkeypatch.setattr(
+        "tiktok_live_recorder.web.app.preview_update_scope",
+        lambda: UpdatePreview(
+            current_version="8.20.1",
+            latest_version="8.20.2",
+            update_available=True,
+            scope="restart",
+            changed_files=["src/tiktok_live_recorder/web/app.py"],
+        ),
+    )
+    response = client.post("/api/update/when-idle")
+    assert response.status_code == 200
+    assert response.json()["status"] == "waiting_idle"
+    assert recorder.is_update_pending() is False
+    assert recorder._idle_update_requested is True
+
+
+def test_api_auto_update_when_idle_runtime(api_client):
+    client, recorder, _ = api_client
+    response = client.put(
+        "/api/settings/runtime",
+        json={"auto_update_when_idle": True},
+    )
+    assert response.status_code == 200
+    assert recorder.auto_update_when_idle is True
+    payload = client.get("/api/settings/runtime").json()
+    assert payload["auto_update_when_idle"] is True
 
 
 def test_api_ffmpeg(api_client):

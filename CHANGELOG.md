@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.30.0] - 2026-08-15
+
+### Added
+
+- **Dashboard updates**: **Auto-update when idle** waits until no recordings or converts are running, then applies a full restart update; also **Update when idle** for a one-shot queue (`-auto-update-when-idle`, `runtime_settings.json`)
+
+### Changed
+
+- **Docker**: hide Auto-update / Update when idle / Update now and refuse in-app apply (`TIKTOK_RECORDER_IN_DOCKER=1`); Check for updates stays notify-only. Rebuild or pull a new image instead
+
 ## [8.29.0] - 2026-08-15
 
 ### Added
@@ -781,7 +791,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.29.0...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.30.0...HEAD
+[8.30.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.29.0...v8.30.0
 [8.29.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.28.1...v8.29.0
 [8.28.1]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.28.0...v8.28.1
 [8.28.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.27.0...v8.28.0

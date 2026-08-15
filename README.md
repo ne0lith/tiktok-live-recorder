@@ -59,7 +59,7 @@ This fork adds reliability and workflow improvements on top of the upstream proj
 
 - **Conversion queue** - every finished recording enqueues `_flv.mp4` -> `.mp4` conversion with bounded concurrency (default 1); no inline ffmpeg in recording threads ([details](docs/GUIDE.md#conversion-queue-and-post-processing))
 - **In-app salvage pipeline** - multi-pass convert with ffprobe validation before deleting `*_flv.mp4`; keeps broken intermediates when recovery fails
-- **Persisted runtime settings** - poll interval, Telegram uploads, max concurrent converts, and experimental identity tracking survive restarts via `config/runtime_settings.json`
+- **Persisted runtime settings** - poll interval, Telegram uploads, max concurrent converts, experimental identity tracking, and auto-update-when-idle survive restarts via `config/runtime_settings.json`
 - **Web dashboard** - live operator UI on port `8787` with SSE updates, activity feed, media library, logs, and settings ([details](docs/GUIDE.md#web-dashboard))
 - **In-app updates** - git clone installs can check and apply updates from **Settings -> Application** with scope-aware hot reload or graceful restart ([details](docs/GUIDE.md#updating-the-application))
 - **Watchlist mode** - poll many users in one process; each live user records in a background thread
@@ -163,7 +163,7 @@ The image ships only `config/*.example` templates. Mount `./config` so your real
 
 The container image does not need a capable distro FFmpeg. On first start the same Linux vendor install runs into `/app/.vendor/ffmpeg/` when needed. Persist that directory with a volume if you want to avoid re-downloading after container recreation.
 
-In-app updates from the dashboard are **not** supported inside Docker - rebuild the image and recreate the container when upgrading ([updating guide](docs/GUIDE.md#updating-the-application)).
+Auto-update, Update when idle, and Update now are hidden in Docker (the image is immutable). Check for updates still works as a notify-only hint. Rebuild or pull a new image and recreate the container ([updating guide](docs/GUIDE.md#updating-the-application)).
 
 </details>
 
@@ -192,6 +192,7 @@ uv run python -m tiktok_live_recorder [options]
 | `-bitrate <BITRATE>` | Output bitrate for post-processing (e.g. `1M`, `1000k`). |
 | `-ffmpeg-path <PATH>` | Custom FFmpeg binary. Probed at startup; on Linux, vendor BtbN n8.1 is installed automatically when ffmpeg is missing or the chosen binary cannot demux TikTok HEVC FLV. Default: `ffmpeg` on `PATH`. |
 | `-telegram` | Upload finished recordings to Telegram. Requires `config/telegram.json`. Can also be toggled from the dashboard. |
+| `-auto-update-when-idle` | Git clone only (not Docker): when a GitHub update is available, wait until idle, then apply a full restart update. Also a dashboard toggle. |
 | `-no-identity-tracking` | Force off experimental `use_identity_tracking` for this run (legacy username-only polling). Identity tracking is experimental and not guaranteed to be developed further. |
 | `-no-update-check` | Skip the automatic update check on startup. |
 | `-web-host <HOST>` | Dashboard bind address (default: `0.0.0.0`). Available in watchlist, followers, and automatic modes. |
@@ -298,7 +299,7 @@ User-specific files live in [`config/`](config/):
 | `cookies.json` | TikTok session cookies (gitignored) |
 | `users.json` | Watchlist usernames (gitignored) |
 | `watchlist_state.json` | Paused users - auto-managed by the dashboard (gitignored) |
-| `runtime_settings.json` | Poll interval, Telegram uploads, max concurrent converts, experimental identity tracking (gitignored) |
+| `runtime_settings.json` | Poll interval, Telegram uploads, max concurrent converts, experimental identity tracking, auto-update when idle (gitignored) |
 | `user_identities.json` | Experimental watchlist identity map (auto-managed; gitignored) |
 | `telegram.json` | Telegram upload credentials (gitignored) |
 

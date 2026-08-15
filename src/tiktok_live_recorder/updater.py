@@ -91,7 +91,20 @@ def _command_available(name: str) -> bool:
     return shutil.which(name) is not None
 
 
+def running_in_docker() -> bool:
+    """True when running inside a container (in-app git updates must not run)."""
+    if os.environ.get("TIKTOK_RECORDER_IN_DOCKER", "").strip() in {"1", "true", "yes"}:
+        return True
+    return Path("/.dockerenv").is_file()
+
+
 def is_updatable_install(repo_root: Path | None = None) -> bool:
+    """Git clone + git/uv, writable, and not Docker.
+
+    Docker images are immutable; rebuild/pull a new image instead of git pull.
+    """
+    if running_in_docker():
+        return False
     root = repo_root or find_repo_root()
     if root is None:
         return False

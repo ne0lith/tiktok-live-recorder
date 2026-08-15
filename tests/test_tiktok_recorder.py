@@ -1489,3 +1489,59 @@ def test_cdn_refresh_offline_still_finalizes(tmp_path, monkeypatch):
     files = list(tmp_path.glob("TK_alpha_*_flv.mp4"))
     assert len(files) == 1
     assert files[0].stat().st_size >= 8000
+
+
+def test_queue_update_when_idle_starts_when_idle():
+    recorder = TikTokRecorder(
+        RecorderConfig(mode=Mode.WATCHLIST, users=["alpha"], cookies={})
+    )
+    result = recorder.queue_update_when_idle()
+    assert result["status"] == "waiting"
+    assert recorder.is_update_pending() is True
+    assert recorder._stop.is_set()
+    assert recorder._idle_update_requested is False
+
+
+def test_queue_update_when_idle_waits_when_recording():
+    recorder = TikTokRecorder(
+        RecorderConfig(mode=Mode.WATCHLIST, users=["alpha"], cookies={})
+    )
+    alive = MagicMock()
+    alive.is_alive.return_value = True
+    recorder._active_recordings["alpha"] = {
+        "thread": alive,
+        "status": "recording",
+        "room_id": "1",
+    }
+    result = recorder.queue_update_when_idle()
+    assert result["status"] == "waiting_idle"
+    assert recorder.is_update_pending() is False
+    assert recorder._idle_update_requested is True
+    assert not recorder._stop.is_set()
+
+    recorder._active_recordings.clear()
+    assert recorder._try_start_idle_update() is True
+    assert recorder.is_update_pending() is True
+    assert recorder._stop.is_set()
+
+
+def test_auto_update_when_idle_ignored_when_not_updatable(monkeypatch):
+    monkeypatch.setattr(
+        "tiktok_live_recorder.updater.is_updatable_install",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        "tiktok_live_recorder.utils.utils.write_runtime_settings",
+        lambda _settings: None,
+    )
+    recorder = TikTokRecorder(
+        RecorderConfig(
+            mode=Mode.WATCHLIST,
+            users=["alpha"],
+            cookies={},
+            auto_update_when_idle=True,
+        )
+    )
+    assert recorder.auto_update_when_idle is False
+    recorder.update_runtime_settings(auto_update_when_idle=True)
+    assert recorder.auto_update_when_idle is False

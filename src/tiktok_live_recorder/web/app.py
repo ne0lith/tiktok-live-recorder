@@ -69,6 +69,7 @@ class RuntimeSettingsPayload(BaseModel):
     automatic_interval_minutes: int | None = Field(default=None, ge=1)
     use_telegram: bool | None = None
     use_identity_tracking: bool | None = None
+    auto_update_when_idle: bool | None = None
     max_concurrent_converts: int | None = Field(default=None, ge=1)
 
 
@@ -203,7 +204,7 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
         if not is_updatable_install():
             raise HTTPException(
                 status_code=422,
-                detail="In-app updates require a git clone install with git and uv.",
+                detail="In-app updates need a git clone with git and uv. Docker images are immutable; rebuild or pull a new image.",
             )
         if recorder.is_update_pending():
             raise HTTPException(status_code=409, detail="Update already in progress")
@@ -243,6 +244,29 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
             "static_changed": result.static_changed,
             "synced_dependencies": result.synced_dependencies,
             "changed_files": result.changed_files,
+        }
+
+    @app.post("/api/update/when-idle")
+    def api_update_when_idle() -> dict[str, Any]:
+        if not is_updatable_install():
+            raise HTTPException(
+                status_code=422,
+                detail="In-app updates need a git clone with git and uv. Docker images are immutable; rebuild or pull a new image.",
+            )
+        if recorder.is_update_pending():
+            raise HTTPException(status_code=409, detail="Update already in progress")
+
+        preview = preview_update_scope()
+        if not preview.update_available and not preview.changed_files:
+            raise HTTPException(status_code=400, detail="Already up to date")
+
+        try:
+            queued = recorder.queue_update_when_idle()
+        except RuntimeError as ex:
+            raise HTTPException(status_code=409, detail=str(ex)) from ex
+        return {
+            "scope": "restart",
+            **queued,
         }
 
     @app.get("/api/update/status")
@@ -612,6 +636,7 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
             "automatic_interval_minutes": recorder.automatic_interval,
             "use_telegram": recorder.use_telegram,
             "use_identity_tracking": recorder.use_identity_tracking,
+            "auto_update_when_idle": recorder.auto_update_when_idle,
             "max_concurrent_converts": recorder.max_concurrent_converts,
             "ffmpeg": recorder.get_ffmpeg_info(),
         }
@@ -623,6 +648,7 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
                 automatic_interval_minutes=payload.automatic_interval_minutes,
                 use_telegram=payload.use_telegram,
                 use_identity_tracking=payload.use_identity_tracking,
+                auto_update_when_idle=payload.auto_update_when_idle,
                 max_concurrent_converts=payload.max_concurrent_converts,
             )
         except ValueError as ex:
@@ -630,6 +656,7 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
         config.automatic_interval = settings["automatic_interval_minutes"]
         config.use_telegram = settings["use_telegram"]
         config.use_identity_tracking = settings["use_identity_tracking"]
+        config.auto_update_when_idle = settings["auto_update_when_idle"]
         config.max_concurrent_converts = settings["max_concurrent_converts"]
         return settings
 

@@ -85,6 +85,7 @@ def default_runtime_settings() -> dict:
         "use_telegram": False,
         # Experimental; not guaranteed to be developed further.
         "use_identity_tracking": False,
+        "auto_update_when_idle": False,
         "max_concurrent_converts": 1,
     }
 
@@ -115,6 +116,8 @@ def read_runtime_settings() -> dict:
         settings["use_telegram"] = data["use_telegram"]
     if isinstance(data.get("use_identity_tracking"), bool):
         settings["use_identity_tracking"] = data["use_identity_tracking"]
+    if isinstance(data.get("auto_update_when_idle"), bool):
+        settings["auto_update_when_idle"] = data["auto_update_when_idle"]
     if isinstance(data.get("max_concurrent_converts"), int):
         settings["max_concurrent_converts"] = max(1, data["max_concurrent_converts"])
     return settings
@@ -132,6 +135,8 @@ def write_runtime_settings(settings: dict) -> None:
         payload["use_telegram"] = settings["use_telegram"]
     if isinstance(settings.get("use_identity_tracking"), bool):
         payload["use_identity_tracking"] = settings["use_identity_tracking"]
+    if isinstance(settings.get("auto_update_when_idle"), bool):
+        payload["auto_update_when_idle"] = settings["auto_update_when_idle"]
     if isinstance(settings.get("max_concurrent_converts"), int):
         payload["max_concurrent_converts"] = max(1, settings["max_concurrent_converts"])
     with open(path, "w", encoding="utf-8") as f:

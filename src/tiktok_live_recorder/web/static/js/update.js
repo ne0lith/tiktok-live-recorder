@@ -27,11 +27,16 @@ function scopeConfirmMessage(scope) {
 }
 
 export function syncUpdateFromStatus(status) {
+  const autoToggle = el("auto-update-idle-enabled");
+  if (autoToggle && document.activeElement !== autoToggle && status?.auto_update_when_idle != null) {
+    autoToggle.checked = Boolean(status.auto_update_when_idle);
+  }
   if (!status?.update) return;
   const update = status.update;
   const progress = el("update-progress");
   const message = el("update-progress-message");
   const applyBtn = el("update-apply-btn");
+  const idleBtn = el("update-idle-btn");
   const checkBtn = el("update-check-btn");
 
   if (!progress || !message) return;
@@ -40,6 +45,7 @@ export function syncUpdateFromStatus(status) {
     progress.classList.add("hidden");
     applyingRestart = false;
     if (applyBtn) applyBtn.disabled = false;
+    if (idleBtn) idleBtn.disabled = false;
     if (checkBtn) checkBtn.disabled = false;
     return;
   }
@@ -47,15 +53,22 @@ export function syncUpdateFromStatus(status) {
   progress.classList.remove("hidden");
   message.textContent = update.error || update.message || update.phase;
 
-  if (update.phase === "waiting" || update.phase === "applying" || update.phase === "restarting") {
+  if (
+    update.phase === "waiting" ||
+    update.phase === "waiting_idle" ||
+    update.phase === "applying" ||
+    update.phase === "restarting"
+  ) {
     applyingRestart = true;
     if (applyBtn) applyBtn.disabled = true;
+    if (idleBtn) idleBtn.disabled = true;
     if (checkBtn) checkBtn.disabled = true;
   }
 
   if (update.phase === "error") {
     applyingRestart = false;
     if (applyBtn) applyBtn.disabled = false;
+    if (idleBtn) idleBtn.disabled = false;
     if (checkBtn) checkBtn.disabled = false;
     showToast(update.error || "Update failed");
   }
@@ -87,8 +100,16 @@ export async function loadUpdateInfo() {
     if (hintEl) {
       hintEl.classList.toggle("hidden", Boolean(info.updatable));
     }
+    const applyControls = el("in-app-apply-controls");
+    if (applyControls) {
+      applyControls.classList.toggle("hidden", !info.updatable);
+    }
     if (applyBtn) {
       applyBtn.classList.toggle("hidden", !info.updatable);
+    }
+    const idleBtn = el("update-idle-btn");
+    if (idleBtn) {
+      idleBtn.classList.toggle("hidden", !info.updatable);
     }
     if (checkBtn) {
       checkBtn.disabled = false;
@@ -135,6 +156,13 @@ function renderCheckResult(result) {
       Boolean(result.updatable) &&
       (result.update_available || (result.changed_files?.length ?? 0) > 0);
     applyBtn.disabled = !canApply || applyingRestart;
+  }
+  const idleBtn = el("update-idle-btn");
+  if (idleBtn) {
+    const canApply =
+      Boolean(result.updatable) &&
+      (result.update_available || (result.changed_files?.length ?? 0) > 0);
+    idleBtn.disabled = !canApply || applyingRestart;
   }
 }
 
@@ -195,6 +223,45 @@ export async function applyUpdate() {
   }
 }
 
+export async function applyUpdateWhenIdle() {
+  if (!lastCheckResult) {
+    await checkForUpdates();
+  }
+  if (
+    !window.confirm(
+      "Keeps polling until no recordings or converts are running, then applies a full restart update. Continue?",
+    )
+  ) {
+    return;
+  }
+
+  const idleBtn = el("update-idle-btn");
+  try {
+    idleBtn?.classList.add("is-loading");
+    idleBtn.disabled = true;
+    const result = await api("/api/update/when-idle", { method: "POST" });
+    applyingRestart = true;
+    showToast(result.message || "Update queued until idle");
+    const progress = el("update-progress");
+    const message = el("update-progress-message");
+    progress?.classList.remove("hidden");
+    if (message) message.textContent = result.message || "Waiting until idle…";
+    return result;
+  } catch (error) {
+    showToast(error.message);
+    throw error;
+  } finally {
+    idleBtn?.classList.remove("is-loading");
+  }
+}
+
+async function saveAutoUpdatePreference(enabled) {
+  await api("/api/settings/runtime", {
+    method: "PUT",
+    body: JSON.stringify({ auto_update_when_idle: enabled }),
+  });
+}
+
 export function initUpdateInteractions() {
   el("update-check-btn")?.addEventListener("click", async () => {
     try {
@@ -204,11 +271,34 @@ export function initUpdateInteractions() {
     }
   });
 
+  el("update-idle-btn")?.addEventListener("click", async () => {
+    try {
+      await applyUpdateWhenIdle();
+    } catch (error) {
+      // toast shown in applyUpdateWhenIdle
+    }
+  });
+
   el("update-apply-btn")?.addEventListener("click", async () => {
     try {
       await applyUpdate();
     } catch (error) {
       // toast shown in applyUpdate
+    }
+  });
+
+  el("auto-update-idle-enabled")?.addEventListener("change", async (event) => {
+    const enabled = Boolean(event.target.checked);
+    try {
+      await saveAutoUpdatePreference(enabled);
+      showToast(
+        enabled
+          ? "Auto-update when idle enabled"
+          : "Auto-update when idle disabled",
+      );
+    } catch (error) {
+      event.target.checked = !enabled;
+      showToast(error.message);
     }
   });
 }

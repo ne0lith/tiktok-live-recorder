@@ -25,7 +25,7 @@ All user-specific settings live in `config/` at the project root:
 | `users.json` | `users.json.example` | Watchlist usernames (local aliases) |
 | `user_identities.json` | `user_identities.json.example` | Experimental identity map (auto-managed; only used when tracking is on) |
 | `watchlist_state.json` | `watchlist_state.json.example` | Paused users (auto-managed by the dashboard) |
-| `runtime_settings.json` | `runtime_settings.json.example` | Poll interval, Telegram, max concurrent converts, experimental identity tracking |
+| `runtime_settings.json` | `runtime_settings.json.example` | Poll interval, Telegram, max concurrent converts, experimental identity tracking, auto-update when idle |
 | `telegram.json` | `telegram.json.example` | Telegram API credentials |
 
 Real config files are gitignored. Only the `*.example` templates are committed.
@@ -319,7 +319,7 @@ Click a `@handle` to filter status and the media library to that user. Each prof
 Opens in a modal overlay (shortcut **`s`**):
 
 - **Runtime** - poll interval (minutes), **max concurrent converts**, Telegram upload on/off, and **Follow username renames (experimental)** (saved to `runtime_settings.json`; no restart). Identity tracking is experimental and not guaranteed to be developed further. **Legacy recordings** visibility in the media library is browser `localStorage`, off by default.
-- **Application -> Updates** - running version, check GitHub for new releases, and apply updates (git clone installs only; see [Updating the application](#updating-the-application))
+- **Application -> Updates** - running version, check GitHub, **Update now** / **Update when idle**, and **Auto-update when idle** (git clone installs only; see [Updating the application](#updating-the-application))
 - **Record now** - start recording by username and/or room ID
 - **Cookies / Telegram** - edit `cookies.json` and `telegram.json` in the browser
 - **Recent Telegram uploads** - when uploads are enabled
@@ -352,7 +352,7 @@ Press **`?`** for the full list. Defaults:
 
 The recorder can check for new releases and apply updates without losing `config/` or `output/` data. This applies to **git clone installs** with **`git`** and **`uv`** on `PATH` and a writable repo directory.
 
-**Docker** and other non-git installs do not support in-app apply - rebuild the image or run `git pull` + `uv sync` manually, then restart the container or process.
+**Docker** and other non-git installs do not support in-app apply (the image is immutable). **Auto-update when idle**, **Update when idle**, and **Update now** are hidden there. Check for updates still works as a notify-only hint. Rebuild or pull a new image, then recreate the container.
 
 ### Startup notification
 
@@ -367,9 +367,11 @@ Open **Settings** (`s`) -> **Application -> Updates**:
 | **Running** | Version loaded in the current process |
 | **On disk** | Version from `pyproject.toml` after a hot update (may differ until restart) |
 | **Check for updates** | Fetches from GitHub and shows whether an update is available and what scope it needs |
-| **Update now** | Applies the update (only shown when the install is updatable) |
+| **Update now** | Applies immediately. Restart-scope updates stop polling and drain recordings/converts first |
+| **Update when idle** | Keeps polling until nothing is recording or converting, then applies a **full restart** update |
+| **Auto-update when idle** | When a new GitHub release is available (checked about every 30 minutes), queue that idle restart automatically. Also `-auto-update-when-idle` / `runtime_settings.json` |
 
-Progress during restart-scope updates appears in the settings panel and in the live status stream (`GET /api/events`).
+Progress during restart-scope and idle-queued updates appears in the settings panel and in the live status stream (`GET /api/events`).
 
 ### Scope-aware apply
 
@@ -388,7 +390,9 @@ Updates are classified by **whether backend Python code changes**, not by whethe
 
 **Restart path notes:**
 
-- Polling and new recordings are blocked while waiting; in-flight recordings and ffmpeg converts are allowed to complete (up to a 300s timeout).
+- **Update now** stops polling immediately and drains in-flight recordings/converts.
+- **Update when idle** / **auto-update when idle** keep polling until the process is naturally idle (no recordings, no queued/active converts), then take the same restart path.
+- Polling and new recordings are blocked while a restart-update is draining; in-flight recordings and ffmpeg converts are allowed to complete (up to a 300s timeout).
 - `config/*.json`, watchlist state, and files under `output/` are preserved on disk.
 - Active live captures are not resumed after restart - users must go live again.
 - The dashboard reconnects when the new process is up.
