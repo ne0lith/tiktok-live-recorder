@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import subprocess
 import threading
+from collections.abc import Iterable
 from pathlib import Path
 
 from tiktok_live_recorder.utils.ffmpeg_setup import ffprobe_for
@@ -10,6 +11,8 @@ from tiktok_live_recorder.utils.ffmpeg_setup import ffprobe_for
 logger = logging.getLogger(__name__)
 
 THUMB_SUFFIX = ".thumb.jpg"
+# In-flight / leftover generate temps (current + 8.15.0 misnamed muxer temp).
+_TEMP_THUMB_SUFFIXES = (".thumb.tmp.jpg", ".thumb.jpg.tmp")
 PROBE_TIMEOUT_SECONDS = 15
 _thumb_locks: dict[str, threading.Lock] = {}
 _thumb_locks_guard = threading.Lock()
@@ -19,6 +22,28 @@ _thumb_probe_guard = threading.Lock()
 
 def thumbnail_path_for(video_path: Path) -> Path:
     return video_path.with_name(f"{video_path.stem}{THUMB_SUFFIX}")
+
+
+def source_video_for_thumb_file(thumb_path: Path) -> Path | None:
+    """Sibling ``.mp4`` that this cache/temp file belongs to, or None if the name is unknown."""
+    name = thumb_path.name
+    stem = None
+    for suffix in _TEMP_THUMB_SUFFIXES:
+        if name.endswith(suffix):
+            stem = name[: -len(suffix)]
+            break
+    if stem is None and name.endswith(THUMB_SUFFIX):
+        stem = name[: -len(THUMB_SUFFIX)]
+    if not stem:
+        return None
+    return thumb_path.with_name(f"{stem}.mp4")
+
+
+def _iter_thumbnail_cache_files(directory: Path) -> Iterable[Path]:
+    if not directory.is_dir():
+        return
+    for pattern in ("*" + THUMB_SUFFIX, "*.thumb.tmp.jpg", "*.thumb.jpg.tmp"):
+        yield from directory.glob(pattern)
 
 
 def thumbnail_is_fresh(video_path: Path, thumb_path: Path) -> bool:
@@ -217,6 +242,44 @@ def ensure_thumbnail(
 
 def delete_thumbnail(video_path: Path) -> None:
     thumbnail_path_for(video_path).unlink(missing_ok=True)
+
+
+def purge_orphan_thumbnails(directories: Iterable[Path]) -> int:
+    """Delete ``*.thumb.jpg`` (and leftover generate temps) whose sibling ``.mp4`` is gone.
+
+    Safe to run on library refresh: files with a live recording still in place are kept.
+    """
+    deleted = 0
+    seen: set[str] = set()
+    for directory in directories:
+        try:
+            root = directory.resolve()
+        except OSError:
+            root = directory
+        if not root.is_dir():
+            continue
+        for path in _iter_thumbnail_cache_files(root):
+            if not path.is_file():
+                continue
+            try:
+                key = str(path.resolve())
+            except OSError:
+                key = str(path)
+            if key in seen:
+                continue
+            seen.add(key)
+            video = source_video_for_thumb_file(path)
+            if video is not None and video.is_file():
+                continue
+            try:
+                path.unlink()
+            except OSError as exc:
+                logger.warning("Could not delete orphan thumbnail %s: %s", path, exc)
+                continue
+            deleted += 1
+    if deleted:
+        logger.info("Removed %s orphan media thumbnail(s)", deleted)
+    return deleted
 
 
 def reset_thumbnail_state(video_path: Path) -> None:

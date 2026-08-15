@@ -69,6 +69,11 @@ class TikTokRecorder:
         self._stopped_by_signal: int | None = None
         self.use_telegram = config.use_telegram
         self.use_identity_tracking = config.use_identity_tracking
+        if self.use_identity_tracking:
+            logger.info(
+                "Identity tracking (use_identity_tracking) is experimental "
+                "and not guaranteed to be developed further."
+            )
         self._proxy = config.proxy
         self._cookies = config.cookies
         self._recording_results: dict[str, str] = {}
@@ -505,6 +510,11 @@ class TikTokRecorder:
             self.use_identity_tracking = use_identity_tracking
             if not use_identity_tracking:
                 self._lookup_users.clear()
+            else:
+                logger.info(
+                    "Identity tracking (use_identity_tracking) is experimental "
+                    "and not guaranteed to be developed further."
+                )
         if max_concurrent_converts is not None:
             if max_concurrent_converts < 1:
                 raise ValueError("max_concurrent_converts must be at least 1")

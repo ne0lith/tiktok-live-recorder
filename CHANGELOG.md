@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.29.0] - 2026-08-15
+
+### Added
+
+- **Media library**: purge orphan `*.thumb.jpg` files (and leftover generate temps) on each library refresh when the sibling recording is gone
+
+### Changed
+
+- **Docs / UI**: label `use_identity_tracking` / Follow username renames as **experimental** and not guaranteed to be developed further
+
 ## [8.28.1] - 2026-08-14
 
 ### Changed
@@ -771,7 +781,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.28.1...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.29.0...HEAD
+[8.29.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.28.1...v8.29.0
 [8.28.1]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.28.0...v8.28.1
 [8.28.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.27.0...v8.28.0
 [8.27.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.26.0...v8.27.0

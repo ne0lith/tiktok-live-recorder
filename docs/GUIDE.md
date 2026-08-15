@@ -23,9 +23,9 @@ All user-specific settings live in `config/` at the project root:
 |------|----------|---------|
 | `cookies.json` | `cookies.json.example` | TikTok session cookies |
 | `users.json` | `users.json.example` | Watchlist usernames (local aliases) |
-| `user_identities.json` | `user_identities.json.example` | Stable TikTok IDs / current handles (auto-managed) |
+| `user_identities.json` | `user_identities.json.example` | Experimental identity map (auto-managed; only used when tracking is on) |
 | `watchlist_state.json` | `watchlist_state.json.example` | Paused users (auto-managed by the dashboard) |
-| `runtime_settings.json` | `runtime_settings.json.example` | Poll interval, Telegram uploads, max concurrent converts |
+| `runtime_settings.json` | `runtime_settings.json.example` | Poll interval, Telegram, max concurrent converts, experimental identity tracking |
 | `telegram.json` | `telegram.json.example` | Telegram API credentials |
 
 Real config files are gitignored. Only the `*.example` templates are committed.
@@ -183,7 +183,7 @@ Watchlist mode polls multiple creators in one process and records each one that 
 
 A plain JSON array also works: `["creator1", "creator2"]`.
 
-Watchlist names are **local aliases**. Recordings, pause state, and dashboard labels stay under the name you added (`output/<name>/`). Identity tracking is **off by default** (legacy username-only polling). Enable **Follow username renames** in dashboard Settings -> Runtime, set `"use_identity_tracking": true` in `config/runtime_settings.json`, to store TikTok's stable `secUid` in `config/user_identities.json` and follow handle changes: when a `secUid` is known, the recorder refreshes the current `@uniqueId` via TikWM (`/api/user/posts?sec_uid=…`) using the same HTTP client as other API calls, then polls that handle. If TikWM is blocked (e.g. Cloudflare), it soft-falls back to the stored handle. Do not hand-edit `user_identities.json`; it is updated on each successful lookup. Existing identity data is left on disk when tracking is disabled so re-enabling resumes.
+Watchlist names are **local aliases**. Recordings, pause state, and dashboard labels stay under the name you added (`output/<name>/`). Identity tracking (`use_identity_tracking`) is **experimental** and **not guaranteed to be developed further**. It is **off by default** (legacy username-only polling). Enable **Follow username renames (experimental)** in dashboard Settings -> Runtime, or set `"use_identity_tracking": true` in `config/runtime_settings.json`, to store TikTok's stable `secUid` in `config/user_identities.json` and follow handle changes: when a `secUid` is known, the recorder refreshes the current `@uniqueId` via TikWM (`/api/user/posts?sec_uid=…`) using the same HTTP client as other API calls, then polls that handle. If TikWM is blocked (e.g. Cloudflare), it soft-falls back to the stored handle. Do not hand-edit `user_identities.json`; it is updated on each successful lookup. Existing identity data is left on disk when tracking is disabled so re-enabling resumes.
 
 2. Start watchlist mode:
 
@@ -305,7 +305,7 @@ Click a `@handle` to filter status and the media library to that user. Each prof
 - Sort: Newest, Oldest, Largest, A-Z user (preference saved in `localStorage`)
 - Search by username or filename (`/` focuses search)
 - **Hide** a user from results (card **Hide** or player **Hide user**) to browse largest/newest without that account; chips under the toolbar restore them (saved in `localStorage`). Focusing a `@handle` unhides that user if needed.
-- Thumbnail previews for finished recordings (server-generated `*.thumb.jpg` cache, lazy-loaded in the browser)
+- Thumbnail previews for finished recordings (server-generated `*.thumb.jpg` cache, lazy-loaded in the browser). Orphan thumbs (video deleted outside the dashboard) are removed on each media-library refresh.
 - Orphan `*_flv.mp4` files pinned and styled (`needs convert`); legacy items show a `legacy` tag when visible. Active recordings and in-flight temps (`*.av1temp.mp4`, `*.repair.tmp.mp4`) are hidden until finalized (see Live status).
 - Docked in-browser player above the scrollable list (playback is not interrupted by library refreshes)
 - **Fix video** / **Convert** only when the server marks the file `repairable` (orphan `*_flv.mp4`, or a finished file that is not already H.264/AV1). Missing thumbnails on an already-playable AV1/H.264 file do **not** offer Fix - salvage would re-encode to H.264. Progress appears in **Recent activity** (Media), the Live status convert digest, and the summary meta line while jobs run.
@@ -318,7 +318,7 @@ Click a `@handle` to filter status and the media library to that user. Each prof
 
 Opens in a modal overlay (shortcut **`s`**):
 
-- **Runtime** - poll interval (minutes), **max concurrent converts**, Telegram upload on/off (saved to `runtime_settings.json`; no restart), and **Legacy recordings** visibility in the media library (browser `localStorage`, off by default)
+- **Runtime** - poll interval (minutes), **max concurrent converts**, Telegram upload on/off, and **Follow username renames (experimental)** (saved to `runtime_settings.json`; no restart). Identity tracking is experimental and not guaranteed to be developed further. **Legacy recordings** visibility in the media library is browser `localStorage`, off by default.
 - **Application -> Updates** - running version, check GitHub for new releases, and apply updates (git clone installs only; see [Updating the application](#updating-the-application))
 - **Record now** - start recording by username and/or room ID
 - **Cookies / Telegram** - edit `cookies.json` and `telegram.json` in the browser

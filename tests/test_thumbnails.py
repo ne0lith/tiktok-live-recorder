@@ -8,6 +8,8 @@ from tiktok_live_recorder.web.thumbnails import (
     clear_thumbnail_probe_cache,
     ensure_thumbnail,
     is_flv_recording,
+    purge_orphan_thumbnails,
+    source_video_for_thumb_file,
     thumbnail_is_fresh,
     thumbnail_path_for,
     thumbnail_url,
@@ -148,3 +150,33 @@ def test_video_has_decodable_video(tmp_path):
         ),
     ):
         assert video_has_decodable_video(video, ffmpeg_path="/usr/bin/ffmpeg") is False
+
+
+def test_source_video_for_thumb_file():
+    thumb = Path("/output/user/TK_alpha_2026.thumb.jpg")
+    assert source_video_for_thumb_file(thumb) == Path("/output/user/TK_alpha_2026.mp4")
+    temp = Path("/output/user/TK_alpha_2026.thumb.tmp.jpg")
+    assert source_video_for_thumb_file(temp) == Path("/output/user/TK_alpha_2026.mp4")
+    legacy_temp = Path("/output/user/TK_alpha_2026.thumb.jpg.tmp")
+    assert source_video_for_thumb_file(legacy_temp) == Path(
+        "/output/user/TK_alpha_2026.mp4"
+    )
+    assert source_video_for_thumb_file(Path("/output/user/notes.jpg")) is None
+
+
+def test_purge_orphan_thumbnails_keeps_paired_and_deletes_orphans(tmp_path):
+    keep_video = tmp_path / "TK_alpha_2026.01.01_12-00-00.mp4"
+    keep_thumb = tmp_path / "TK_alpha_2026.01.01_12-00-00.thumb.jpg"
+    orphan = tmp_path / "TK_alpha_2026.01.01_13-00-00.thumb.jpg"
+    orphan_temp = tmp_path / "TK_alpha_2026.01.01_14-00-00.thumb.tmp.jpg"
+    keep_video.write_bytes(b"video")
+    keep_thumb.write_bytes(b"jpeg")
+    orphan.write_bytes(b"orphan-jpeg")
+    orphan_temp.write_bytes(b"temp")
+
+    deleted = purge_orphan_thumbnails([tmp_path])
+
+    assert deleted == 2
+    assert keep_thumb.is_file()
+    assert not orphan.exists()
+    assert not orphan_temp.exists()

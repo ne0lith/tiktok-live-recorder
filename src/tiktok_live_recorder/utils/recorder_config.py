@@ -17,6 +17,7 @@ class RecorderConfig:
     output: str | None = None
     duration: int | None = None
     use_telegram: bool = False
+    # Experimental: follow handle renames via secUid. Not guaranteed to be developed further.
     use_identity_tracking: bool = False
     bitrate: str | None = None
     ffmpeg_path: str | None = None

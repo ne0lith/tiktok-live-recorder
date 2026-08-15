@@ -136,9 +136,10 @@ def parse_args():
         dest="no_identity_tracking",
         action="store_true",
         help=(
-            "Disable secUid identity tracking for this run; poll watchlist "
-            "usernames only (legacy). Overrides runtime_settings.json when "
-            "use_identity_tracking is enabled."
+            "Disable experimental secUid identity tracking for this run; poll "
+            "watchlist usernames only (legacy). Identity tracking is not "
+            "guaranteed to be developed further. Overrides "
+            "runtime_settings.json when use_identity_tracking is enabled."
         ),
     )
 

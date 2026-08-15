@@ -59,7 +59,7 @@ This fork adds reliability and workflow improvements on top of the upstream proj
 
 - **Conversion queue** - every finished recording enqueues `_flv.mp4` -> `.mp4` conversion with bounded concurrency (default 1); no inline ffmpeg in recording threads ([details](docs/GUIDE.md#conversion-queue-and-post-processing))
 - **In-app salvage pipeline** - multi-pass convert with ffprobe validation before deleting `*_flv.mp4`; keeps broken intermediates when recovery fails
-- **Persisted runtime settings** - poll interval, Telegram uploads, and max concurrent converts survive restarts via `config/runtime_settings.json`
+- **Persisted runtime settings** - poll interval, Telegram uploads, max concurrent converts, and experimental identity tracking survive restarts via `config/runtime_settings.json`
 - **Web dashboard** - live operator UI on port `8787` with SSE updates, activity feed, media library, logs, and settings ([details](docs/GUIDE.md#web-dashboard))
 - **In-app updates** - git clone installs can check and apply updates from **Settings -> Application** with scope-aware hot reload or graceful restart ([details](docs/GUIDE.md#updating-the-application))
 - **Watchlist mode** - poll many users in one process; each live user records in a background thread
@@ -192,6 +192,7 @@ uv run python -m tiktok_live_recorder [options]
 | `-bitrate <BITRATE>` | Output bitrate for post-processing (e.g. `1M`, `1000k`). |
 | `-ffmpeg-path <PATH>` | Custom FFmpeg binary. Probed at startup; on Linux, vendor BtbN n8.1 is installed automatically when ffmpeg is missing or the chosen binary cannot demux TikTok HEVC FLV. Default: `ffmpeg` on `PATH`. |
 | `-telegram` | Upload finished recordings to Telegram. Requires `config/telegram.json`. Can also be toggled from the dashboard. |
+| `-no-identity-tracking` | Force off experimental `use_identity_tracking` for this run (legacy username-only polling). Identity tracking is experimental and not guaranteed to be developed further. |
 | `-no-update-check` | Skip the automatic update check on startup. |
 | `-web-host <HOST>` | Dashboard bind address (default: `0.0.0.0`). Available in watchlist, followers, and automatic modes. |
 | `-web-port <PORT>` | Dashboard port (default: `8787`). |
@@ -297,7 +298,8 @@ User-specific files live in [`config/`](config/):
 | `cookies.json` | TikTok session cookies (gitignored) |
 | `users.json` | Watchlist usernames (gitignored) |
 | `watchlist_state.json` | Paused users - auto-managed by the dashboard (gitignored) |
-| `runtime_settings.json` | Poll interval, Telegram uploads, max concurrent converts (gitignored) |
+| `runtime_settings.json` | Poll interval, Telegram uploads, max concurrent converts, experimental identity tracking (gitignored) |
+| `user_identities.json` | Experimental watchlist identity map (auto-managed; gitignored) |
 | `telegram.json` | Telegram upload credentials (gitignored) |
 
 Committed `*.example` templates are copied automatically on first use. Override the config directory with the `TIKTOK_RECORDER_CONFIG_DIR` environment variable. Override the log file path with `TIKTOK_RECORDER_LOG_FILE` (see [Log viewer](docs/GUIDE.md#log-viewer)).

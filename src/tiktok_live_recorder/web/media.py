@@ -5,7 +5,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from tiktok_live_recorder.utils.video_management import VideoManagement
-from tiktok_live_recorder.web.thumbnails import thumbnail_url
+from tiktok_live_recorder.web.thumbnails import purge_orphan_thumbnails, thumbnail_url
 
 # Username may contain underscores (including a leading `_`); anchor on the
 # recorder timestamp so we do not stop at the first `_` after `TK_`.
@@ -335,6 +335,26 @@ def move_orphan_flv_files(
     return {"moved": moved, "failed": failed, "files": files}
 
 
+def _thumbnail_scan_dirs(
+    output_base: Path, custom_output: str | Path | None
+) -> list[Path]:
+    """Directories that can hold ``*.thumb.jpg`` next to recordings."""
+    if custom_output is not None:
+        root = Path(custom_output)
+        return [root] if root.is_dir() else []
+    if not output_base.is_dir():
+        return []
+    dirs: list[Path] = []
+    for user_dir in output_base.iterdir():
+        if not user_dir.is_dir():
+            continue
+        dirs.append(user_dir)
+        legacy_dir = user_dir / LEGACY_SUBDIR
+        if legacy_dir.is_dir():
+            dirs.append(legacy_dir)
+    return dirs
+
+
 def scan_media_library(
     output_base: Path,
     custom_output: str | Path | None,
@@ -343,6 +363,7 @@ def scan_media_library(
     ffprobe_cmd: str = "ffprobe",
 ) -> dict[str, list[dict]]:
     """Return playable media grouped by username, newest first within each user."""
+    purge_orphan_thumbnails(_thumbnail_scan_dirs(output_base, custom_output))
     active_paths = _normalize_active_paths(active_output_paths)
     grouped: dict[str, list[dict]] = {}
 

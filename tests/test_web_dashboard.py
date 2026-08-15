@@ -245,6 +245,23 @@ def test_scan_media_library_groups_by_username(tmp_path):
     assert media["alpha"][0]["thumb_url"].endswith("/thumb")
 
 
+def test_scan_media_library_purges_orphan_thumbnails(tmp_path):
+    user_dir = tmp_path / "alpha"
+    user_dir.mkdir()
+    video = user_dir / "TK_alpha_2026.01.01_12-00-00.mp4"
+    keep_thumb = user_dir / "TK_alpha_2026.01.01_12-00-00.thumb.jpg"
+    orphan = user_dir / "TK_alpha_2026.01.01_13-00-00.thumb.jpg"
+    video.write_bytes(b"video")
+    keep_thumb.write_bytes(b"keep")
+    orphan.write_bytes(b"orphan")
+
+    media = scan_media_library(tmp_path, None)
+
+    assert list(media.keys()) == ["alpha"]
+    assert keep_thumb.is_file()
+    assert not orphan.exists()
+
+
 def test_scan_media_library_includes_legacy_files(tmp_path):
     import os
 
