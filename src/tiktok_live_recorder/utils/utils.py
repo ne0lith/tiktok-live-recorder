@@ -83,7 +83,7 @@ def default_runtime_settings() -> dict:
     return {
         "automatic_interval_minutes": 5,
         "use_telegram": False,
-        "use_identity_tracking": True,
+        "use_identity_tracking": False,
         "max_concurrent_converts": 1,
     }
 

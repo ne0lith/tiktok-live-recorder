@@ -85,16 +85,20 @@ def test_read_users_from_bootstrapped_file(monkeypatch, tmp_path):
 
 def test_runtime_settings_round_trip(monkeypatch, tmp_path):
     from tiktok_live_recorder.utils.utils import (
+        default_runtime_settings,
         read_runtime_settings,
         write_runtime_settings,
     )
 
     monkeypatch.setenv("TIKTOK_RECORDER_CONFIG_DIR", str(tmp_path))
+    assert default_runtime_settings()["use_identity_tracking"] is False
+    assert read_runtime_settings()["use_identity_tracking"] is False
+
     write_runtime_settings(
         {
             "automatic_interval_minutes": 7,
             "use_telegram": True,
-            "use_identity_tracking": False,
+            "use_identity_tracking": True,
             "max_concurrent_converts": 3,
         }
     )
@@ -103,6 +107,6 @@ def test_runtime_settings_round_trip(monkeypatch, tmp_path):
     assert settings == {
         "automatic_interval_minutes": 7,
         "use_telegram": True,
-        "use_identity_tracking": False,
+        "use_identity_tracking": True,
         "max_concurrent_converts": 3,
     }

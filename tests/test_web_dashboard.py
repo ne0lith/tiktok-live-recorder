@@ -361,7 +361,7 @@ class StubRecorder:
     users_file = None
     automatic_interval = 5
     use_telegram = False
-    use_identity_tracking = True
+    use_identity_tracking = False
     max_concurrent_converts = 1
     _telegram_uploads: list = []
 

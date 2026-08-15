@@ -96,7 +96,7 @@ export function syncRuntimeControls(status) {
     telegramEnabled.checked = Boolean(status.use_telegram);
   }
   if (identityTrackingEnabled && document.activeElement !== identityTrackingEnabled) {
-    identityTrackingEnabled.checked = status.use_identity_tracking !== false;
+    identityTrackingEnabled.checked = Boolean(status.use_identity_tracking);
   }
   if (maxConvertsInput && document.activeElement !== maxConvertsInput) {
     maxConvertsInput.value = String(status.max_concurrent_converts ?? 1);

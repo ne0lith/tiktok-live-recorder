@@ -183,9 +183,7 @@ Watchlist mode polls multiple creators in one process and records each one that 
 
 A plain JSON array also works: `["creator1", "creator2"]`.
 
-Watchlist names are **local aliases**. Recordings, pause state, and dashboard labels stay under the name you added (`output/<name>/`). The recorder stores TikTok's stable `secUid` in `config/user_identities.json` and treats it as the source of truth: when a `secUid` is known, it refreshes the current `@uniqueId` via TikWM (`/api/user/posts?sec_uid=…`) using the same HTTP client as other API calls, then polls that handle. If TikWM is blocked (e.g. Cloudflare), it soft-falls back to the stored handle. Do not hand-edit `user_identities.json`; it is updated on each successful lookup.
-
-To restore legacy username-only polling (ignore stored `secUid` / renames), turn off **Follow username renames** in dashboard Settings -> Runtime, set `"use_identity_tracking": false` in `config/runtime_settings.json`, or pass `-no-identity-tracking`. Existing identity data is left on disk so re-enabling resumes tracking.
+Watchlist names are **local aliases**. Recordings, pause state, and dashboard labels stay under the name you added (`output/<name>/`). Identity tracking is **off by default** (legacy username-only polling). Enable **Follow username renames** in dashboard Settings -> Runtime, set `"use_identity_tracking": true` in `config/runtime_settings.json`, to store TikTok's stable `secUid` in `config/user_identities.json` and follow handle changes: when a `secUid` is known, the recorder refreshes the current `@uniqueId` via TikWM (`/api/user/posts?sec_uid=…`) using the same HTTP client as other API calls, then polls that handle. If TikWM is blocked (e.g. Cloudflare), it soft-falls back to the stored handle. Do not hand-edit `user_identities.json`; it is updated on each successful lookup. Existing identity data is left on disk when tracking is disabled so re-enabling resumes.
 
 2. Start watchlist mode:
 

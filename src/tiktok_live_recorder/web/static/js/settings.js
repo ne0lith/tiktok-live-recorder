@@ -53,7 +53,7 @@ export async function loadSettings() {
       telegramEnabled.checked = Boolean(runtime.use_telegram);
     }
     if (identityTrackingEnabled) {
-      identityTrackingEnabled.checked = runtime.use_identity_tracking !== false;
+      identityTrackingEnabled.checked = Boolean(runtime.use_identity_tracking);
     }
     if (maxConvertsInput) {
       maxConvertsInput.value = String(runtime.max_concurrent_converts ?? 1);

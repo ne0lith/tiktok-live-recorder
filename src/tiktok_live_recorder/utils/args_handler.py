@@ -137,7 +137,8 @@ def parse_args():
         action="store_true",
         help=(
             "Disable secUid identity tracking for this run; poll watchlist "
-            "usernames only (legacy). Overrides runtime_settings.json."
+            "usernames only (legacy). Overrides runtime_settings.json when "
+            "use_identity_tracking is enabled."
         ),
     )
 

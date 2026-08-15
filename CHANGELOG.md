@@ -7,16 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.28.1] - 2026-08-14
+
+### Changed
+
+- **Runtime setting**: `use_identity_tracking` now defaults to **off** (legacy username-only); enable Follow username renames in Settings when you want secUid tracking
+
 ## [8.28.0] - 2026-08-14
 
 ### Added
 
-- **Runtime setting**: `use_identity_tracking` (default on) disables secUid rename following and restores legacy username-only watchlist polling; also available as `-no-identity-tracking`
+- **Runtime setting**: `use_identity_tracking` disables secUid rename following and restores legacy username-only watchlist polling; also available as `-no-identity-tracking`
 - **Dashboard**: Settings -> Runtime toggle **Follow username renames** to turn identity tracking on or off live
 
 ### Changed
 
-- **Docs**: GUIDE notes how to disable identity tracking without deleting `user_identities.json`
+- **Docs**: GUIDE notes how to configure identity tracking without deleting `user_identities.json`
 
 ## [8.27.0] - 2026-08-14
 
@@ -765,7 +771,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.28.0...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.28.1...HEAD
+[8.28.1]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.28.0...v8.28.1
 [8.28.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.27.0...v8.28.0
 [8.27.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.26.0...v8.27.0
 [8.26.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.25.0...v8.26.0

@@ -94,7 +94,12 @@ def test_check_user_live_follows_renamed_handle(identities_dir, monkeypatch):
         unique_id_resolved_at=__import__("time").time(),
     )
     recorder = TikTokRecorder(
-        RecorderConfig(mode=Mode.WATCHLIST, users=["alice"], cookies={})
+        RecorderConfig(
+            mode=Mode.WATCHLIST,
+            users=["alice"],
+            cookies={},
+            use_identity_tracking=True,
+        )
     )
     fake = IdentityFakeAPI(
         {
@@ -166,7 +171,12 @@ def test_check_user_live_updates_identity_on_rename(
     import logging
 
     recorder = TikTokRecorder(
-        RecorderConfig(mode=Mode.WATCHLIST, users=["alice"], cookies={})
+        RecorderConfig(
+            mode=Mode.WATCHLIST,
+            users=["alice"],
+            cookies={},
+            use_identity_tracking=True,
+        )
     )
     fake = IdentityFakeAPI(
         {
@@ -202,7 +212,12 @@ def test_check_user_live_rejects_recycled_handle(identities_dir, monkeypatch, ca
         unique_id_resolved_at=__import__("time").time(),
     )
     recorder = TikTokRecorder(
-        RecorderConfig(mode=Mode.WATCHLIST, users=["alice"], cookies={})
+        RecorderConfig(
+            mode=Mode.WATCHLIST,
+            users=["alice"],
+            cookies={},
+            use_identity_tracking=True,
+        )
     )
     fake = IdentityFakeAPI(
         {
@@ -238,7 +253,12 @@ def test_check_user_live_recovers_via_secuid_resolver(
         unique_id_resolved_at=__import__("time").time(),
     )
     recorder = TikTokRecorder(
-        RecorderConfig(mode=Mode.WATCHLIST, users=["alice"], cookies={})
+        RecorderConfig(
+            mode=Mode.WATCHLIST,
+            users=["alice"],
+            cookies={},
+            use_identity_tracking=True,
+        )
     )
     fake = IdentityFakeAPI(
         rooms={
@@ -278,7 +298,12 @@ def test_secuid_resolver_runs_when_ttl_expired(identities_dir, monkeypatch):
         unique_id_resolved_at=0,
     )
     recorder = TikTokRecorder(
-        RecorderConfig(mode=Mode.WATCHLIST, users=["alice"], cookies={})
+        RecorderConfig(
+            mode=Mode.WATCHLIST,
+            users=["alice"],
+            cookies={},
+            use_identity_tracking=True,
+        )
     )
     fake = IdentityFakeAPI(
         rooms={
@@ -303,7 +328,12 @@ def test_secuid_resolver_runs_when_ttl_expired(identities_dir, monkeypatch):
 
 def test_check_user_live_profile_fallback_discovers_rename(identities_dir, monkeypatch):
     recorder = TikTokRecorder(
-        RecorderConfig(mode=Mode.WATCHLIST, users=["alice"], cookies={})
+        RecorderConfig(
+            mode=Mode.WATCHLIST,
+            users=["alice"],
+            cookies={},
+            use_identity_tracking=True,
+        )
     )
     fake = IdentityFakeAPI(
         rooms={
@@ -342,6 +372,7 @@ def test_spawn_recording_keeps_output_under_original_name(
             users=["alice"],
             output=None,
             cookies={},
+            use_identity_tracking=True,
         )
     )
     recorder._lookup_users["alice"] = "alice_v2"
@@ -368,7 +399,12 @@ def test_spawn_recording_keeps_output_under_original_name(
 def test_status_includes_identities(identities_dir):
     upsert_user_identity("alice", unique_id="alice_v2", sec_uid="SEC_ALICE")
     recorder = TikTokRecorder(
-        RecorderConfig(mode=Mode.WATCHLIST, users=["alice"], cookies={})
+        RecorderConfig(
+            mode=Mode.WATCHLIST,
+            users=["alice"],
+            cookies={},
+            use_identity_tracking=True,
+        )
     )
     status = recorder.get_status()
     assert status["identities"]["alice"]["uniqueId"] == "alice_v2"
@@ -382,7 +418,12 @@ def test_duplicate_sec_uid_skipped_in_poll(identities_dir, monkeypatch):
         }
     )
     recorder = TikTokRecorder(
-        RecorderConfig(mode=Mode.WATCHLIST, users=["alice", "alice_old"], cookies={})
+        RecorderConfig(
+            mode=Mode.WATCHLIST,
+            users=["alice", "alice_old"],
+            cookies={},
+            use_identity_tracking=True,
+        )
     )
 
     class DupAPI(IdentityFakeAPI):
