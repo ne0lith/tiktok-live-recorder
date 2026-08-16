@@ -4,7 +4,13 @@ import threading
 from pathlib import Path
 from urllib.parse import quote
 
+from tiktok_live_recorder.utils.logger_manager import logger
 from tiktok_live_recorder.utils.video_management import VideoManagement
+from tiktok_live_recorder.web.codec_index import (
+    configure_codec_index,
+    get_codec_index,
+    reset_codec_index,
+)
 from tiktok_live_recorder.web.thumbnails import purge_orphan_thumbnails, thumbnail_url
 
 # Username may contain underscores (including a leading `_`); anchor on the
@@ -16,34 +22,17 @@ MEDIA_PATTERN = re.compile(
 LEGACY_SUBDIR = "legacy"
 # In-flight encodes written beside the finished TK_*.mp4; never list or serve these.
 _TRANSIENT_MEDIA_SUFFIXES = (".repair.tmp.mp4", ".av1temp.mp4")
-
-# path + mtime_ns + size -> library_playable
-_playable_cache: dict[tuple[str, int, int], bool] = {}
-_playable_cache_lock = threading.Lock()
-_PLAYABLE_CACHE_MAX = 4096
+_JOB_STATUSES = frozenset({"queued", "converting"})
 
 
 def _cached_library_playable(path: Path, ffprobe_cmd: str) -> bool:
-    try:
-        st = path.stat()
-        key = (str(path.resolve()), st.st_mtime_ns, st.st_size)
-    except OSError:
-        return False
-    with _playable_cache_lock:
-        cached = _playable_cache.get(key)
-        if cached is not None:
-            return cached
-    playable = VideoManagement.is_library_playable(str(path), ffprobe_cmd)
-    with _playable_cache_lock:
-        if len(_playable_cache) >= _PLAYABLE_CACHE_MAX:
-            _playable_cache.clear()
-        _playable_cache[key] = playable
-    return playable
+    codec, pix_fmt = get_codec_index().get_or_probe(path, ffprobe_cmd)
+    return VideoManagement.library_playable_from_probe(codec, pix_fmt)
 
 
 def clear_library_playable_cache() -> None:
-    with _playable_cache_lock:
-        _playable_cache.clear()
+    get_codec_index().clear()
+    reset_codec_index()
 
 
 def _is_transient_media_name(name: str) -> bool:
@@ -108,6 +97,32 @@ def _normalize_active_paths(active_output_paths: set[str] | None) -> set[str]:
     return normalized
 
 
+def av1temp_sibling(path: Path) -> Path:
+    """Sibling temp written by an external AV1 encoder beside a library MP4."""
+    name = path.name
+    if name.lower().endswith(".mp4"):
+        return path.with_name(name[:-4] + ".av1temp.mp4")
+    return path.with_name(name + ".av1temp.mp4")
+
+
+def _job_status_map(media_jobs: list[dict] | None) -> dict[str, str]:
+    """Map resolved library paths (including FLV convert destinations) to job status."""
+    mapped: dict[str, str] = {}
+    for job in media_jobs or ():
+        path = job.get("path")
+        status = job.get("status")
+        if not path or status not in _JOB_STATUSES:
+            continue
+        try:
+            resolved = str(Path(path).resolve())
+        except OSError:
+            resolved = str(path)
+        mapped[resolved] = status
+        if resolved.endswith("_flv.mp4"):
+            mapped[_flv_to_mp4_path(resolved)] = status
+    return mapped
+
+
 def _media_entry(
     path: Path,
     username: str,
@@ -115,6 +130,8 @@ def _media_entry(
     subdir: str | None = None,
     active_paths: set[str] | None = None,
     ffprobe_cmd: str = "ffprobe",
+    media_jobs: dict[str, str] | None = None,
+    inventory: bool = False,
 ) -> dict:
     stat = path.stat()
     url = _encoded_media_url(username, path.name, subdir=subdir)
@@ -129,6 +146,8 @@ def _media_entry(
         repairable = False
     elif needs_convert:
         repairable = True
+    elif inventory:
+        repairable = False
     else:
         # Already H.264/AV1: not repairable (server must not re-encode AV1 to H.264).
         repairable = not _cached_library_playable(path, ffprobe_cmd)
@@ -147,7 +166,71 @@ def _media_entry(
     }
     if not entry["in_progress"] and not is_flv:
         entry["thumb_url"] = thumbnail_url(username, path.name, subdir=subdir)
+    if inventory:
+        _attach_inventory_fields(
+            entry,
+            path,
+            resolved,
+            is_flv=is_flv,
+            is_active=is_active,
+            ffprobe_cmd=ffprobe_cmd,
+            media_jobs=media_jobs,
+            skip_probe=is_active or stat.st_size <= 0,
+        )
     return entry
+
+
+def _attach_inventory_fields(
+    entry: dict,
+    path: Path,
+    resolved: str,
+    *,
+    is_flv: bool,
+    is_active: bool,
+    ffprobe_cmd: str,
+    media_jobs: dict[str, str] | None,
+    skip_probe: bool,
+) -> None:
+    job_status = (media_jobs or {}).get(resolved)
+    has_av1temp = (not is_flv) and av1temp_sibling(path).is_file()
+    converting = False
+    busy_reason: str | None = None
+    if job_status in _JOB_STATUSES:
+        busy_reason = job_status
+        converting = True
+    elif is_active:
+        busy_reason = "recording"
+    elif has_av1temp:
+        busy_reason = "av1temp"
+        converting = True
+
+    index = get_codec_index()
+    disappeared = index.note_av1temp(resolved, has_av1temp)
+    codec, pix_fmt = index.get_or_probe(
+        path,
+        ffprobe_cmd,
+        skip_probe=skip_probe,
+        force=bool(disappeared and not skip_probe),
+    )
+    if not is_active and not entry["needs_convert"]:
+        entry["repairable"] = not VideoManagement.library_playable_from_probe(
+            codec, pix_fmt
+        )
+    entry["codec"] = codec
+    entry["pix_fmt"] = pix_fmt
+    entry["is_av1"] = codec == "av1"
+    entry["converting"] = converting
+    entry["busy_reason"] = busy_reason
+
+
+def _is_inventory_ready(entry: dict) -> bool:
+    if entry["filename"].endswith("_flv.mp4"):
+        return False
+    if entry.get("is_av1"):
+        return False
+    if entry.get("in_progress") or entry.get("converting"):
+        return False
+    return True
 
 
 def _append_library_entry(
@@ -158,6 +241,9 @@ def _append_library_entry(
     subdir: str | None = None,
     active_paths: set[str] | None = None,
     ffprobe_cmd: str = "ffprobe",
+    media_jobs: dict[str, str] | None = None,
+    include_in_progress: bool = False,
+    inventory: bool = False,
 ) -> None:
     # Repair / external AV1 encodes write temp MP4s beside the source; never list those.
     if _is_transient_media_name(path.name):
@@ -168,8 +254,10 @@ def _append_library_entry(
         subdir=subdir,
         active_paths=active_paths,
         ffprobe_cmd=ffprobe_cmd,
+        media_jobs=media_jobs,
+        inventory=inventory,
     )
-    if entry["in_progress"]:
+    if entry["in_progress"] and not include_in_progress:
         return
     entries.append(entry)
 
@@ -180,6 +268,9 @@ def _collect_user_media(
     *,
     active_paths: set[str] | None = None,
     ffprobe_cmd: str = "ffprobe",
+    media_jobs: dict[str, str] | None = None,
+    include_in_progress: bool = False,
+    inventory: bool = False,
 ) -> list[dict]:
     entries: list[dict] = []
     for path in user_dir.glob("TK_*.mp4"):
@@ -190,6 +281,9 @@ def _collect_user_media(
                 username,
                 active_paths=active_paths,
                 ffprobe_cmd=ffprobe_cmd,
+                media_jobs=media_jobs,
+                include_in_progress=include_in_progress,
+                inventory=inventory,
             )
     legacy_dir = user_dir / LEGACY_SUBDIR
     if legacy_dir.is_dir():
@@ -202,6 +296,9 @@ def _collect_user_media(
                     subdir=LEGACY_SUBDIR,
                     active_paths=active_paths,
                     ffprobe_cmd=ffprobe_cmd,
+                    media_jobs=media_jobs,
+                    include_in_progress=include_in_progress,
+                    inventory=inventory,
                 )
     return entries
 
@@ -363,6 +460,7 @@ def scan_media_library(
     ffprobe_cmd: str = "ffprobe",
 ) -> dict[str, list[dict]]:
     """Return playable media grouped by username, newest first within each user."""
+    configure_codec_index(output_base, custom_output)
     purge_orphan_thumbnails(_thumbnail_scan_dirs(output_base, custom_output))
     active_paths = _normalize_active_paths(active_output_paths)
     grouped: dict[str, list[dict]] = {}
@@ -402,7 +500,106 @@ def scan_media_library(
     for _username, entries in grouped.items():
         entries.sort(key=lambda item: item["modified_at"], reverse=True)
 
+    get_codec_index().save()
     return dict(sorted(grouped.items(), key=lambda item: item[0].lower()))
+
+
+def scan_media_inventory(
+    output_base: Path,
+    custom_output: str | Path | None,
+    active_output_paths: set[str] | None = None,
+    *,
+    media_jobs: list[dict] | None = None,
+    ffprobe_cmd: str = "ffprobe",
+    ready: bool = False,
+) -> list[dict]:
+    """Return every library MP4 (including in-progress) with codec and busy flags."""
+    configure_codec_index(output_base, custom_output)
+    active_paths = _normalize_active_paths(active_output_paths)
+    jobs = _job_status_map(media_jobs)
+    videos: list[dict] = []
+    live_paths: set[str] = set()
+
+    if custom_output is not None:
+        root = Path(custom_output)
+        if root.is_dir():
+            for path in root.glob("TK_*.mp4"):
+                if not path.is_file():
+                    continue
+                match = MEDIA_PATTERN.match(path.name)
+                username = match.group("username") if match else "unknown"
+                before = len(videos)
+                _append_library_entry(
+                    videos,
+                    path,
+                    username,
+                    active_paths=active_paths,
+                    ffprobe_cmd=ffprobe_cmd,
+                    media_jobs=jobs,
+                    include_in_progress=True,
+                    inventory=True,
+                )
+                if len(videos) > before:
+                    live_paths.add(videos[-1]["path"])
+    elif output_base.is_dir():
+        for user_dir in sorted(output_base.iterdir()):
+            if not user_dir.is_dir():
+                continue
+            entries = _collect_user_media(
+                user_dir,
+                user_dir.name,
+                active_paths=active_paths,
+                ffprobe_cmd=ffprobe_cmd,
+                media_jobs=jobs,
+                include_in_progress=True,
+                inventory=True,
+            )
+            videos.extend(entries)
+            live_paths.update(item["path"] for item in entries)
+
+    index = get_codec_index()
+    index.prune(live_paths)
+    index.save(force=True)
+
+    videos.sort(key=lambda item: item["modified_at"], reverse=True)
+    if ready:
+        videos = [item for item in videos if _is_inventory_ready(item)]
+    return videos
+
+
+def start_codec_warmup_worker(
+    output_base: Path,
+    custom_output: str | Path | None,
+    ffprobe_cmd: str,
+    stop_event: threading.Event,
+    *,
+    active_output_paths: set[str] | None = None,
+) -> threading.Thread:
+    """Background-probe codec-index misses so inventory HTTP stays a directory listing."""
+
+    def _run() -> None:
+        if stop_event.is_set():
+            return
+        try:
+            configure_codec_index(output_base, custom_output)
+            scan_media_inventory(
+                output_base,
+                custom_output,
+                active_output_paths=active_output_paths,
+                media_jobs=[],
+                ffprobe_cmd=ffprobe_cmd,
+                ready=False,
+            )
+        except Exception:
+            logger.exception("Codec index warmup failed")
+
+    thread = threading.Thread(
+        target=_run,
+        name="codec-index-warmup",
+        daemon=True,
+    )
+    thread.start()
+    return thread
 
 
 def resolve_media_path(

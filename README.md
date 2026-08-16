@@ -286,7 +286,7 @@ See [Watchlist file reload](#watchlist-file-reload) for live edits to `config/us
 
 Runs in **watchlist**, **followers**, and **automatic** mode at `http://localhost:8787` by default (`-web-host` / `-web-port` to change). **No authentication** - restrict access on shared networks.
 
-Use it to monitor live status, manage recordings, move leftover FLVs to `to_fix/`, tail/clear logs, adjust runtime settings, and apply updates (git clone installs) without editing files by hand. Full feature list, keyboard shortcuts, FFmpeg notes, and workflow details: **[Web dashboard guide](docs/GUIDE.md#web-dashboard)**.
+Use it to monitor live status, manage recordings, move leftover FLVs to `to_fix/`, tail/clear logs, adjust runtime settings, and apply updates (git clone installs) without editing files by hand. Full feature list, keyboard shortcuts, FFmpeg notes, and workflow details: **[Web dashboard guide](docs/GUIDE.md#web-dashboard)**. `GET /api/media/inventory` lists every library video with codec and busy state (`?ready=true` for finished non-AV1 files).
 
 Disable with `-no-web`.
 

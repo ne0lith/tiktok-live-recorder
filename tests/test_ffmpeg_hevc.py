@@ -99,8 +99,8 @@ def test_scan_media_library_marks_av1_not_repairable(tmp_path, monkeypatch):
     media_mod.clear_library_playable_cache()
     monkeypatch.setattr(
         media_mod.VideoManagement,
-        "is_library_playable",
-        staticmethod(lambda *_a, **_k: True),
+        "_probe_video_info",
+        staticmethod(lambda *_a, **_k: ("av1", "yuv420p")),
     )
     media = scan_media_library(tmp_path, None, active_output_paths=set())
     entry = media["alpha"][0]
@@ -625,6 +625,9 @@ def test_is_library_playable_accepts_h264_and_av1(tmp_path, monkeypatch):
         staticmethod(lambda *_a, **_k: ("hevc", "yuv420p")),
     )
     assert VideoManagement.is_library_playable(str(path), "ffprobe") is False
+    assert VideoManagement.library_playable_from_probe("h264", "yuv420p") is True
+    assert VideoManagement.library_playable_from_probe("av1", "yuv420p10le") is True
+    assert VideoManagement.library_playable_from_probe("hevc", "yuv420p") is False
 
 
 def test_describe_ffmpeg_binary_detects_vendor_path():

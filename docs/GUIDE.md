@@ -314,6 +314,16 @@ Click a `@handle` to filter status and the media library to that user. Each prof
 - Multi-select recordings (checkbox on each card) then **Select all** / **Clear** / **Delete selected** in the toolbar to remove many files in one pass
 - **Move leftover FLVs** - move orphan `*_flv.mp4` files into repo-root `to_fix/` (shown only when orphans exist; badge shows count). Skips files that belong to an active recording. See [Salvaging leftover recordings](#salvaging-leftover-recordings).
 
+### Media inventory API
+
+Dashboard `GET /api/media` is unchanged (hides in-progress files, no codec field). Scripts can call **`GET /api/media/inventory`** for a flat list of every library MP4, including recordings and converts in flight.
+
+Each row includes `codec`, `pix_fmt`, `is_av1`, `in_progress`, `converting`, and `busy_reason` (`recording`, `queued`, `converting`, `av1temp`, or `null`). Temp files (`*.av1temp.mp4`, `*.repair.tmp.mp4`) are never listed.
+
+Codec results persist in `output/.media-codec-index.json` (or the custom `-output` directory), keyed by path + mtime + size. An in-place AV1 replace from an external encoder is detected when those stats change, or when a sibling `{stem}.av1temp.mp4` disappears.
+
+**`GET /api/media/inventory?ready=true`** returns the same payload filtered to finished non-AV1 files: no leftover `*_flv.mp4`, not recording/converting, no `.av1temp.mp4` sibling. Callers who want other slices should use the unfiltered inventory.
+
 ### Settings
 
 Opens in a modal overlay (shortcut **`s`**):

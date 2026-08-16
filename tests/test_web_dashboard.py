@@ -407,6 +407,9 @@ class StubRecorder:
     def active_recording_output_paths(self):
         return set(getattr(self, "_active_paths", ()))
 
+    def _media_jobs_snapshot(self):
+        return list(getattr(self, "media_jobs", []))
+
     def move_leftover_flvs(self):
         from tiktok_live_recorder.utils.utils import (
             default_output_base,
@@ -530,6 +533,10 @@ def api_client(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "tiktok_live_recorder.web.app.scan_media_library",
         lambda *_args, **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        "tiktok_live_recorder.web.app.scan_media_inventory",
+        lambda *_args, **_kwargs: [],
     )
     client = TestClient(create_app(recorder, config))
     return client, recorder, tmp_path

@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
@@ -46,6 +46,7 @@ from tiktok_live_recorder.web.media import (
     find_orphan_flv_files,
     is_active_recording_file,
     resolve_media_path,
+    scan_media_inventory,
     scan_media_library,
 )
 from tiktok_live_recorder.web.thumbnails import (
@@ -103,16 +104,38 @@ def _ensure_users_file(recorder: TikTokRecorder) -> str:
     return path
 
 
-def _scan_media(recorder: TikTokRecorder, output_base: Path, custom_output) -> dict:
+def _ffprobe_cmd(recorder: TikTokRecorder) -> str:
     from tiktok_live_recorder.utils.ffmpeg_setup import ffprobe_for
 
     ffmpeg_path = getattr(recorder, "ffmpeg_path", None)
-    probe = ffprobe_for(ffmpeg_path) if ffmpeg_path else "ffprobe"
+    return ffprobe_for(ffmpeg_path) if ffmpeg_path else "ffprobe"
+
+
+def _scan_media(recorder: TikTokRecorder, output_base: Path, custom_output) -> dict:
     return scan_media_library(
         output_base,
         custom_output,
         recorder.active_recording_output_paths(),
-        ffprobe_cmd=probe,
+        ffprobe_cmd=_ffprobe_cmd(recorder),
+    )
+
+
+def _scan_inventory(
+    recorder: TikTokRecorder,
+    output_base: Path,
+    custom_output,
+    *,
+    ready: bool = False,
+) -> list[dict]:
+    snapshot = getattr(recorder, "_media_jobs_snapshot", None)
+    jobs = snapshot() if callable(snapshot) else []
+    return scan_media_inventory(
+        output_base,
+        custom_output,
+        recorder.active_recording_output_paths(),
+        media_jobs=jobs,
+        ffprobe_cmd=_ffprobe_cmd(recorder),
+        ready=ready,
     )
 
 
@@ -277,6 +300,16 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
     def api_media() -> JSONResponse:
         return JSONResponse(
             content=_scan_media(recorder, output_base, custom_output),
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.get("/api/media/inventory")
+    def api_media_inventory(
+        ready: bool = Query(default=False),
+    ) -> JSONResponse:
+        videos = _scan_inventory(recorder, output_base, custom_output, ready=ready)
+        return JSONResponse(
+            content={"count": len(videos), "ready": ready, "videos": videos},
             headers={"Cache-Control": "no-store"},
         )
 

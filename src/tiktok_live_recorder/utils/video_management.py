@@ -181,17 +181,24 @@ class VideoManagement:
     _LIBRARY_AV1_PIX_FMTS = frozenset({"yuv420p", "yuv420p10le"})
 
     @staticmethod
+    def library_playable_from_probe(codec: str, pix_fmt: str) -> bool:
+        """True when ffprobe codec/pix_fmt is suitable for browser playback."""
+        name = (codec or "").lower()
+        fmt = (pix_fmt or "").lower()
+        if name == "h264" and fmt == "yuv420p":
+            return True
+        if name == "av1" and fmt in VideoManagement._LIBRARY_AV1_PIX_FMTS:
+            return True
+        return False
+
+    @staticmethod
     def is_library_playable(media_file: str, ffprobe_cmd: str) -> bool:
         """True when the file is already suitable for browser playback (H.264 or AV1)."""
         path = Path(media_file)
         if not path.is_file() or path.stat().st_size <= 0:
             return False
         codec, pix_fmt = VideoManagement._probe_video_info(media_file, ffprobe_cmd)
-        if codec == "h264" and pix_fmt == "yuv420p":
-            return True
-        if codec == "av1" and pix_fmt in VideoManagement._LIBRARY_AV1_PIX_FMTS:
-            return True
-        return False
+        return VideoManagement.library_playable_from_probe(codec, pix_fmt)
 
     @staticmethod
     def _emit_convert_progress(

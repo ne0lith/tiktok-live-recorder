@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.31.0] - 2026-08-16
+
+### Added
+
+- **Media inventory API**: `GET /api/media/inventory` lists every library video with codec and busy state (recording, queued, converting, or external `.av1temp.mp4`); `?ready=true` returns finished non-AV1 files. Codec results persist in `output/.media-codec-index.json`
+
 ## [8.30.0] - 2026-08-15
 
 ### Added
@@ -791,7 +797,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.30.0...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.31.0...HEAD
+[8.31.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.30.0...v8.31.0
 [8.30.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.29.0...v8.30.0
 [8.29.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.28.1...v8.29.0
 [8.28.1]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.28.0...v8.28.1
