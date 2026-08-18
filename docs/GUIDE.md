@@ -106,6 +106,7 @@ Every finished recording goes through the same post-processing path:
 3. When a worker slot is free, the job status becomes **`converting`** and ffmpeg runs.
 4. On success (validated H.264 + `yuv420p`), the `*_flv.mp4` is removed.
 5. On failure after all passes, the `*_flv.mp4` is kept (activity notes the failure).
+6. **Cancel** on a convert-queue row kills ffmpeg, skips remaining salvage passes, deletes the incomplete `.mp4`, and moves the `*_flv.mp4` into repo-root `to_fix/` (same destination as **Move leftover FLVs**; a numeric suffix is added if that name already exists). Repair jobs only delete `*.repair.tmp.mp4` and keep the original library file. The rest of the queue keeps running - the recorder process is not restarted.
 
 Recording threads **never** invoke ffmpeg directly. There is no setting to skip conversion. Convert jobs do **not** block watchlist polling or a new recording for the same username.
 
@@ -280,9 +281,9 @@ The sticky summary strip has two left-aligned rows: **filter chips** (All / Live
 ### Live status
 
 - Per-user state: `offline`, `recording`, `stopping`, `paused`, errors, etc.
-- Convert/repair progress appears in the Live status **ops digest** and summary meta line (`media_jobs`), not as the user's live status - so a user can show **recording** again while a prior file is still converting
+- Convert/repair progress appears in the Live status **ops digest** and summary meta line (`media_jobs`), not as the user's live status - so a user can show **recording** again while a prior file is still converting. **Cancel** on a job row stops that convert without restarting the recorder (see [Conversion queue](#conversion-queue-and-post-processing)).
 - Room ID, elapsed time, file size, and active output path
-- Ops digest: compact last-poll counts plus capped name lists for starting/skipped/errors; convert jobs listed one per line. **Starting** = newly found live this poll (clears once recording starts); **Recording** = already recording. Current sessions are under Active.
+- Ops digest: compact last-poll counts plus capped name lists for starting/skipped/errors; convert jobs listed one per line. **Starting** = newly found live this poll (clears once recording starts); **Recording** = already recording. Current sessions are under Active. Poll **Errors** (WAF, etc.) stay in the Watchlist list - they are not treated as Active and do not block **Update when idle**.
 - **Check** (per user) - priority live check for that user: pauses an in-progress full poll, runs the Check (and any other queued Checks if you click several), then resumes the remaining users; works while converting or when paused
 - **Force check** - abort/restart the full watchlist poll immediately (shows loading while a poll is in progress)
 - **Stop** - graceful shutdown for an active recording
@@ -378,7 +379,7 @@ Open **Settings** (`s`) -> **Application -> Updates**:
 | **On disk** | Version from `pyproject.toml` after a hot update (may differ until restart) |
 | **Check for updates** | Fetches from GitHub and shows whether an update is available and what scope it needs |
 | **Update now** | Applies immediately. Restart-scope updates stop polling and drain recordings/converts first |
-| **Update when idle** | Keeps polling until nothing is recording or converting, then applies a **full restart** update |
+| **Update when idle** | Keeps polling until nothing is recording or converting, then applies a **full restart** update. Last-poll Errors (WAF, etc.) do not count as busy |
 | **Auto-update when idle** | When a new GitHub release is available (checked about every 30 minutes), queue that idle restart automatically. Also `-auto-update-when-idle` / `runtime_settings.json` |
 
 Progress during restart-scope and idle-queued updates appears in the settings panel and in the live status stream (`GET /api/events`).

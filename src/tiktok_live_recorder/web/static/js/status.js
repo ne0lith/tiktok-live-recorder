@@ -1,4 +1,4 @@
-import { api } from "./api.js";
+import { api, showToast } from "./api.js";
 import { renderActivityFeed, loadActivityPreferences } from "./activity.js";
 import {
   formatBytes,
@@ -45,7 +45,6 @@ const ACTIVE_STATES = new Set([
   "starting",
   "recording",
   "stopping",
-  "error",
 ]);
 
 const POLL_NAME_CAP = 6;
@@ -259,7 +258,20 @@ function renderStatusOps(status) {
         let state;
         if (job.status === "converting") {
           const percent = progress.percent;
-          state = percent != null ? `${percent}%` : "converting";
+          const outTime = progress.out_time_seconds;
+          const duration = progress.duration_seconds;
+          if (percent != null) {
+            state = `${percent}%`;
+            if (
+              outTime != null &&
+              duration != null &&
+              Number(outTime) > Number(duration)
+            ) {
+              state = `${percent}% · ${formatDuration(outTime)} / ${formatDuration(duration)}`;
+            }
+          } else {
+            state = "converting";
+          }
         } else {
           const position = Number(job.queue_position);
           state =
@@ -271,10 +283,12 @@ function renderStatusOps(status) {
         }
         const action = job.mode === "flv" ? "convert" : "repair";
         const file = job.filename || "?";
+        const user = job.username || "";
         return `<div class="status-ops-job">
           <span class="status-ops-job-user">@${job.username || "?"}</span>
           <span class="status-ops-job-file" title="${file}">${file}</span>
           <span class="status-ops-job-meta">${action} · ${state}</span>
+          <button type="button" class="btn btn-ghost btn-small status-ops-job-cancel" data-cancel-convert="1" data-username="${user}" data-filename="${file}" data-mode="${job.mode || "flv"}">Cancel</button>
         </div>`;
       })
       .join("");
@@ -563,10 +577,37 @@ export function initStatusInteractions() {
   });
 
   statusBoard?.addEventListener("click", handleStatusAction);
+  statusOps?.addEventListener("click", handleConvertCancel);
 
   window.addEventListener("ttlr:media-updated", () => {
     if (latestStatus) renderStatus(latestStatus);
   });
+}
+
+async function handleConvertCancel(event) {
+  const button = event.target.closest("[data-cancel-convert]");
+  if (!button) return;
+  const username = button.dataset.username || "";
+  const filename = button.dataset.filename || "";
+  const mode = button.dataset.mode || "flv";
+  if (!username || !filename) return;
+  const message =
+    mode === "repair"
+      ? `Stop this repair of ${filename}? The original MP4 is kept; the temp file is deleted.`
+      : `Stop convert of ${filename}, delete the incomplete MP4, and move the FLV to to_fix/?`;
+  if (!confirm(message)) return;
+  button.disabled = true;
+  try {
+    await api(
+      `/api/media/${encodeURIComponent(username)}/${encodeURIComponent(filename)}/cancel-convert`,
+      { method: "POST" },
+    );
+    showToast(`Cancelled ${filename}`);
+    await refreshStatus();
+  } catch (error) {
+    button.disabled = false;
+    showToast(error instanceof Error ? error.message : String(error));
+  }
 }
 
 async function handleStatusAction(event) {

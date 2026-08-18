@@ -580,7 +580,7 @@ body.modal-open {
 }
 
 .status-ops-job {
-  grid-template-columns: 6.5rem minmax(0, 1fr) auto;
+  grid-template-columns: 6.5rem minmax(0, 1fr) auto auto;
 }
 
 @media (max-width: 720px) {
@@ -611,6 +611,10 @@ body.modal-open {
   white-space: nowrap;
   color: var(--accent);
   font-variant-numeric: tabular-nums;
+}
+
+.status-ops-job-cancel {
+  justify-self: end;
 }
 
 .status-filter {

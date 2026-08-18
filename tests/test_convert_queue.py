@@ -101,3 +101,109 @@ def test_convert_queue_limits_active_workers(monkeypatch):
 
     assert len(done) == 2
     assert active["max"] == 1
+
+
+def test_convert_queue_cancel_skips_queued_job(monkeypatch):
+    import time
+    from threading import Event
+
+    converted: list[str] = []
+    completed: list[tuple[str, bool]] = []
+    release_first = Event()
+
+    def slow_convert(path, *_args, **_kwargs):
+        converted.append(path)
+        release_first.wait(timeout=2)
+        return False
+
+    monkeypatch.setattr(
+        "tiktok_live_recorder.core.convert_queue.VideoManagement.convert_flv_to_mp4",
+        slow_convert,
+    )
+
+    queue = ConvertQueue(max_concurrent=1)
+
+    def make_job(name: str) -> ConvertJob:
+        return ConvertJob(
+            user=name,
+            output_path=f"TK_{name}_flv.mp4",
+            bitrate=None,
+            ffmpeg_path=None,
+            on_progress=None,
+            on_start=None,
+            on_complete=lambda success, _out, _name=name: completed.append(
+                (_name, success)
+            ),
+        )
+
+    first = make_job("a")
+    second = make_job("b")
+    queue.enqueue(first)
+    queue.enqueue(second)
+    deadline = time.time() + 2
+    while time.time() < deadline and not converted:
+        time.sleep(0.05)
+    assert queue.cancel(second.output_path) is True
+    release_first.set()
+
+    deadline = time.time() + 5
+    while time.time() < deadline and len(completed) < 2:
+        time.sleep(0.05)
+
+    assert ("b", False) in completed
+    assert converted == [first.output_path]
+
+
+def test_convert_queue_cancel_unblocks_next_job(monkeypatch):
+    import time
+    from threading import Event
+
+    started: list[str] = []
+    completed: list[str] = []
+    first_started = Event()
+
+    def slow_convert(path, *_args, **kwargs):
+        started.append(path)
+        if "stuck" not in str(path):
+            return False
+        first_started.set()
+        cancel_event = kwargs.get("cancel_event")
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            if cancel_event is not None and cancel_event.is_set():
+                return False
+            time.sleep(0.05)
+        return False
+
+    monkeypatch.setattr(
+        "tiktok_live_recorder.core.convert_queue.VideoManagement.convert_flv_to_mp4",
+        slow_convert,
+    )
+
+    queue = ConvertQueue(max_concurrent=1)
+
+    def make_job(name: str) -> ConvertJob:
+        return ConvertJob(
+            user=name,
+            output_path=f"TK_{name}_flv.mp4",
+            bitrate=None,
+            ffmpeg_path=None,
+            on_progress=None,
+            on_start=None,
+            on_complete=lambda _success, _out, _name=name: completed.append(_name),
+        )
+
+    first = make_job("stuck")
+    second = make_job("next")
+    queue.enqueue(first)
+    queue.enqueue(second)
+    assert first_started.wait(timeout=2)
+    assert queue.cancel(first.output_path) is True
+
+    deadline = time.time() + 5
+    while time.time() < deadline and "next" not in completed:
+        time.sleep(0.05)
+
+    assert "stuck" in completed
+    assert "next" in completed
+    assert any(path.endswith("TK_next_flv.mp4") for path in started)

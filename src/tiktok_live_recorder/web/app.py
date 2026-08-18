@@ -366,6 +366,17 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
     def api_repair_legacy_media(username: str, filename: str) -> dict[str, Any]:
         return _queue_media_repair(username, filename, subdir="legacy")
 
+    @app.post("/api/media/{username}/{filename}/cancel-convert")
+    def api_cancel_convert(username: str, filename: str) -> dict[str, Any]:
+        try:
+            return recorder.cancel_media_convert(
+                _normalize_username(username), filename
+            )
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
     @app.get("/api/ffmpeg")
     def api_ffmpeg() -> dict[str, Any]:
         return recorder.get_ffmpeg_info()

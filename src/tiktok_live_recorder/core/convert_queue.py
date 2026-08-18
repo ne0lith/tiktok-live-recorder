@@ -3,7 +3,7 @@ from __future__ import annotations
 import queue
 import threading
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +24,7 @@ class ConvertJob:
     on_start: Callable[[], None] | None
     on_complete: ConvertCompleteCallback
     mode: str = "flv"
+    cancel_event: threading.Event = field(default_factory=threading.Event)
 
 
 class ConvertQueue:
@@ -34,6 +35,8 @@ class ConvertQueue:
         self._max_concurrent = max(1, max_concurrent)
         self._semaphore = threading.Semaphore(self._max_concurrent)
         self._jobs: queue.Queue[ConvertJob | None] = queue.Queue()
+        self._jobs_by_key: dict[str, ConvertJob] = {}
+        self._cancelled: set[str] = set()
         self._pending = 0
         self._active = 0
         self._shutdown = False
@@ -43,6 +46,15 @@ class ConvertQueue:
             daemon=True,
         )
         self._dispatcher.start()
+
+    @staticmethod
+    def _path_keys(output_path: str) -> set[str]:
+        keys = {output_path}
+        try:
+            keys.add(str(Path(output_path).resolve()))
+        except OSError:
+            pass
+        return keys
 
     def set_max_concurrent(self, max_concurrent: int) -> None:
         max_concurrent = max(1, max_concurrent)
@@ -64,8 +76,27 @@ class ConvertQueue:
         with self._lock:
             self._pending += 1
             position = self._pending
+            for key in self._path_keys(job.output_path):
+                self._jobs_by_key[key] = job
         self._jobs.put(job)
         return position
+
+    def cancel(self, output_path: str) -> bool:
+        """Abort a queued or active job. Returns True if a matching job was found."""
+        keys = self._path_keys(output_path)
+        job: ConvertJob | None = None
+        with self._lock:
+            for key in keys:
+                found = self._jobs_by_key.get(key)
+                if found is not None:
+                    job = found
+                    break
+            if job is None:
+                return False
+            for key in keys | self._path_keys(job.output_path):
+                self._cancelled.add(key)
+        job.cancel_event.set()
+        return True
 
     def shutdown(self, *, wait: bool = True, timeout: float = 600.0) -> None:
         self._shutdown = True
@@ -87,12 +118,35 @@ class ConvertQueue:
             )
             worker.start()
 
+    def _job_is_cancelled(self, job: ConvertJob) -> bool:
+        if job.cancel_event.is_set():
+            return True
+        with self._lock:
+            return bool(self._cancelled.intersection(self._path_keys(job.output_path)))
+
+    def _forget_job(self, job: ConvertJob) -> None:
+        with self._lock:
+            for key in self._path_keys(job.output_path):
+                if self._jobs_by_key.get(key) is job:
+                    self._jobs_by_key.pop(key, None)
+                self._cancelled.discard(key)
+
     def _run_job(self, job: ConvertJob) -> None:
         self._semaphore.acquire()
         try:
             with self._lock:
                 self._pending = max(0, self._pending - 1)
                 self._active += 1
+            cancelled = self._job_is_cancelled(job)
+            if cancelled:
+                mp4_output = (
+                    job.output_path
+                    if job.mode == "repair"
+                    else job.output_path.replace("_flv.mp4", ".mp4")
+                )
+                logger.info("[@%s] Conversion cancelled: %s", job.user, job.output_path)
+                job.on_complete(False, mp4_output)
+                return
             if job.on_start:
                 job.on_start()
             if job.mode == "repair":
@@ -102,6 +156,7 @@ class ConvertQueue:
                     job.bitrate,
                     job.ffmpeg_path,
                     on_progress=job.on_progress,
+                    cancel_event=job.cancel_event,
                 )
             else:
                 mp4_output = job.output_path.replace("_flv.mp4", ".mp4")
@@ -110,15 +165,19 @@ class ConvertQueue:
                     job.bitrate,
                     job.ffmpeg_path,
                     on_progress=job.on_progress,
+                    cancel_event=job.cancel_event,
                 )
                 success = converted and Path(mp4_output).is_file()
-            if not success:
+            cancelled = self._job_is_cancelled(job)
+            if cancelled:
+                logger.info("[@%s] Conversion cancelled: %s", job.user, job.output_path)
+            elif not success:
                 logger.warning(
                     "[@%s] Conversion failed; left raw recording at %s",
                     job.user,
                     job.output_path,
                 )
-            job.on_complete(success, mp4_output)
+            job.on_complete(success and not cancelled, mp4_output)
         except Exception as exc:
             logger.error("[@%s] Conversion error: %s", job.user, exc, exc_info=True)
             mp4_output = (
@@ -128,6 +187,7 @@ class ConvertQueue:
             )
             job.on_complete(False, mp4_output)
         finally:
+            self._forget_job(job)
             with self._lock:
                 self._active = max(0, self._active - 1)
             self._semaphore.release()

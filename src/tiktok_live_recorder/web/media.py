@@ -25,6 +25,22 @@ _TRANSIENT_MEDIA_SUFFIXES = (".repair.tmp.mp4", ".av1temp.mp4")
 _JOB_STATUSES = frozenset({"queued", "converting"})
 
 
+def unique_to_fix_dest(dest_dir: Path, filename: str) -> Path:
+    """Return dest_dir/filename, or dest_dir/stem.N.suffix if that name exists."""
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / filename
+    if not dest.exists():
+        return dest
+    stem = Path(filename).stem
+    suffix = Path(filename).suffix
+    index = 1
+    while True:
+        candidate = dest_dir / f"{stem}.{index}{suffix}"
+        if not candidate.exists():
+            return candidate
+        index += 1
+
+
 def _cached_library_playable(path: Path, ffprobe_cmd: str) -> bool:
     codec, pix_fmt = get_codec_index().get_or_probe(path, ffprobe_cmd)
     return VideoManagement.library_playable_from_probe(codec, pix_fmt)

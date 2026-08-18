@@ -384,7 +384,7 @@ Many TikTok lives use **HEVC in legacy FLV** (codec id 12). The in-app pipeline 
 
 1. Restart the recorder and check startup logs for `capable for TikTok HEVC FLV` vs `NOT capable`.
 2. On Linux, let the automatic BtbN install complete (first run may pause while downloading).
-3. Check the convert-queue strip for queued/converting jobs - conversion may still be in progress; raise **Max concurrent converts** in Settings if many streams ended at once.
+3. Check the convert-queue strip for queued/converting jobs - conversion may still be in progress; raise **Max concurrent converts** in Settings if many streams ended at once. **Cancel** on a stuck row (progress can sit at 99% until ffmpeg exits) kills that job, deletes the incomplete MP4, and moves the FLV to `to_fix/` without restarting the recorder.
 4. For leftover `*_flv.mp4` files after **`convert_failed`**, use the dashboard **Move leftover FLVs** button ([guide](docs/GUIDE.md#salvaging-leftover-recordings)), then run `fix-mp4s` against `to_fix/` (NVENC by default, or `-AppPipeline` for the same salvage the recorder uses).
 5. Or pass `-ffmpeg-path` to FFmpeg 8.0+ that supports legacy HEVC FLV.
 
@@ -396,7 +396,7 @@ The recorder writes `tiktok-recorder.log` (rotates at 5 MB, keeps 3 backups). Ov
 
 In-app apply requires a **git clone** with **`git`** and **`uv`** on `PATH` and a writable project directory. Docker installs must rebuild manually. If **Update now** is missing, use `git pull`, `uv sync`, and restart from the shell ([updating guide](docs/GUIDE.md#updating-the-application)).
 
-If a restart-scope update times out while waiting for converts, active ffmpeg jobs may still be running - wait for them to finish or stop the recorder, then upgrade manually. Do not force-kill during conversion if you want to keep partial `*_flv.mp4` files for salvage.
+If a restart-scope update times out while waiting for converts, active ffmpeg jobs may still be running - **Cancel** the stuck convert from the dashboard convert-queue strip, wait for them to finish, or stop the recorder, then upgrade manually. Do not force-kill during conversion if you want to keep partial `*_flv.mp4` files for salvage.
 
 ## Guide
 

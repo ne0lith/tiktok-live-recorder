@@ -388,6 +388,65 @@ def test_convert_flv_to_mp4_returns_false_when_locked(tmp_path):
         assert VideoManagement.convert_flv_to_mp4(str(flv)) is False
 
 
+def test_convert_flv_to_mp4_skips_passes_when_already_cancelled(tmp_path):
+    import threading
+
+    from tiktok_live_recorder.utils.video_management import VideoManagement
+
+    flv = tmp_path / "TK_user_2026.07.26_12-00-00_flv.mp4"
+    flv.write_bytes(b"x")
+    cancel_event = threading.Event()
+    cancel_event.set()
+    phases: list[str] = []
+
+    def fake_pass(*_args, **kwargs):
+        phases.append(kwargs.get("phase") or "")
+        return False
+
+    with (
+        patch.object(VideoManagement, "wait_for_file_release", return_value=True),
+        patch.object(VideoManagement, "_try_convert_pass", fake_pass),
+    ):
+        assert (
+            VideoManagement.convert_flv_to_mp4(str(flv), cancel_event=cancel_event)
+            is False
+        )
+    assert phases == []
+    assert flv.is_file()
+
+
+def test_convert_flv_to_mp4_skips_salvage_after_cancelled_encode(tmp_path):
+    import threading
+
+    from tiktok_live_recorder.utils.video_management import VideoManagement
+
+    flv = tmp_path / "TK_user_2026.07.26_12-00-00_flv.mp4"
+    flv.write_bytes(b"x")
+    cancel_event = threading.Event()
+    phases: list[str] = []
+
+    def fake_pass(*_args, **kwargs):
+        phases.append(kwargs.get("phase") or "")
+        cancel_event.set()
+        return False
+
+    with (
+        patch.object(VideoManagement, "wait_for_file_release", return_value=True),
+        patch.object(VideoManagement, "_try_convert_pass", fake_pass),
+        patch.object(VideoManagement, "_try_mkv_salvage_pass", fake_pass),
+        patch(
+            "tiktok_live_recorder.utils.video_management.file_needs_legacy_hevc_rewrite",
+            return_value=False,
+        ),
+    ):
+        assert (
+            VideoManagement.convert_flv_to_mp4(str(flv), cancel_event=cancel_event)
+            is False
+        )
+    assert phases == ["encode"]
+    assert flv.is_file()
+
+
 @patch("platform.system", return_value="Linux")
 @patch(
     "tiktok_live_recorder.utils.dependencies.resolve_ffmpeg_path",

@@ -38,12 +38,15 @@ def sync_convert_queue(monkeypatch):
             if job.on_start:
                 job.on_start()
             mp4_output = job.output_path.replace("_flv.mp4", ".mp4")
-            if job.mode == "repair":
+            if job.cancel_event.is_set():
+                success = False
+            elif job.mode == "repair":
                 converted = VideoManagement.repair_mp4_file(
                     job.output_path,
                     job.bitrate,
                     job.ffmpeg_path,
                     on_progress=job.on_progress,
+                    cancel_event=job.cancel_event,
                 )
                 success = converted
             else:
@@ -52,6 +55,7 @@ def sync_convert_queue(monkeypatch):
                     job.bitrate,
                     job.ffmpeg_path,
                     on_progress=job.on_progress,
+                    cancel_event=job.cancel_event,
                 )
                 success = converted and Path(mp4_output).is_file()
             job.on_complete(
@@ -1523,6 +1527,97 @@ def test_queue_update_when_idle_waits_when_recording():
     assert recorder._try_start_idle_update() is True
     assert recorder.is_update_pending() is True
     assert recorder._stop.is_set()
+
+
+def test_queue_update_when_idle_ignores_poll_errors():
+    recorder = TikTokRecorder(
+        RecorderConfig(mode=Mode.WATCHLIST, users=["alpha"], cookies={})
+    )
+    recorder._last_poll_snapshot = {
+        "errors": ["alpha (Your IP is blocked by TikTok WAF.)"],
+        "offline": [],
+        "recording": [],
+        "finished": [],
+        "skipped": [],
+        "paused": [],
+        "starting": [],
+    }
+    recorder._poll_in_progress = False
+    result = recorder.queue_update_when_idle()
+    assert result["status"] == "waiting"
+    assert recorder.is_update_pending() is True
+
+
+def test_is_idle_for_update_false_during_poll():
+    recorder = TikTokRecorder(
+        RecorderConfig(mode=Mode.WATCHLIST, users=["alpha"], cookies={})
+    )
+    recorder._poll_in_progress = True
+    assert recorder._is_idle_for_update() is False
+
+
+def test_cancel_media_convert_moves_flv_and_deletes_incomplete(tmp_path, monkeypatch):
+    to_fix = tmp_path / "to_fix"
+    user_dir = tmp_path / "output" / "alpha"
+    user_dir.mkdir(parents=True)
+    flv = user_dir / "TK_alpha_2026.01.01_12-00-00_flv.mp4"
+    flv.write_bytes(b"source")
+    incomplete = user_dir / "TK_alpha_2026.01.01_12-00-00.mp4"
+    incomplete.write_bytes(b"partial")
+
+    monkeypatch.setattr(
+        "tiktok_live_recorder.utils.utils.default_to_fix_dir",
+        lambda: to_fix,
+    )
+
+    recorder = TikTokRecorder(
+        RecorderConfig(mode=Mode.WATCHLIST, users=["alpha"], cookies={})
+    )
+    media_key = str(flv.resolve())
+    recorder._upsert_media_job(
+        media_key,
+        username="alpha",
+        filename=flv.name,
+        mode="flv",
+        status="converting",
+    )
+    monkeypatch.setattr(recorder._convert_queue, "cancel", lambda _path: True)
+
+    result = recorder.cancel_media_convert("alpha", flv.name)
+    assert result["cancelled"] is True
+    assert result["deleted_output"] is True
+    assert result["moved_to"] == str(to_fix / flv.name)
+    assert not flv.exists()
+    assert not incomplete.exists()
+    assert (to_fix / flv.name).read_bytes() == b"source"
+
+
+def test_cancel_media_convert_rejects_live_recording(tmp_path):
+    user_dir = tmp_path / "output" / "alpha"
+    user_dir.mkdir(parents=True)
+    flv = user_dir / "TK_alpha_2026.01.01_12-00-00_flv.mp4"
+    flv.write_bytes(b"live")
+
+    recorder = TikTokRecorder(
+        RecorderConfig(mode=Mode.WATCHLIST, users=["alpha"], cookies={})
+    )
+    alive = MagicMock()
+    alive.is_alive.return_value = True
+    recorder._active_recordings["alpha"] = {
+        "thread": alive,
+        "status": "recording",
+        "output_path": str(flv),
+    }
+    with pytest.raises(ValueError, match="live recording"):
+        recorder.cancel_media_convert("alpha", flv.name)
+
+
+def test_cancel_media_convert_missing_job():
+    recorder = TikTokRecorder(
+        RecorderConfig(mode=Mode.WATCHLIST, users=["alpha"], cookies={})
+    )
+    with pytest.raises(FileNotFoundError, match="Convert job not found"):
+        recorder.cancel_media_convert("alpha", "TK_alpha_2026.01.01_12-00-00_flv.mp4")
 
 
 def test_auto_update_when_idle_ignored_when_not_updatable(monkeypatch):

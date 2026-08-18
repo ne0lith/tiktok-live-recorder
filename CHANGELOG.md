@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.32.0] - 2026-08-18
+
+### Added
+
+- **Convert queue**: **Cancel** on a dashboard job row kills ffmpeg (skips salvage), deletes the incomplete `.mp4`, and moves the `*_flv.mp4` to `to_fix/` without restarting the recorder (`POST /api/media/{username}/{filename}/cancel-convert`)
+
+### Changed
+
+- **Live status**: poll Errors no longer appear under Active (Watchlist only); auto-update idle already ignored them and now has a regression test
+- **Convert progress**: converting rows show encode time vs probed duration when ffmpeg has run past 99%
+
 ## [8.31.0] - 2026-08-16
 
 ### Added
@@ -797,7 +808,8 @@ Fork maintained at [ne0lith/tiktok-live-recorder](https://github.com/ne0lith/tik
 - `tests/test_version.py` and `tests/test_waf_utils.py`
 - Expanded recorder, API, and CLI validation test coverage
 
-[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.31.0...HEAD
+[Unreleased]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.32.0...HEAD
+[8.32.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.31.0...v8.32.0
 [8.31.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.30.0...v8.31.0
 [8.30.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.29.0...v8.30.0
 [8.29.0]: https://github.com/ne0lith/tiktok-live-recorder/compare/v8.28.1...v8.29.0

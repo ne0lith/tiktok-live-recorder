@@ -1653,6 +1653,13 @@ class TikTokRecorder:
                     username=user,
                 )
                 self._maybe_upload_to_telegram(user, mp4_output)
+            elif cancel_event.is_set():
+                self._recording_results[user] = "ok"
+                self.record_activity(
+                    "media",
+                    f"Convert cancelled: {path.name}",
+                    username=user,
+                )
             else:
                 self._recording_results[user] = "error"
                 self.record_activity(
@@ -1662,6 +1669,7 @@ class TikTokRecorder:
                 )
             self._wake_poll_loop(reason="conversion-finished")
 
+        cancel_event = Event()
         self._upsert_media_job(
             media_key,
             username=user,
@@ -1679,6 +1687,7 @@ class TikTokRecorder:
                 on_progress=on_progress,
                 on_start=on_start,
                 on_complete=on_complete,
+                cancel_event=cancel_event,
             )
         )
         # Live queue # is assigned in `_media_jobs_snapshot` from FIFO order among
@@ -2118,7 +2127,10 @@ class TikTokRecorder:
 
         def on_complete(success: bool, output: str) -> None:
             self._remove_media_job(media_key)
-            outcome = "succeeded" if success else "failed"
+            if cancel_event.is_set():
+                outcome = "cancelled"
+            else:
+                outcome = "succeeded" if success else "failed"
             self.record_activity(
                 "media",
                 f"Manual {label} {outcome}: {path.name}",
@@ -2131,12 +2143,13 @@ class TikTokRecorder:
                 outcome,
                 path.name,
             )
-            if success and not is_flv:
+            if success and not is_flv and not cancel_event.is_set():
                 from tiktok_live_recorder.web.thumbnails import reset_thumbnail_state
 
                 reset_thumbnail_state(path)
             self._wake_poll_loop(reason="conversion-finished")
 
+        cancel_event = Event()
         self._upsert_media_job(
             media_key,
             username=username,
@@ -2161,6 +2174,7 @@ class TikTokRecorder:
                 on_start=on_start,
                 on_complete=on_complete,
                 mode=mode,
+                cancel_event=cancel_event,
             )
         )
         position = next(
@@ -2172,6 +2186,87 @@ class TikTokRecorder:
             1,
         )
         return {"queued": True, "position": position, "mode": mode}
+
+    def cancel_media_convert(self, username: str, filename: str) -> dict:
+        """Cancel a queued or active convert/repair and quarantine the FLV source."""
+        import shutil
+
+        from tiktok_live_recorder.utils.utils import default_to_fix_dir
+        from tiktok_live_recorder.web.media import unique_to_fix_dest
+        from tiktok_live_recorder.web.thumbnails import delete_thumbnail
+
+        username = username.lstrip("@").strip()
+        with self._state_lock:
+            entry = self._active_recordings.get(username)
+        if entry and self._entry_still_active(entry):
+            output_path = entry.get("output_path") or ""
+            if Path(output_path).name == filename:
+                raise ValueError("Cannot cancel a live recording")
+
+        media_key = None
+        job = None
+        with self._state_lock:
+            for path, item in self._media_jobs.items():
+                if (
+                    item.get("username") == username
+                    and item.get("filename") == filename
+                ):
+                    media_key = path
+                    job = dict(item)
+                    break
+        if media_key is None or job is None:
+            raise FileNotFoundError("Convert job not found")
+
+        mode = job.get("mode") or "flv"
+        self._convert_queue.cancel(media_key)
+
+        source = Path(media_key)
+        if mode == "repair":
+            incomplete = source.with_name(f"{source.stem}.repair.tmp.mp4")
+        elif source.name.endswith("_flv.mp4"):
+            incomplete = Path(str(source)[: -len("_flv.mp4")] + ".mp4")
+        else:
+            incomplete = source.with_suffix(".mp4")
+
+        deleted_output = False
+        if incomplete != source:
+            try:
+                if incomplete.is_file():
+                    incomplete.unlink()
+                    deleted_output = True
+            except OSError as exc:
+                logger.warning(
+                    "Could not delete incomplete convert output %s: %s",
+                    incomplete,
+                    exc,
+                )
+
+        moved_to = None
+        if mode != "repair" and source.name.endswith("_flv.mp4") and source.is_file():
+            dest = unique_to_fix_dest(default_to_fix_dir(), source.name)
+            try:
+                shutil.move(str(source), str(dest))
+                moved_to = str(dest)
+                delete_thumbnail(source)
+            except OSError as exc:
+                logger.warning(
+                    "Could not move cancelled FLV %s to to_fix/: %s",
+                    source,
+                    exc,
+                )
+
+        logger.info(
+            "[@%s] Convert cancelled: %s%s",
+            username,
+            filename,
+            f" -> {moved_to}" if moved_to else "",
+        )
+        return {
+            "cancelled": True,
+            "mode": mode,
+            "moved_to": moved_to,
+            "deleted_output": deleted_output,
+        }
 
     def move_leftover_flvs(self) -> dict:
         from tiktok_live_recorder.utils.utils import default_to_fix_dir

@@ -27,6 +27,17 @@ def test_default_to_fix_dir_is_repo_to_fix():
     assert default_to_fix_dir() == repo_root_path() / "to_fix"
 
 
+def test_unique_to_fix_dest_adds_numeric_suffix(tmp_path):
+    from tiktok_live_recorder.web.media import unique_to_fix_dest
+
+    dest_dir = tmp_path / "to_fix"
+    first = unique_to_fix_dest(dest_dir, "TK_alpha_2026.01.01_12-00-00_flv.mp4")
+    assert first == dest_dir / "TK_alpha_2026.01.01_12-00-00_flv.mp4"
+    first.write_bytes(b"one")
+    second = unique_to_fix_dest(dest_dir, "TK_alpha_2026.01.01_12-00-00_flv.mp4")
+    assert second == dest_dir / "TK_alpha_2026.01.01_12-00-00_flv.1.mp4"
+
+
 def test_output_dir_for_user_uses_username_subfolder_when_base_omitted(
     creator_output_dir,
 ):

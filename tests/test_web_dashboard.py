@@ -442,6 +442,20 @@ class StubRecorder:
         )
         return {"queued": True, "position": 1, "mode": mode}
 
+    def cancel_media_convert(self, username, filename):
+        self.cancel_requests = getattr(self, "cancel_requests", [])
+        if getattr(self, "cancel_missing", False):
+            raise FileNotFoundError("Convert job not found")
+        if getattr(self, "cancel_live", False):
+            raise ValueError("Cannot cancel a live recording")
+        self.cancel_requests.append((username, filename))
+        return {
+            "cancelled": True,
+            "mode": "flv",
+            "moved_to": f"/to_fix/{filename}",
+            "deleted_output": True,
+        }
+
     def get_ffmpeg_info(self):
         return {
             "path": "/usr/bin/ffmpeg",
@@ -1152,3 +1166,31 @@ def test_api_repair_media(tmp_path, monkeypatch):
 
     status = client.get("/api/status").json()
     assert len(status["media_jobs"]) == 2
+
+
+def test_api_cancel_convert(tmp_path, monkeypatch):
+    output_base = tmp_path / "output"
+    output_base.mkdir()
+    monkeypatch.setattr(
+        "tiktok_live_recorder.web.app.default_output_base",
+        lambda: output_base,
+    )
+    recorder = StubRecorder()
+    config = RecorderConfig(mode=Mode.WATCHLIST, users=["alpha"], cookies={})
+    client = TestClient(create_app(recorder, config))
+
+    filename = "TK_alpha_2026.01.01_12-00-00_flv.mp4"
+    response = client.post(f"/api/media/alpha/{filename}/cancel-convert")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["cancelled"] is True
+    assert recorder.cancel_requests == [("alpha", filename)]
+
+    recorder.cancel_missing = True
+    response = client.post(f"/api/media/alpha/{filename}/cancel-convert")
+    assert response.status_code == 404
+
+    recorder.cancel_missing = False
+    recorder.cancel_live = True
+    response = client.post(f"/api/media/alpha/{filename}/cancel-convert")
+    assert response.status_code == 409

@@ -2,6 +2,7 @@ import os
 import re
 import subprocess
 import tempfile
+import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -280,6 +281,24 @@ class VideoManagement:
         ]
 
     @staticmethod
+    def _is_cancelled(cancel_event: threading.Event | None) -> bool:
+        return bool(cancel_event is not None and cancel_event.is_set())
+
+    @staticmethod
+    def _watch_ffmpeg_cancel(
+        process: subprocess.Popen[str],
+        cancel_event: threading.Event,
+    ) -> None:
+        while process.poll() is None:
+            if cancel_event.wait(timeout=0.25):
+                if process.poll() is None:
+                    try:
+                        process.kill()
+                    except OSError:
+                        pass
+                return
+
+    @staticmethod
     def _run_ffmpeg_convert(
         input_file: str,
         output_file: str,
@@ -292,7 +311,11 @@ class VideoManagement:
         salvage: bool = False,
         audio_mode: AudioMode = "encode",
         remux_copy: bool = False,
+        cancel_event: threading.Event | None = None,
     ) -> bool:
+        if VideoManagement._is_cancelled(cancel_event):
+            Path(output_file).unlink(missing_ok=True)
+            return False
         try:
             width, height = VideoManagement._canvas_from_source(input_file, ffprobe_cmd)
         except Exception as exc:
@@ -413,6 +436,13 @@ class VideoManagement:
                 text=True,
                 bufsize=1,
             )
+            if cancel_event is not None:
+                threading.Thread(
+                    target=VideoManagement._watch_ffmpeg_cancel,
+                    args=(process, cancel_event),
+                    name="ffmpeg-cancel-watch",
+                    daemon=True,
+                ).start()
             assert process.stdout is not None
             for line in process.stdout:
                 try:
@@ -445,6 +475,10 @@ class VideoManagement:
 
             stderr = process.stderr.read() if process.stderr else ""
             returncode = process.wait()
+            if VideoManagement._is_cancelled(cancel_event):
+                Path(output_file).unlink(missing_ok=True)
+                logger.info("ffmpeg conversion cancelled (%s): %s", phase, input_file)
+                return False
             if returncode == 0:
                 VideoManagement._emit_convert_progress(
                     on_progress,
@@ -478,7 +512,11 @@ class VideoManagement:
         phase: str,
         salvage: bool = False,
         audio_mode: AudioMode = "encode",
+        cancel_event: threading.Event | None = None,
     ) -> bool:
+        if VideoManagement._is_cancelled(cancel_event):
+            Path(output_file).unlink(missing_ok=True)
+            return False
         Path(output_file).unlink(missing_ok=True)
         if not VideoManagement._run_ffmpeg_convert(
             input_file,
@@ -490,6 +528,7 @@ class VideoManagement:
             phase=phase,
             salvage=salvage,
             audio_mode=audio_mode,
+            cancel_event=cancel_event,
         ):
             return False
         if VideoManagement.output_is_dashboard_playable(output_file, ffprobe_cmd):
@@ -511,7 +550,11 @@ class VideoManagement:
         ffprobe_cmd: str,
         on_progress: ConvertProgressCallback | None,
         audio_mode: AudioMode,
+        cancel_event: threading.Event | None = None,
     ) -> bool:
+        if VideoManagement._is_cancelled(cancel_event):
+            Path(output_file).unlink(missing_ok=True)
+            return False
         with tempfile.NamedTemporaryFile(suffix=".mkv", delete=False) as tmp:
             mkv_path = tmp.name
         try:
@@ -526,7 +569,11 @@ class VideoManagement:
                 phase=phase,
                 salvage=True,
                 audio_mode=audio_mode,
+                cancel_event=cancel_event,
             ):
+                return False
+            if VideoManagement._is_cancelled(cancel_event):
+                Path(output_file).unlink(missing_ok=True)
                 return False
             Path(output_file).unlink(missing_ok=True)
             if not VideoManagement._run_ffmpeg_convert(
@@ -538,6 +585,7 @@ class VideoManagement:
                 on_progress=on_progress,
                 phase=f"{phase}+mp4",
                 remux_copy=True,
+                cancel_event=cancel_event,
             ):
                 return False
             if VideoManagement.output_is_dashboard_playable(output_file, ffprobe_cmd):
@@ -559,6 +607,7 @@ class VideoManagement:
         bitrate=None,
         ffmpeg_path=None,
         on_progress: ConvertProgressCallback | None = None,
+        cancel_event: threading.Event | None = None,
     ) -> bool:
         """
         Convert a live FLV recording into a seekable MP4.
@@ -568,13 +617,27 @@ class VideoManagement:
         """
         logger.info("Converting {} to MP4 format...".format(file))
 
+        output_file = file.replace("_flv.mp4", ".mp4")
+
+        def _abort_cancelled() -> bool:
+            if not VideoManagement._is_cancelled(cancel_event):
+                return False
+            Path(output_file).unlink(missing_ok=True)
+            logger.info("Conversion cancelled: %s", file)
+            return True
+
+        if _abort_cancelled():
+            return False
+
         if not VideoManagement.wait_for_file_release(file):
             logger.error(
                 f"File {file} is still locked after waiting. Skipping conversion."
             )
             return False
 
-        output_file = file.replace("_flv.mp4", ".mp4")
+        if _abort_cancelled():
+            return False
+
         ffmpeg_cmd = ffmpeg_path or "ffmpeg"
         ffprobe_cmd = VideoManagement._ffprobe_cmd(ffmpeg_path)
 
@@ -586,12 +649,18 @@ class VideoManagement:
             ffprobe_cmd=ffprobe_cmd,
             on_progress=on_progress,
             phase="encode",
+            cancel_event=cancel_event,
         ):
             os.remove(file)
             logger.info(f"Finished converting {Path(output_file).resolve()}\n")
             return True
 
+        if _abort_cancelled():
+            return False
+
         for audio_mode in VideoManagement._salvage_audio_modes(file, ffprobe_cmd):
+            if _abort_cancelled():
+                return False
             if VideoManagement._try_convert_pass(
                 file,
                 output_file,
@@ -602,10 +671,14 @@ class VideoManagement:
                 phase=f"salvage-{audio_mode}",
                 salvage=True,
                 audio_mode=audio_mode,
+                cancel_event=cancel_event,
             ):
                 os.remove(file)
                 logger.info(f"Finished converting {Path(output_file).resolve()}\n")
                 return True
+
+        if _abort_cancelled():
+            return False
 
         rewrite_source = file
         rewritten_path: str | None = None
@@ -627,23 +700,30 @@ class VideoManagement:
             )
 
         try:
-            if rewrite_source != file and VideoManagement._try_convert_pass(
-                rewrite_source,
-                output_file,
-                bitrate=bitrate,
-                ffmpeg_cmd=ffmpeg_cmd,
-                ffprobe_cmd=ffprobe_cmd,
-                on_progress=on_progress,
-                phase="rewrite",
-            ):
-                os.remove(file)
-                logger.info(f"Finished converting {Path(output_file).resolve()}\n")
-                return True
+            if rewrite_source != file and not _abort_cancelled():
+                if VideoManagement._try_convert_pass(
+                    rewrite_source,
+                    output_file,
+                    bitrate=bitrate,
+                    ffmpeg_cmd=ffmpeg_cmd,
+                    ffprobe_cmd=ffprobe_cmd,
+                    on_progress=on_progress,
+                    phase="rewrite",
+                    cancel_event=cancel_event,
+                ):
+                    os.remove(file)
+                    logger.info(f"Finished converting {Path(output_file).resolve()}\n")
+                    return True
         finally:
             if rewritten_path:
                 Path(rewritten_path).unlink(missing_ok=True)
 
+        if _abort_cancelled():
+            return False
+
         for audio_mode in VideoManagement._salvage_audio_modes(file, ffprobe_cmd):
+            if _abort_cancelled():
+                return False
             if VideoManagement._try_mkv_salvage_pass(
                 file,
                 output_file,
@@ -652,6 +732,7 @@ class VideoManagement:
                 ffprobe_cmd=ffprobe_cmd,
                 on_progress=on_progress,
                 audio_mode=audio_mode,
+                cancel_event=cancel_event,
             ):
                 os.remove(file)
                 logger.info(f"Finished converting {Path(output_file).resolve()}\n")
@@ -670,6 +751,7 @@ class VideoManagement:
         bitrate=None,
         ffmpeg_path=None,
         on_progress: ConvertProgressCallback | None = None,
+        cancel_event: threading.Event | None = None,
     ) -> bool:
         """
         Re-encode an existing MP4 in place using the salvage pipeline.
@@ -681,10 +763,18 @@ class VideoManagement:
             logger.error("Repair skipped; file not found: %s", file)
             return False
 
+        if VideoManagement._is_cancelled(cancel_event):
+            logger.info("Repair cancelled: %s", file)
+            return False
+
         if not VideoManagement.wait_for_file_release(file):
             logger.error(
                 "File %s is still locked after waiting. Skipping repair.", file
             )
+            return False
+
+        if VideoManagement._is_cancelled(cancel_event):
+            logger.info("Repair cancelled: %s", file)
             return False
 
         ffmpeg_cmd = ffmpeg_path or "ffmpeg"
@@ -694,6 +784,9 @@ class VideoManagement:
         logger.info("Repairing %s in place...", source.resolve())
 
         def _commit_repair() -> bool:
+            if VideoManagement._is_cancelled(cancel_event):
+                logger.info("Repair cancelled: %s", file)
+                return False
             try:
                 source.unlink()
                 Path(temp_output).replace(source)
@@ -711,10 +804,18 @@ class VideoManagement:
                 ffprobe_cmd=ffprobe_cmd,
                 on_progress=on_progress,
                 phase="repair",
+                cancel_event=cancel_event,
             ):
                 return _commit_repair()
 
+            if VideoManagement._is_cancelled(cancel_event):
+                logger.info("Repair cancelled: %s", file)
+                return False
+
             for audio_mode in VideoManagement._salvage_audio_modes(file, ffprobe_cmd):
+                if VideoManagement._is_cancelled(cancel_event):
+                    logger.info("Repair cancelled: %s", file)
+                    return False
                 if VideoManagement._try_convert_pass(
                     file,
                     temp_output,
@@ -725,10 +826,14 @@ class VideoManagement:
                     phase=f"repair-salvage-{audio_mode}",
                     salvage=True,
                     audio_mode=audio_mode,
+                    cancel_event=cancel_event,
                 ):
                     return _commit_repair()
 
             for audio_mode in VideoManagement._salvage_audio_modes(file, ffprobe_cmd):
+                if VideoManagement._is_cancelled(cancel_event):
+                    logger.info("Repair cancelled: %s", file)
+                    return False
                 if VideoManagement._try_mkv_salvage_pass(
                     file,
                     temp_output,
@@ -737,6 +842,7 @@ class VideoManagement:
                     ffprobe_cmd=ffprobe_cmd,
                     on_progress=on_progress,
                     audio_mode=audio_mode,
+                    cancel_event=cancel_event,
                 ):
                     return _commit_repair()
         finally:
