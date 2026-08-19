@@ -62,6 +62,10 @@ export async function loadSettings() {
     if (maxConvertsInput) {
       maxConvertsInput.value = String(runtime.max_concurrent_converts ?? 1);
     }
+    const prioritizeFavorites = document.getElementById("prioritize-favorites-enabled");
+    if (prioritizeFavorites) {
+      prioritizeFavorites.checked = Boolean(runtime.prioritize_favorites);
+    }
   }
 
   syncLibraryShowLegacyToggle();
@@ -123,6 +127,9 @@ export function initSettingsInteractions() {
         document.getElementById("max-converts-input").value,
         10,
       );
+      const prioritize_favorites = document.getElementById(
+        "prioritize-favorites-enabled",
+      ).checked;
       await api("/api/settings/runtime", {
         method: "PUT",
         body: JSON.stringify({
@@ -130,6 +137,7 @@ export function initSettingsInteractions() {
           use_telegram,
           use_identity_tracking,
           max_concurrent_converts,
+          prioritize_favorites,
         }),
       });
       showToast("Runtime settings saved");

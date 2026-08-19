@@ -3,5 +3,6 @@
   "use_telegram": false,
   "use_identity_tracking": false,
   "auto_update_when_idle": false,
-  "max_concurrent_converts": 1
+  "max_concurrent_converts": 1,
+  "prioritize_favorites": false
 }

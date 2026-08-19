@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.33.0] - 2026-08-19
+
+### Added
+
+- **Watchlist favorites**: star users from the dashboard; optional **Prioritize favorites in poll order** (Settings or `-prioritize-favorites` / `-no-prioritize-favorites`) checks favorited users first each cycle (each group shuffled). State in `config/watchlist_state.json`; paused users are still skipped
+- **Dashboard**: **Favorites** filter chip on the status strip; focused-user chip in the media library filter bar; dedicated **x** dismiss on user chips
+
 ## [8.32.0] - 2026-08-18
 
 ### Added

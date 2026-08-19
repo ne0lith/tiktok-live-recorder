@@ -155,6 +155,26 @@ def parse_args():
     )
 
     parser.add_argument(
+        "-prioritize-favorites",
+        dest="prioritize_favorites",
+        action="store_true",
+        help=(
+            "Poll favorited watchlist users first each cycle (each group shuffled). "
+            "Overrides runtime_settings.json when prioritize_favorites is disabled."
+        ),
+    )
+
+    parser.add_argument(
+        "-no-prioritize-favorites",
+        dest="no_prioritize_favorites",
+        action="store_true",
+        help=(
+            "Disable favorite-first poll ordering for this run. Overrides "
+            "runtime_settings.json when prioritize_favorites is enabled."
+        ),
+    )
+
+    parser.add_argument(
         "-bitrate",
         dest="bitrate",
         help="Specify the bitrate for the output file (e.g. 1000k, 1M). Default: None (keep original)",
@@ -220,6 +240,12 @@ def validate_and_parse_args():
         args.automatic_interval = runtime["automatic_interval_minutes"]
     if args.max_concurrent_converts is None:
         args.max_concurrent_converts = runtime["max_concurrent_converts"]
+    if getattr(args, "prioritize_favorites", False):
+        args.prioritize_favorites = True
+    elif getattr(args, "no_prioritize_favorites", False):
+        args.prioritize_favorites = False
+    else:
+        args.prioritize_favorites = runtime.get("prioritize_favorites", False)
 
     if not args.mode:
         raise ArgsParseError(

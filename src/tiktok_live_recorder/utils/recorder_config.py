@@ -20,6 +20,7 @@ class RecorderConfig:
     # Experimental: follow handle renames via secUid. Not guaranteed to be developed further.
     use_identity_tracking: bool = False
     auto_update_when_idle: bool = False
+    prioritize_favorites: bool = False
     bitrate: str | None = None
     ffmpeg_path: str | None = None
     users_file: str | None = None

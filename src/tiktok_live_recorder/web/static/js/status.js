@@ -31,6 +31,7 @@ import {
   profileLinkMarkup,
   runUserAction,
 } from "./user-actions.js";
+import { userChipMarkup } from "./chips.js";
 
 const statusBoard = document.getElementById("status-board");
 const statusMeta = document.getElementById("status-meta");
@@ -51,6 +52,7 @@ const POLL_NAME_CAP = 6;
 
 export function deriveRows(status) {
   const paused = new Set((status.paused || []).map((u) => u.toLowerCase()));
+  const favorites = new Set((status.favorites || []).map((u) => u.toLowerCase()));
   const recordings = new Map(
     (status.recordings || []).map((entry) => [entry.username, entry]),
   );
@@ -75,6 +77,7 @@ export function deriveRows(status) {
   (status.users || []).forEach((username) => {
     const row = ensure(username, paused.has(username.toLowerCase()) ? "paused" : "offline");
     if (paused.has(username.toLowerCase())) row.state = "paused";
+    if (favorites.has(username.toLowerCase())) row.favorite = true;
   });
 
   (poll.recording || []).forEach((username) => {
@@ -128,6 +131,10 @@ function countByState(rows) {
   return counts;
 }
 
+function countFavorites(rows) {
+  return rows.filter((row) => row.favorite).length;
+}
+
 function rowMatchesFilter(row) {
   if (statusFilter === "all") {
     if (hidePausedUsers && row.state === "paused") {
@@ -141,6 +148,7 @@ function rowMatchesFilter(row) {
   }
   if (statusFilter === "offline") return row.state === "offline";
   if (statusFilter === "paused") return row.state === "paused";
+  if (statusFilter === "favorites") return Boolean(row.favorite);
   if (statusFilter === "error") return row.state === "error";
   return true;
 }
@@ -320,6 +328,7 @@ export function renderSummaryChips(status) {
   if (!summaryFilters && !summaryMeta) return;
   const rows = deriveRows(status);
   const counts = countByState(rows);
+  const favoriteCount = countFavorites(rows);
   const version = document.body.dataset.version || "";
   const chips = [
     { filter: "all", label: "All" },
@@ -327,12 +336,11 @@ export function renderSummaryChips(status) {
     { filter: "recording", label: `Recording ${counts.recording}` },
     { filter: "offline", label: `Offline ${counts.offline}` },
     { filter: "paused", label: `Paused ${counts.paused}` },
+    { filter: "favorites", label: `Favorites ${favoriteCount}` },
     { filter: "error", label: `Errors ${counts.error}` },
   ];
 
-  const focusChip = selectedProfile
-    ? `<button type="button" class="summary-chip summary-chip--focus" data-clear-focus="1" title="Clear focus">@${selectedProfile} <span aria-hidden="true">x</span></button>`
-    : "";
+  const focusChip = selectedProfile ? userChipMarkup(selectedProfile) : "";
 
   const filterChips = chips
     .map(
@@ -447,6 +455,7 @@ function renderStatusLine(row, status) {
           ${profileLinkMarkup(row.username, { active: focused })}
           ${renameMarkup}
           ${tiktokLink}
+          ${row.favorite ? '<span class="badge badge-favorite" title="Favorited"></span>' : ""}
           <span class="badge ${row.state}">${formatStateLabel(row)}</span>
         </div>
         ${detailMarkup}

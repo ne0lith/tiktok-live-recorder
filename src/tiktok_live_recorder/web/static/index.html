@@ -132,7 +132,7 @@
         <div
           id="library-hidden-users"
           class="library-hidden-users hidden"
-          aria-label="Hidden users"
+          aria-label="Library filters"
         ></div>
         <div class="library-body" id="library-body">
           <aside id="media-player" class="media-player hidden" aria-label="Now playing">
@@ -213,6 +213,16 @@
                     </span>
                     <span class="toggle">
                       <input id="identity-tracking-enabled" type="checkbox" />
+                      <span class="toggle-slider" aria-hidden="true"></span>
+                    </span>
+                  </label>
+                  <label class="toggle-row" for="prioritize-favorites-enabled">
+                    <span class="toggle-copy">
+                      <span class="toggle-title">Prioritize favorites in poll order</span>
+                      <span class="toggle-hint">Check favorited users first each cycle (each group shuffled)</span>
+                    </span>
+                    <span class="toggle">
+                      <input id="prioritize-favorites-enabled" type="checkbox" />
                       <span class="toggle-slider" aria-hidden="true"></span>
                     </span>
                   </label>

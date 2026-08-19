@@ -18,6 +18,7 @@ import {
   profileLinkMarkup,
   runUserAction,
 } from "./user-actions.js";
+import { bindChipDismiss, userChipMarkup } from "./chips.js";
 
 const libraryBody = document.getElementById("library-body");
 const mediaLibrary = document.getElementById("media-library");
@@ -194,7 +195,7 @@ export function loadLibraryPreferences() {
   const sortSelect = document.getElementById("library-sort");
   if (sortSelect) sortSelect.value = libraryState.sortMode;
   syncLibraryShowLegacyToggle();
-  renderHiddenUserChips();
+  renderLibraryFilterChips();
 }
 
 function loadHiddenUsers() {
@@ -243,7 +244,7 @@ export function hideLibraryUser(username) {
   if (isLibraryUserHidden(normalized)) return false;
   libraryState.hiddenUsers.add(normalized);
   saveHiddenUsers();
-  renderHiddenUserChips();
+  renderLibraryFilterChips();
   return true;
 }
 
@@ -252,7 +253,7 @@ export function unhideLibraryUser(username) {
   if (!key) return false;
   libraryState.hiddenUsers.delete(key);
   saveHiddenUsers();
-  renderHiddenUserChips();
+  renderLibraryFilterChips();
   return true;
 }
 
@@ -260,45 +261,54 @@ export function clearHiddenLibraryUsers() {
   if (!libraryState.hiddenUsers.size) return false;
   libraryState.hiddenUsers.clear();
   saveHiddenUsers();
-  renderHiddenUserChips();
+  renderLibraryFilterChips();
   return true;
 }
 
-function renderHiddenUserChips() {
+function renderLibraryFilterChips() {
   if (!libraryHiddenUsers) return;
-  const names = [...libraryState.hiddenUsers].sort((a, b) =>
+  const hiddenNames = [...libraryState.hiddenUsers].sort((a, b) =>
     a.localeCompare(b, undefined, { sensitivity: "base" }),
   );
-  if (!names.length) {
+  const hasFocus = Boolean(selectedProfile);
+  const hasHidden = hiddenNames.length > 0;
+  if (!hasFocus && !hasHidden) {
     libraryHiddenUsers.classList.add("hidden");
     libraryHiddenUsers.replaceChildren();
     return;
   }
 
-  const label = document.createElement("span");
-  label.className = "library-hidden-users-label";
-  label.textContent = "Hidden";
+  libraryHiddenUsers.classList.remove("hidden");
+  libraryHiddenUsers.replaceChildren();
 
-  const chips = document.createElement("div");
-  chips.className = "library-hidden-users-chips";
-  for (const name of names) {
-    const chip = document.createElement("button");
-    chip.type = "button";
-    chip.className = "summary-chip summary-chip--focus library-hidden-user-chip";
-    chip.dataset.unhideUser = name;
-    chip.title = `Show @${name} again`;
-    chip.innerHTML = `@${name} <span aria-hidden="true">x</span>`;
-    chips.append(chip);
+  if (hasFocus) {
+    const focusLabel = document.createElement("span");
+    focusLabel.className = "library-hidden-users-label";
+    focusLabel.textContent = "Focused";
+    const focusChips = document.createElement("div");
+    focusChips.className = "library-hidden-users-chips";
+    focusChips.innerHTML = userChipMarkup(selectedProfile);
+    libraryHiddenUsers.append(focusLabel, focusChips);
   }
 
-  const clearBtn = document.createElement("button");
-  clearBtn.type = "button";
-  clearBtn.className = "summary-chip summary-chip--clear";
-  clearBtn.dataset.clearHiddenUsers = "1";
-  clearBtn.textContent = "Show all";
-
-  libraryHiddenUsers.replaceChildren(label, chips, clearBtn);
-  libraryHiddenUsers.classList.remove("hidden");
+  if (hasHidden) {
+    const hiddenLabel = document.createElement("span");
+    hiddenLabel.className = "library-hidden-users-label";
+    hiddenLabel.textContent = "Hidden";
+    const chips = document.createElement("div");
+    chips.className = "library-hidden-users-chips";
+    for (const name of hiddenNames) {
+      const wrap = document.createElement("span");
+      wrap.innerHTML = userChipMarkup(name, { variant: "muted", dismissAction: "unhide-user" });
+      chips.append(wrap.firstElementChild);
+    }
+    const clearBtn = document.createElement("button");
+    clearBtn.type = "button";
+    clearBtn.className = "summary-chip summary-chip--clear";
+    clearBtn.dataset.clearHiddenUsers = "1";
+    clearBtn.textContent = "Show all";
+    libraryHiddenUsers.append(hiddenLabel, chips, clearBtn);
+  }
 }
 
 async function hideUserAndRefresh(username) {
@@ -454,13 +464,12 @@ function updateLibrarySummary(media) {
     0,
   );
   if (!librarySummary) return;
-  const focusSuffix = selectedProfile ? ` · @${selectedProfile}` : "";
   const hiddenCount = libraryState.hiddenUsers.size;
   const hiddenSuffix = hiddenCount
     ? ` · ${hiddenCount} user${hiddenCount === 1 ? "" : "s"} hidden`
     : "";
   const legacySuffix = libraryState.showLegacy ? "" : " · legacy hidden";
-  librarySummary.textContent = `${fileCount} recording${fileCount === 1 ? "" : "s"} · ${usernames.length} user${usernames.length === 1 ? "" : "s"} · ${formatBytes(totalSize)}${focusSuffix}${hiddenSuffix}${legacySuffix}`;
+  librarySummary.textContent = `${fileCount} recording${fileCount === 1 ? "" : "s"} · ${usernames.length} user${usernames.length === 1 ? "" : "s"} · ${formatBytes(totalSize)}${hiddenSuffix}${legacySuffix}`;
 }
 
 export function flattenAndSortMedia(media) {
@@ -962,21 +971,25 @@ export function initMediaInteractions() {
     await deleteSelectedMedia();
   });
 
+  bindChipDismiss(libraryHiddenUsers, {
+    async onClearFocus() {
+      const { setSelectedProfile } = await import("./status.js");
+      setSelectedProfile(null);
+    },
+    onUnhideUser(name) {
+      if (unhideLibraryUser(name)) {
+        renderMedia(latestMedia);
+        showToast(`Showing @${name}`);
+      }
+    },
+  });
+
   libraryHiddenUsers?.addEventListener("click", (event) => {
     const clearBtn = event.target.closest("[data-clear-hidden-users]");
-    if (clearBtn) {
-      clearHiddenLibraryUsers();
-      renderMedia(latestMedia);
-      showToast("Showing all users");
-      return;
-    }
-    const chip = event.target.closest("[data-unhide-user]");
-    if (!chip) return;
-    const name = chip.dataset.unhideUser;
-    if (unhideLibraryUser(name)) {
-      renderMedia(latestMedia);
-      showToast(`Showing @${name}`);
-    }
+    if (!clearBtn) return;
+    clearHiddenLibraryUsers();
+    renderMedia(latestMedia);
+    showToast("Showing all users");
   });
 
   document.getElementById("player-close")?.addEventListener("click", closePlayer);
@@ -1068,6 +1081,7 @@ export function initMediaInteractions() {
   });
 
   window.addEventListener("ttlr:profile-changed", () => {
+    renderLibraryFilterChips();
     if (selectedProfile && isLibraryUserHidden(selectedProfile)) {
       unhideLibraryUser(selectedProfile);
       renderMedia(latestMedia);

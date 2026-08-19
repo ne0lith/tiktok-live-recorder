@@ -70,6 +70,7 @@ def _build_config(args, mode, cookies, user=None, users=None):
     auto_update_when_idle = getattr(
         args, "auto_update_when_idle", False
     ) or runtime.get("auto_update_when_idle", False)
+    prioritize_favorites = bool(getattr(args, "prioritize_favorites", False))
 
     return RecorderConfig(
         url=args.url,
@@ -87,6 +88,7 @@ def _build_config(args, mode, cookies, user=None, users=None):
         use_telegram=use_telegram,
         use_identity_tracking=use_identity_tracking,
         auto_update_when_idle=auto_update_when_idle,
+        prioritize_favorites=prioritize_favorites,
         bitrate=args.bitrate,
         ffmpeg_path=args.ffmpeg_path,
         web_host=args.web_host,

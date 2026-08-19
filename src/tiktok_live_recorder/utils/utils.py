@@ -87,6 +87,7 @@ def default_runtime_settings() -> dict:
         "use_identity_tracking": False,
         "auto_update_when_idle": False,
         "max_concurrent_converts": 1,
+        "prioritize_favorites": False,
     }
 
 
@@ -120,6 +121,8 @@ def read_runtime_settings() -> dict:
         settings["auto_update_when_idle"] = data["auto_update_when_idle"]
     if isinstance(data.get("max_concurrent_converts"), int):
         settings["max_concurrent_converts"] = max(1, data["max_concurrent_converts"])
+    if isinstance(data.get("prioritize_favorites"), bool):
+        settings["prioritize_favorites"] = data["prioritize_favorites"]
     return settings
 
 
@@ -139,6 +142,8 @@ def write_runtime_settings(settings: dict) -> None:
         payload["auto_update_when_idle"] = settings["auto_update_when_idle"]
     if isinstance(settings.get("max_concurrent_converts"), int):
         payload["max_concurrent_converts"] = max(1, settings["max_concurrent_converts"])
+    if isinstance(settings.get("prioritize_favorites"), bool):
+        payload["prioritize_favorites"] = settings["prioritize_favorites"]
     with open(path, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2)
         f.write("\n")
@@ -388,8 +393,16 @@ def prune_user_identities(
         write_user_identities(pruned, file_path)
 
 
-def read_paused_users(file_path: str | None = None) -> set[str]:
-    """Load paused usernames from the auto-managed watchlist state file."""
+def _normalize_watchlist_usernames(raw: object) -> list[str]:
+    if not isinstance(raw, list):
+        return []
+    return sorted(
+        {u.lstrip("@").strip() for u in raw if u and str(u).strip()},
+        key=str.lower,
+    )
+
+
+def _read_watchlist_state(file_path: str | None = None) -> dict:
     from tiktok_live_recorder.utils.logger_manager import logger
 
     path = file_path or watchlist_state_path()
@@ -397,28 +410,63 @@ def read_paused_users(file_path: str | None = None) -> set[str]:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
     except FileNotFoundError:
-        return set()
+        return {"paused": [], "favorites": []}
     except json.JSONDecodeError as exc:
         logger.error(f"watchlist state at {path} is invalid JSON: {exc}")
-        return set()
+        return {"paused": [], "favorites": []}
 
     if not isinstance(data, dict):
         logger.error(f"watchlist state at {path} must be a JSON object")
-        return set()
+        return {"paused": [], "favorites": []}
 
-    raw = data.get("paused", [])
-    if not isinstance(raw, list):
-        return set()
-    return {u.lstrip("@").strip().lower() for u in raw if u and str(u).strip()}
+    return {
+        "paused": _normalize_watchlist_usernames(data.get("paused")),
+        "favorites": _normalize_watchlist_usernames(data.get("favorites")),
+    }
+
+
+def _write_watchlist_state(state: dict, file_path: str | None = None) -> None:
+    path = file_path or watchlist_state_path()
+    config_dir().mkdir(parents=True, exist_ok=True)
+    payload = {
+        "paused": _normalize_watchlist_usernames(state.get("paused")),
+        "favorites": _normalize_watchlist_usernames(state.get("favorites")),
+    }
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
+        f.write("\n")
+
+
+def _watchlist_username_set(raw: object) -> set[str]:
+    return {u.lower() for u in _normalize_watchlist_usernames(raw)}
+
+
+def read_paused_users(file_path: str | None = None) -> set[str]:
+    """Load paused usernames from the auto-managed watchlist state file."""
+    return _watchlist_username_set(_read_watchlist_state(file_path).get("paused"))
 
 
 def write_paused_users(paused: set[str], file_path: str | None = None) -> None:
-    path = file_path or watchlist_state_path()
-    config_dir().mkdir(parents=True, exist_ok=True)
-    normalized = sorted({u.lstrip("@").strip() for u in paused if u and str(u).strip()})
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump({"paused": normalized}, f, indent=2)
-        f.write("\n")
+    state = _read_watchlist_state(file_path)
+    state["paused"] = sorted(
+        {u.lstrip("@").strip() for u in paused if u and str(u).strip()},
+        key=str.lower,
+    )
+    _write_watchlist_state(state, file_path)
+
+
+def read_favorite_users(file_path: str | None = None) -> set[str]:
+    """Load favorited usernames from the auto-managed watchlist state file."""
+    return _watchlist_username_set(_read_watchlist_state(file_path).get("favorites"))
+
+
+def write_favorite_users(favorites: set[str], file_path: str | None = None) -> None:
+    state = _read_watchlist_state(file_path)
+    state["favorites"] = sorted(
+        {u.lstrip("@").strip() for u in favorites if u and str(u).strip()},
+        key=str.lower,
+    )
+    _write_watchlist_state(state, file_path)
 
 
 def _normalize_username(username: str) -> str:

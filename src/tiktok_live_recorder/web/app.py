@@ -30,6 +30,7 @@ from tiktok_live_recorder.utils.utils import (
     cookies_file_path,
     default_output_base,
     read_cookies,
+    read_favorite_users,
     read_paused_users,
     read_telegram_config,
     remove_user_from_file,
@@ -37,6 +38,7 @@ from tiktok_live_recorder.utils.utils import (
     telegram_file_path,
     users_file_path,
     write_cookies,
+    write_favorite_users,
     write_paused_users,
     write_telegram_config,
 )
@@ -72,6 +74,7 @@ class RuntimeSettingsPayload(BaseModel):
     use_identity_tracking: bool | None = None
     auto_update_when_idle: bool | None = None
     max_concurrent_converts: int | None = Field(default=None, ge=1)
+    prioritize_favorites: bool | None = None
 
 
 class RecordPayload(BaseModel):
@@ -595,6 +598,11 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
             paused = {u for u in paused if u != username.lower()}
             write_paused_users(paused)
 
+        favorites = read_favorite_users()
+        if username.lower() in favorites:
+            favorites = {u for u in favorites if u != username.lower()}
+            write_favorite_users(favorites)
+
         recorder.users = users
         try:
             recorder.force_poll()
@@ -624,6 +632,21 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
         except RuntimeError as ex:
             raise HTTPException(status_code=409, detail=str(ex)) from ex
         return {"paused": sorted(paused)}
+
+    @app.post("/api/users/{username}/favorite")
+    def favorite_user(username: str) -> dict[str, Any]:
+        username = _normalize_username(username)
+        favorites = read_favorite_users()
+        favorites.add(username.lower())
+        write_favorite_users(favorites)
+        return {"favorites": sorted(favorites)}
+
+    @app.post("/api/users/{username}/unfavorite")
+    def unfavorite_user(username: str) -> dict[str, Any]:
+        username = _normalize_username(username)
+        favorites = {u for u in read_favorite_users() if u != username.lower()}
+        write_favorite_users(favorites)
+        return {"favorites": sorted(favorites)}
 
     @app.post("/api/users/{username}/poll")
     def poll_user(username: str) -> dict[str, str]:
@@ -682,6 +705,7 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
             "use_identity_tracking": recorder.use_identity_tracking,
             "auto_update_when_idle": recorder.auto_update_when_idle,
             "max_concurrent_converts": recorder.max_concurrent_converts,
+            "prioritize_favorites": recorder.prioritize_favorites,
             "ffmpeg": recorder.get_ffmpeg_info(),
         }
 
@@ -694,6 +718,7 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
                 use_identity_tracking=payload.use_identity_tracking,
                 auto_update_when_idle=payload.auto_update_when_idle,
                 max_concurrent_converts=payload.max_concurrent_converts,
+                prioritize_favorites=payload.prioritize_favorites,
             )
         except ValueError as ex:
             raise HTTPException(status_code=400, detail=str(ex)) from ex
@@ -702,6 +727,7 @@ def create_app(recorder: TikTokRecorder, config: RecorderConfig) -> FastAPI:
         config.use_identity_tracking = settings["use_identity_tracking"]
         config.auto_update_when_idle = settings["auto_update_when_idle"]
         config.max_concurrent_converts = settings["max_concurrent_converts"]
+        config.prioritize_favorites = settings["prioritize_favorites"]
         return settings
 
     @app.get("/api/settings/cookies")

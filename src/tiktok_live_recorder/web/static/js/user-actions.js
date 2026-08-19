@@ -9,6 +9,10 @@ export function isUserPaused(username, status) {
   return (status?.paused || []).some((u) => usernamesMatch(u, username));
 }
 
+export function isUserFavorite(username, status) {
+  return (status?.favorites || []).some((u) => usernamesMatch(u, username));
+}
+
 export function getUserRecordingState(username, status) {
   const entry = (status?.recordings || []).find((r) => usernamesMatch(r.username, username));
   if (!entry || entry.is_alive === false) return null;
@@ -35,6 +39,7 @@ export function buildUserActionButtons(username, status, row = null, { context =
 
   const inWatchlist = isUserInWatchlist(username, status);
   const paused = isUserPaused(username, status);
+  const favorited = isUserFavorite(username, status);
   const canStop = canStopUser(username, status, row);
   const buttons = [];
 
@@ -56,6 +61,11 @@ export function buildUserActionButtons(username, status, row = null, { context =
     paused
       ? `<button class="btn btn-ghost btn-small" data-action="resume" data-user="${username}">Resume</button>`
       : `<button class="btn btn-ghost btn-small" data-action="pause" data-user="${username}">Pause</button>`,
+  );
+  buttons.push(
+    favorited
+      ? `<button class="btn btn-ghost btn-small" data-action="unfavorite" data-user="${username}">Unfavorite</button>`
+      : `<button class="btn btn-ghost btn-small" data-action="favorite" data-user="${username}">Favorite</button>`,
   );
   if (mode === "watchlist") {
     buttons.push(
@@ -81,6 +91,12 @@ export async function runUserAction(action, username, { onSuccess } = {}) {
     } else if (action === "resume") {
       await api(`/api/users/${encodeURIComponent(user)}/resume`, { method: "POST" });
       showToast(`Resumed @${user}`);
+    } else if (action === "favorite") {
+      await api(`/api/users/${encodeURIComponent(user)}/favorite`, { method: "POST" });
+      showToast(`Favorited @${user}`);
+    } else if (action === "unfavorite") {
+      await api(`/api/users/${encodeURIComponent(user)}/unfavorite`, { method: "POST" });
+       showToast(`Unfavorited @${user}`);
     } else if (action === "check") {
       await api(`/api/users/${encodeURIComponent(user)}/poll`, { method: "POST" });
       showToast(`Checking @${user}`);

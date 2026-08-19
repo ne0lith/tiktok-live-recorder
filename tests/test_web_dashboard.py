@@ -10,8 +10,10 @@ from tiktok_live_recorder.utils.enums import Mode
 from tiktok_live_recorder.utils.recorder_config import RecorderConfig
 from tiktok_live_recorder.utils.utils import (
     add_user_to_file,
+    read_favorite_users,
     read_paused_users,
     remove_user_from_file,
+    write_favorite_users,
     write_paused_users,
 )
 from tiktok_live_recorder.web.app import create_app
@@ -52,6 +54,34 @@ def test_paused_users_round_trip(tmp_path, monkeypatch):
     write_paused_users({"alpha", "beta"})
     assert read_paused_users() == {"alpha", "beta"}
     write_paused_users({"gamma"})
+    assert read_paused_users() == {"gamma"}
+
+
+def test_favorite_users_round_trip(tmp_path, monkeypatch):
+    state_file = tmp_path / "watchlist_state.json"
+    monkeypatch.setattr(
+        "tiktok_live_recorder.utils.utils.watchlist_state_path",
+        lambda: str(state_file),
+    )
+    write_favorite_users({"alpha", "beta"})
+    assert read_favorite_users() == {"alpha", "beta"}
+    write_favorite_users({"gamma"})
+    assert read_favorite_users() == {"gamma"}
+
+
+def test_paused_and_favorites_preserve_each_other(tmp_path, monkeypatch):
+    state_file = tmp_path / "watchlist_state.json"
+    monkeypatch.setattr(
+        "tiktok_live_recorder.utils.utils.watchlist_state_path",
+        lambda: str(state_file),
+    )
+    write_paused_users({"alpha"})
+    write_favorite_users({"beta"})
+    assert read_paused_users() == {"alpha"}
+    assert read_favorite_users() == {"beta"}
+    write_paused_users({"gamma"})
+    assert read_favorite_users() == {"beta"}
+    write_favorite_users({"delta"})
     assert read_paused_users() == {"gamma"}
 
 
@@ -381,13 +411,18 @@ class StubRecorder:
     use_identity_tracking = False
     auto_update_when_idle = False
     max_concurrent_converts = 1
+    prioritize_favorites = False
     _telegram_uploads: list = []
 
     def get_status(self):
+        from tiktok_live_recorder.utils.utils import read_favorite_users
+
         return {
             "mode": "watchlist",
             "users": self.users,
             "paused": [],
+            "favorites": sorted(read_favorite_users()),
+            "prioritize_favorites": self.prioritize_favorites,
             "recordings": [],
             "automatic_interval_minutes": self.automatic_interval,
             "use_telegram": self.use_telegram,
@@ -489,12 +524,15 @@ class StubRecorder:
             self.auto_update_when_idle = kwargs["auto_update_when_idle"]
         if kwargs.get("max_concurrent_converts") is not None:
             self.max_concurrent_converts = kwargs["max_concurrent_converts"]
+        if kwargs.get("prioritize_favorites") is not None:
+            self.prioritize_favorites = kwargs["prioritize_favorites"]
         return {
             "automatic_interval_minutes": self.automatic_interval,
             "use_telegram": self.use_telegram,
             "use_identity_tracking": self.use_identity_tracking,
             "auto_update_when_idle": self.auto_update_when_idle,
             "max_concurrent_converts": self.max_concurrent_converts,
+            "prioritize_favorites": self.prioritize_favorites,
         }
 
     def start_recording_now(self, *, username=None, room_id=None):
@@ -539,6 +577,11 @@ def api_client(tmp_path, monkeypatch):
     recorder = StubRecorder()
     recorder.users_file = str(tmp_path / "users.json")
     (tmp_path / "users.json").write_text('{"users": ["alpha"]}', encoding="utf-8")
+    state_file = tmp_path / "watchlist_state.json"
+    monkeypatch.setattr(
+        "tiktok_live_recorder.utils.utils.watchlist_state_path",
+        lambda: str(state_file),
+    )
     config = RecorderConfig(mode=Mode.WATCHLIST, users=["alpha"], cookies={})
     monkeypatch.setattr(
         "tiktok_live_recorder.web.app.users_file_path",
@@ -872,6 +915,38 @@ def test_api_runtime_settings(api_client):
     assert recorder.use_telegram is True
     assert recorder.use_identity_tracking is False
     assert recorder.max_concurrent_converts == 2
+
+
+def test_api_favorite_unfavorite(api_client):
+    client, _, _ = api_client
+    response = client.post("/api/users/alpha/favorite")
+    assert response.status_code == 200
+    assert response.json()["favorites"] == ["alpha"]
+
+    status = client.get("/api/status").json()
+    assert status["favorites"] == ["alpha"]
+
+    response = client.post("/api/users/alpha/unfavorite")
+    assert response.status_code == 200
+    assert response.json()["favorites"] == []
+
+
+def test_api_delete_user_removes_favorite(api_client, tmp_path, monkeypatch):
+    client, recorder, _ = api_client
+    users_file = tmp_path / "users.json"
+    users_file.write_text('{"users": ["alpha"]}', encoding="utf-8")
+    recorder.users_file = str(users_file)
+    recorder.users = ["alpha"]
+    state_file = tmp_path / "watchlist_state.json"
+    monkeypatch.setattr(
+        "tiktok_live_recorder.utils.utils.watchlist_state_path",
+        lambda: str(state_file),
+    )
+    write_favorite_users({"alpha"})
+
+    response = client.delete("/api/users/alpha")
+    assert response.status_code == 200
+    assert read_favorite_users() == set()
 
 
 def test_api_update_apply_rejected_when_not_updatable(api_client, monkeypatch):

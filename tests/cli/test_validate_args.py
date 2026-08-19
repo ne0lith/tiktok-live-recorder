@@ -391,3 +391,40 @@ def test_watchlist_mode_requires_users_when_missing_everywhere(monkeypatch):
         match="Missing username\\(s\\) for watchlist mode",
     ):
         validate_and_parse_args()
+
+
+def test_prioritize_favorites_cli_flags(monkeypatch, tmp_path):
+    monkeypatch.setenv("TIKTOK_RECORDER_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "tiktok-live-recorder",
+            "-mode",
+            "watchlist",
+            "-user",
+            "alpha",
+            "-prioritize-favorites",
+        ],
+    )
+    args, mode = validate_and_parse_args()
+    assert mode == Mode.WATCHLIST
+    assert args.prioritize_favorites is True
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "tiktok-live-recorder",
+            "-mode",
+            "watchlist",
+            "-user",
+            "alpha",
+            "-no-prioritize-favorites",
+        ],
+    )
+    from tiktok_live_recorder.utils.utils import write_runtime_settings
+
+    write_runtime_settings({"prioritize_favorites": True})
+    args, _ = validate_and_parse_args()
+    assert args.prioritize_favorites is False

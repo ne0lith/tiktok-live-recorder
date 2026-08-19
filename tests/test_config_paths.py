@@ -92,6 +92,7 @@ def test_runtime_settings_round_trip(monkeypatch, tmp_path):
 
     monkeypatch.setenv("TIKTOK_RECORDER_CONFIG_DIR", str(tmp_path))
     assert default_runtime_settings()["use_identity_tracking"] is False
+    assert default_runtime_settings()["prioritize_favorites"] is False
     assert read_runtime_settings()["use_identity_tracking"] is False
 
     write_runtime_settings(
@@ -101,6 +102,7 @@ def test_runtime_settings_round_trip(monkeypatch, tmp_path):
             "use_identity_tracking": True,
             "auto_update_when_idle": True,
             "max_concurrent_converts": 3,
+            "prioritize_favorites": True,
         }
     )
 
@@ -111,4 +113,5 @@ def test_runtime_settings_round_trip(monkeypatch, tmp_path):
         "use_identity_tracking": True,
         "auto_update_when_idle": True,
         "max_concurrent_converts": 3,
+        "prioritize_favorites": True,
     }

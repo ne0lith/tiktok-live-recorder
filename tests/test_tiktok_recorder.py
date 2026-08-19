@@ -1372,6 +1372,65 @@ def test_poll_user_order_shuffles_multi_user_list(monkeypatch):
     assert recorder._poll_user_order(["solo"]) == ["solo"]
 
 
+def test_poll_user_order_prioritizes_favorites_when_enabled(monkeypatch):
+    recorder = TikTokRecorder(
+        RecorderConfig(
+            mode=Mode.WATCHLIST,
+            users=["alpha", "beta", "gamma", "delta"],
+            cookies={},
+            prioritize_favorites=True,
+        )
+    )
+    monkeypatch.setattr(
+        "tiktok_live_recorder.core.tiktok_recorder.random.shuffle",
+        lambda items: items.reverse(),
+    )
+    monkeypatch.setattr(
+        "tiktok_live_recorder.utils.utils.read_favorite_users",
+        lambda: {"alpha", "gamma"},
+    )
+
+    order = recorder._poll_user_order(["alpha", "beta", "gamma", "delta"])
+    assert order == ["gamma", "alpha", "delta", "beta"]
+    fav_positions = [order.index(u) for u in ("alpha", "gamma")]
+    rest_positions = [order.index(u) for u in ("beta", "delta")]
+    assert max(fav_positions) < min(rest_positions)
+
+
+def test_poll_users_once_skips_paused_favorited_user(monkeypatch):
+    recorder = TikTokRecorder(
+        RecorderConfig(
+            mode=Mode.WATCHLIST,
+            users=["alpha", "beta"],
+            cookies={},
+            prioritize_favorites=True,
+        )
+    )
+    checks = []
+
+    def check_user(username):
+        checks.append(username)
+        return None
+
+    recorder._check_user_live = check_user
+    monkeypatch.setattr(
+        "tiktok_live_recorder.utils.utils.read_paused_users",
+        lambda: {"alpha"},
+    )
+    monkeypatch.setattr(
+        "tiktok_live_recorder.utils.utils.read_favorite_users",
+        lambda: {"alpha"},
+    )
+    monkeypatch.setattr(
+        "tiktok_live_recorder.core.tiktok_recorder.time.sleep", lambda *_: None
+    )
+
+    recorder._poll_users_once(["alpha", "beta"], {}, label="Watchlist")
+
+    assert checks == ["beta"]
+    assert recorder._last_poll_snapshot["paused"] == ["alpha"]
+
+
 def test_poll_users_once_spaces_checks_and_logs_plan(monkeypatch, caplog):
     import logging
 

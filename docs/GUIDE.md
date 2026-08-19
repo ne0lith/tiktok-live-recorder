@@ -51,8 +51,9 @@ Override the config location with the `TIKTOK_RECORDER_CONFIG_DIR` environment v
 | `automatic_interval_minutes` | `5` | Watchlist/followers/automatic poll interval |
 | `use_telegram` | `false` | Upload finished MP4s to Telegram after conversion |
 | `max_concurrent_converts` | `1` | Parallel FLV->MP4 jobs when streams end |
+| `prioritize_favorites` | `false` | Poll favorited users first each cycle (each group shuffled) |
 
-**Load order:** built-in defaults -> `runtime_settings.json` -> CLI flags on startup (`-automatic_interval`, `-telegram`, `-max-concurrent-converts`). CLI wins for that run only.
+**Load order:** built-in defaults -> `runtime_settings.json` -> CLI flags on startup (`-automatic_interval`, `-telegram`, `-max-concurrent-converts`, `-prioritize-favorites` / `-no-prioritize-favorites`). CLI wins for that run only.
 
 **Dashboard:** **Settings -> Runtime** edits all three fields and saves to `runtime_settings.json` immediately (no restart). **Legacy recordings** visibility is separate - stored in browser `localStorage`, not this file.
 
@@ -276,7 +277,7 @@ The UI updates live via **Server-Sent Events** (`GET /api/events`) with polling 
 
 ### Summary strip and filters
 
-The sticky summary strip has two left-aligned rows: **filter chips** (All / Live / Recording / Offline / Paused / Errors, Hide paused, focused user) and a quiet **meta line** (convert busy, last/next poll, version, FFmpeg). Click a chip to filter the status list. **Hide paused** toggles paused users out of the All view (saved in `localStorage`; the focused profile still shows when paused). Recording users sort first; large watchlists show a **Show all users** control.
+The sticky summary strip has two left-aligned rows: **filter chips** (All / Live / Recording / Offline / Paused / Favorites / Errors, Hide paused, focused user) and a quiet **meta line** (convert busy, last/next poll, version, FFmpeg). Click a chip to filter the status list. **Hide paused** toggles paused users out of the All view (saved in `localStorage`; the focused profile still shows when paused). Recording users sort first; large watchlists show a **Show all users** control.
 
 ### Live status
 
@@ -287,7 +288,7 @@ The sticky summary strip has two left-aligned rows: **filter chips** (All / Live
 - **Check** (per user) - priority live check for that user: pauses an in-progress full poll, runs the Check (and any other queued Checks if you click several), then resumes the remaining users; works while converting or when paused
 - **Force check** - abort/restart the full watchlist poll immediately (shows loading while a poll is in progress)
 - **Stop** - graceful shutdown for an active recording
-- **Watchlist only:** add/remove users (top bar); pause/resume (pause state in `config/watchlist_state.json`)
+- **Watchlist only:** add/remove users (top bar); pause/resume and favorite/unfavorite (state in `config/watchlist_state.json`: `paused`, `favorites`). **Prioritize favorites in poll order** (Settings -> Runtime, `runtime_settings.json`, or `-prioritize-favorites` / `-no-prioritize-favorites`) shuffles favorited users first each full poll; **Check** still bypasses order. Paused users are never live-checked in normal polls even when favorited
 - **Mobile:** status cards replace the table on narrow viewports
 
 ### Recent activity
@@ -296,7 +297,7 @@ Shown directly under the top bar. Feed of recent polls, recording starts/stops, 
 
 ### User focus
 
-Click a `@handle` to filter status and the media library to that user. Each profile includes a TikTok link (current handle when the creator renamed) and shareable URL: `http://localhost:8787/#user/<username>`. If the TikTok handle changed, the status line shows a quiet `now @current`. Press **Esc** or use **<- All users** to clear the filter.
+Click a `@handle` to filter status and the media library to that user. A **Focused** chip appears in the media library filter bar (alongside **Hidden** user chips); use the chip **x** or press **Esc** to clear. Each profile includes a TikTok link (current handle when the creator renamed) and shareable URL: `http://localhost:8787/#user/<username>`. If the TikTok handle changed, the status line shows a quiet `now @current`. Press **Esc** or use **<- All users** to clear the filter.
 
 ### Media library
 
@@ -305,7 +306,7 @@ Click a `@handle` to filter status and the media library to that user. Each prof
 - **Legacy recordings** (`output/<username>/legacy/`) are **hidden by default**; enable **Settings -> Runtime -> Legacy recordings** to show them (saved in `localStorage`)
 - Sort: Newest, Oldest, Largest, A-Z user (preference saved in `localStorage`)
 - Search by username or filename (`/` focuses search)
-- **Hide** a user from results (card **Hide** or player **Hide user**) to browse largest/newest without that account; chips under the toolbar restore them (saved in `localStorage`). Focusing a `@handle` unhides that user if needed.
+- **Hide** a user from results (card **Hide** or player **Hide user**) to browse largest/newest without that account; **Hidden** chips under the toolbar restore them (each chip has a **x**; saved in `localStorage`). Focusing a `@handle` unhides that user if needed and shows a **Focused** chip in the same bar
 - Thumbnail previews for finished recordings (server-generated `*.thumb.jpg` cache, lazy-loaded in the browser). Orphan thumbs (video deleted outside the dashboard) are removed on each media-library refresh.
 - Orphan `*_flv.mp4` files pinned and styled (`needs convert`); legacy items show a `legacy` tag when visible. Active recordings and in-flight temps (`*.av1temp.mp4`, `*.repair.tmp.mp4`) are hidden until finalized (see Live status).
 - Docked in-browser player above the scrollable list (playback is not interrupted by library refreshes)

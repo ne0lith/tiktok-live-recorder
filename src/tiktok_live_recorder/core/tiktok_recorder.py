@@ -72,6 +72,7 @@ class TikTokRecorder:
         self.use_telegram = config.use_telegram
         self.use_identity_tracking = config.use_identity_tracking
         self.auto_update_when_idle = bool(config.auto_update_when_idle)
+        self.prioritize_favorites = bool(config.prioritize_favorites)
         if self.auto_update_when_idle:
             from tiktok_live_recorder.updater import is_updatable_install
 
@@ -543,9 +544,13 @@ class TikTokRecorder:
         self.tiktok = TikTokAPI(proxy=self._proxy, cookies=self._cookies)
 
     def get_status(self) -> dict:
-        from tiktok_live_recorder.utils.utils import read_paused_users
+        from tiktok_live_recorder.utils.utils import (
+            read_favorite_users,
+            read_paused_users,
+        )
 
         paused = sorted(read_paused_users())
+        favorites = sorted(read_favorite_users())
         users = list(self.users or [])
         now = time.time()
 
@@ -595,6 +600,8 @@ class TikTokRecorder:
             "mode": self.mode.name.lower(),
             "users": users,
             "paused": paused,
+            "favorites": favorites,
+            "prioritize_favorites": self.prioritize_favorites,
             "identities": self._status_identities(users),
             "users_file": self.users_file,
             "automatic_interval_minutes": self.automatic_interval,
@@ -638,6 +645,7 @@ class TikTokRecorder:
         use_identity_tracking: bool | None = None,
         auto_update_when_idle: bool | None = None,
         max_concurrent_converts: int | None = None,
+        prioritize_favorites: bool | None = None,
     ) -> dict:
         from tiktok_live_recorder.utils.utils import write_runtime_settings
 
@@ -678,12 +686,15 @@ class TikTokRecorder:
                 raise ValueError("max_concurrent_converts must be at least 1")
             self.max_concurrent_converts = max_concurrent_converts
             self._convert_queue.set_max_concurrent(max_concurrent_converts)
+        if prioritize_favorites is not None:
+            self.prioritize_favorites = prioritize_favorites
         settings = {
             "automatic_interval_minutes": self.automatic_interval,
             "use_telegram": self.use_telegram,
             "use_identity_tracking": self.use_identity_tracking,
             "auto_update_when_idle": self.auto_update_when_idle,
             "max_concurrent_converts": self.max_concurrent_converts,
+            "prioritize_favorites": self.prioritize_favorites,
         }
         write_runtime_settings(settings)
         if auto_update_when_idle:
@@ -1237,11 +1248,23 @@ class TikTokRecorder:
         return None
 
     def _poll_user_order(self, users: list[str]) -> list[str]:
-        """Return a shuffled copy so poll order varies each cycle."""
-        ordered = list(users)
-        if len(ordered) > 1:
-            random.shuffle(ordered)
-        return ordered
+        """Return poll order; shuffled, optionally favorites-first when enabled."""
+        if not self.prioritize_favorites:
+            ordered = list(users)
+            if len(ordered) > 1:
+                random.shuffle(ordered)
+            return ordered
+
+        from tiktok_live_recorder.utils.utils import read_favorite_users
+
+        favorites = read_favorite_users()
+        fav = [u for u in users if u.lower() in favorites]
+        rest = [u for u in users if u.lower() not in favorites]
+        if len(fav) > 1:
+            random.shuffle(fav)
+        if len(rest) > 1:
+            random.shuffle(rest)
+        return fav + rest
 
     def _log_poll_plan(self, label: str, poll_users: list[str]) -> None:
         count = len(poll_users)
@@ -1250,10 +1273,28 @@ class TikTokRecorder:
         if count == 1:
             logger.debug(f"{label} poll: checking @{poll_users[0]}")
             return
-        logger.info(
-            f"{label} poll: checking {count} users in shuffled order "
-            f"({POLL_USER_DELAY_SECONDS}s spacing between users)"
-        )
+        if self.prioritize_favorites:
+            from tiktok_live_recorder.utils.utils import read_favorite_users
+
+            favorites = read_favorite_users()
+            fav_count = sum(1 for u in poll_users if u.lower() in favorites)
+            rest_count = count - fav_count
+            if fav_count and rest_count:
+                logger.info(
+                    f"{label} poll: checking {count} users "
+                    f"({fav_count} favorites first, then {rest_count} others; "
+                    f"each group shuffled, {POLL_USER_DELAY_SECONDS}s spacing)"
+                )
+            else:
+                logger.info(
+                    f"{label} poll: checking {count} users in shuffled order "
+                    f"({POLL_USER_DELAY_SECONDS}s spacing between users)"
+                )
+        else:
+            logger.info(
+                f"{label} poll: checking {count} users in shuffled order "
+                f"({POLL_USER_DELAY_SECONDS}s spacing between users)"
+            )
         logger.debug(f"{label} poll order: {', '.join(f'@{u}' for u in poll_users)}")
 
     def _poll_users_once(self, users, active_recordings, label, *, force: bool = False):
