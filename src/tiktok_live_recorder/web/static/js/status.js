@@ -14,6 +14,7 @@ import {
 import {
   STATE_SORT_ORDER,
   STORAGE_HIDE_PAUSED_KEY,
+  STORAGE_STATUS_SORT_KEY,
   hidePausedUsers,
   latestMedia,
   latestStatus,
@@ -22,7 +23,9 @@ import {
   setLatestStatus,
   setSelectedProfileValue,
   setStatusFilter,
+  setStatusSortMode,
   statusFilter,
+  statusSortMode,
 } from "./state.js";
 import { renderMedia, sumLibraryBytesForUser } from "./media.js";
 import { renderTelegramUploads, syncRuntimeControls } from "./runtime-ui.js";
@@ -396,7 +399,20 @@ export function setStatusFilterValue(filter) {
 
 export function loadStatusPreferences() {
   setHidePausedUsers(localStorage.getItem(STORAGE_HIDE_PAUSED_KEY) === "1");
+  const savedSort = localStorage.getItem(STORAGE_STATUS_SORT_KEY);
+  if (savedSort === "state" || savedSort === "library" || savedSort === "name") {
+    setStatusSortMode(savedSort);
+  }
+  const sortSelect = document.getElementById("status-sort");
+  if (sortSelect) sortSelect.value = statusSortMode;
   loadActivityPreferences();
+}
+
+export function saveStatusSortPreference(mode) {
+  setStatusSortMode(mode);
+  localStorage.setItem(STORAGE_STATUS_SORT_KEY, mode);
+  const sortSelect = document.getElementById("status-sort");
+  if (sortSelect) sortSelect.value = mode;
 }
 
 export function saveHidePausedPreference(value) {
@@ -420,6 +436,38 @@ function partitionStatusRows(rows) {
     else idle.push(row);
   }
   return { active, idle };
+}
+
+function bytesForStatusRow(row) {
+  const library = sumLibraryBytesForUser(row.username);
+  const active = ACTIVE_STATES.has(row.state) ? Number(row.bytes_written) || 0 : 0;
+  return library + active;
+}
+
+function compareStatusRowsByLibrary(a, b) {
+  const diff = bytesForStatusRow(b) - bytesForStatusRow(a);
+  if (diff !== 0) return diff;
+  return a.username.localeCompare(b.username, undefined, { sensitivity: "base" });
+}
+
+function compareStatusRowsByName(a, b) {
+  return a.username.localeCompare(b.username, undefined, { sensitivity: "base" });
+}
+
+function sortStatusRows(rows, mode) {
+  if (mode === "library") {
+    const { active, idle } = partitionStatusRows(rows);
+    active.sort(compareStatusRowsByLibrary);
+    idle.sort(compareStatusRowsByLibrary);
+    return [...active, ...idle];
+  }
+  if (mode === "name") {
+    const { active, idle } = partitionStatusRows(rows);
+    active.sort(compareStatusRowsByName);
+    idle.sort(compareStatusRowsByName);
+    return [...active, ...idle];
+  }
+  return rows;
 }
 
 function renderStatusLine(row, status) {
@@ -531,6 +579,7 @@ export function renderStatus(status) {
   syncPollUI(status);
   let rows = deriveRows(status);
   rows = rows.filter(rowMatchesFilter);
+  rows = sortStatusRows(rows, statusSortMode);
 
   const mode = status.mode || "watchlist";
   if (statusMeta) {
@@ -567,6 +616,11 @@ export async function refreshStatus() {
 
 export function initStatusInteractions() {
   loadStatusPreferences();
+
+  document.getElementById("status-sort")?.addEventListener("change", (event) => {
+    saveStatusSortPreference(event.target.value);
+    if (latestStatus) renderStatus(latestStatus);
+  });
 
   summaryFilters?.addEventListener("click", (event) => {
     const clearFocus = event.target.closest("[data-clear-focus]");

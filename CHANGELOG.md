@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.33.1] - 2026-08-19
+
+### Added
+
+- **Live status**: **Sort** control — **Library size** (largest media library per user) or **Name A–Z**, in addition to default **Active first** (saved in `localStorage`)
+
 ## [8.33.0] - 2026-08-19
 
 ### Added

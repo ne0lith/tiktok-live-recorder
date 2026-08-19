@@ -5,6 +5,7 @@ export const STORAGE_SORT_KEY = "ttlr_library_sort";
 export const STORAGE_SHOW_LEGACY_KEY = "ttlr_library_show_legacy";
 export const STORAGE_HIDDEN_USERS_KEY = "ttlr_library_hidden_users";
 export const STORAGE_HIDE_PAUSED_KEY = "ttlr_hide_paused";
+export const STORAGE_STATUS_SORT_KEY = "ttlr_status_sort";
 export const STORAGE_ACTIVITY_HIDDEN_KINDS_KEY = "ttlr_activity_hidden_kinds";
 
 export const STATE_SORT_ORDER = {
@@ -25,6 +26,7 @@ export let latestMedia = {};
 export let pendingMedia = null;
 export let selectedProfile = null;
 export let statusFilter = "all";
+export let statusSortMode = "state";
 export let hidePausedUsers = false;
 export let activityHiddenKinds = new Set();
 
@@ -64,6 +66,10 @@ export function setSelectedProfileValue(username) {
 
 export function setStatusFilter(filter) {
   statusFilter = filter;
+}
+
+export function setStatusSortMode(mode) {
+  statusSortMode = mode;
 }
 
 export function setHidePausedUsers(value) {

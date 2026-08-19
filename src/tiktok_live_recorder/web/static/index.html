@@ -62,8 +62,20 @@
 
       <section class="panel status-panel">
         <div class="panel-head">
-          <h2>Live status</h2>
-          <p id="status-meta" class="meta">Loading…</p>
+          <div>
+            <h2>Live status</h2>
+            <p id="status-meta" class="meta">Loading…</p>
+          </div>
+          <div class="panel-head-actions">
+            <label class="toolbar-field" for="status-sort">
+              <span class="toolbar-field-label">Sort</span>
+              <select id="status-sort" class="logs-select toolbar-select">
+                <option value="state">Active first</option>
+                <option value="library">Library size</option>
+                <option value="name">Name A-Z</option>
+              </select>
+            </label>
+          </div>
         </div>
         <div id="status-ops" class="status-ops hidden" aria-live="polite"></div>
         <div class="status-scroll">
